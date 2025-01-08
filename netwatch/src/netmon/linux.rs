@@ -14,7 +14,7 @@ use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use rtnetlink::new_connection;
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::actor::NetworkMessage;
 use crate::ip::is_link_local;
