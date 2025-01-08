@@ -78,7 +78,7 @@ impl RouteMonitor {
                         warn!("error reading netlink payload: {:?}", err);
                     }
                     NetlinkPayload::Done(_) => {
-                        info!("done received, exiting");
+                        debug!("done received, exiting");
                         break;
                     }
                     NetlinkPayload::InnerMessage(msg) => match msg {
