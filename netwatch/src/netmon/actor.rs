@@ -173,7 +173,7 @@ impl Actor {
     }
 
     async fn handle_potential_change(&mut self, time_jumped: bool) -> Result<()> {
-        debug!("potential change");
+        trace!("potential change");
 
         let new_state = State::new().await;
         let old_state = &self.interface_state;

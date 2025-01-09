@@ -170,7 +170,7 @@ impl UdpSocket {
     /// limiting packets that are read via `recv` from the address specified in
     /// `addr`.
     pub fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        debug!(%addr, "connecting");
+        trace!(%addr, "connecting");
         let guard = self.socket.read().unwrap();
         let (socket_tokio, _state) = guard.try_get_connected()?;
 

@@ -14,7 +14,7 @@ use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use rtnetlink::new_connection;
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{debug, trace, warn};
+use tracing::{trace, warn};
 
 use super::actor::NetworkMessage;
 use crate::ip::is_link_local;
@@ -78,7 +78,7 @@ impl RouteMonitor {
                         warn!("error reading netlink payload: {:?}", err);
                     }
                     NetlinkPayload::Done(_) => {
-                        debug!("done received, exiting");
+                        trace!("done received, exiting");
                         break;
                     }
                     NetlinkPayload::InnerMessage(msg) => match msg {
