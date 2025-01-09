@@ -8,7 +8,7 @@ use anyhow::Result;
 use futures_lite::future::Boxed as BoxFuture;
 use os::{is_interesting_interface, RouteMonitor};
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 #[cfg(target_os = "android")]
 use super::android as os;
@@ -173,7 +173,7 @@ impl Actor {
     }
 
     async fn handle_potential_change(&mut self, time_jumped: bool) -> Result<()> {
-        info!("potential change");
+        trace!("potential change");
 
         let new_state = State::new().await;
         let old_state = &self.interface_state;
