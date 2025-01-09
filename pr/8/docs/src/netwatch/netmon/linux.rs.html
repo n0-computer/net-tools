@@ -186,7 +186,7 @@
 <span class="kw">use </span>netlink_sys::{AsyncSocket, SocketAddr};
 <span class="kw">use </span>rtnetlink::new_connection;
 <span class="kw">use </span>tokio::{sync::mpsc, task::JoinHandle};
-<span class="kw">use </span>tracing::{debug, trace, warn};
+<span class="kw">use </span>tracing::{trace, warn};
 
 <span class="kw">use </span><span class="kw">super</span>::actor::NetworkMessage;
 <span class="kw">use </span><span class="kw">crate</span>::ip::is_link_local;
@@ -250,7 +250,7 @@
                         <span class="macro">warn!</span>(<span class="string">"error reading netlink payload: {:?}"</span>, err);
                     }
                     NetlinkPayload::Done(<span class="kw">_</span>) =&gt; {
-                        <span class="macro">debug!</span>(<span class="string">"done received, exiting"</span>);
+                        <span class="macro">trace!</span>(<span class="string">"done received, exiting"</span>);
                         <span class="kw">break</span>;
                     }
                     NetlinkPayload::InnerMessage(msg) =&gt; <span class="kw">match </span>msg {

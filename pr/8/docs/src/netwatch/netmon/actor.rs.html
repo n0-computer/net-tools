@@ -439,7 +439,7 @@
     }
 
     <span class="kw">async fn </span>handle_potential_change(<span class="kw-2">&amp;mut </span><span class="self">self</span>, time_jumped: bool) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-        <span class="macro">debug!</span>(<span class="string">"potential change"</span>);
+        <span class="macro">trace!</span>(<span class="string">"potential change"</span>);
 
         <span class="kw">let </span>new_state = State::new().<span class="kw">await</span>;
         <span class="kw">let </span>old_state = <span class="kw-2">&amp;</span><span class="self">self</span>.interface_state;
