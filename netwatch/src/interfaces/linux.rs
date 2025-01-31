@@ -13,8 +13,10 @@ use super::DefaultRouteDetails;
 pub enum Error {
     #[error("IO {0}")]
     Io(#[from] std::io::Error),
+    #[cfg(not(target_os = "android"))]
     #[error("no netlink response")]
     NoResponse,
+    #[cfg(not(target_os = "android"))]
     #[error("interface not found")]
     InterfaceNotFound,
     #[error("iface field is missing")]

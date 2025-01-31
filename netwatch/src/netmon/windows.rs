@@ -102,7 +102,7 @@ impl CallbackHandler {
     fn register_unicast_address_change_callback(
         &mut self,
         cb: UnicastCallback,
-    ) -> Result<UnicastCallbackHandle> {
+    ) -> Result<UnicastCallbackHandle, Error> {
         trace!("registering unicast callback");
         let mut handle = Handle::default();
         let cb = Arc::new(cb);

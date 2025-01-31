@@ -19,6 +19,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("not route found")]
     NoRoute,
+    #[error("WMI {0}")]
+    Wmi(#[from] wmi::WMIError),
 }
 
 fn get_default_route() -> Result<DefaultRouteDetails, Error> {
