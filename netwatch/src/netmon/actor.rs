@@ -5,6 +5,7 @@ use std::{
 };
 
 use futures_lite::future::Boxed as BoxFuture;
+pub(super) use os::Error;
 use os::{is_interesting_interface, RouteMonitor};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, trace};
@@ -27,8 +28,6 @@ use crate::{
     interfaces::{IpNet, State},
     ip::is_link_local,
 };
-
-pub(super) use os::Error;
 
 /// The message sent by the OS specific monitors.
 #[derive(Debug, Copy, Clone)]

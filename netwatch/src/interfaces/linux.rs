@@ -23,6 +23,8 @@ pub enum Error {
     MissingDestinationField,
     #[error("mask field is missing")]
     MissingMaskField,
+    #[error("netlink")]
+    Netlink(#[from] rtnetlink::Error),
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {

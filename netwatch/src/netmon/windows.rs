@@ -22,7 +22,8 @@ pub(super) struct RouteMonitor {
 pub enum Error {
     #[error("IO {0}")]
     Io(#[from] std::io::Error),
-    NotifyUnicastIpAddressChange(#[from] WIN32_ERROR),
+    #[error("win32: {0}")]
+    Win32(#[from] windows::Win32::Foundation::Error),
 }
 
 impl RouteMonitor {
@@ -112,7 +113,8 @@ impl CallbackHandler {
                 Some(Arc::as_ptr(&cb) as *const c_void), // context
                 BOOLEAN::from(false),                    // initial notification,
                 &mut handle,
-            )?;
+            )
+            .ok()?;
         }
 
         self.unicast_callbacks.insert(handle.0 as isize, cb);
@@ -131,7 +133,8 @@ impl CallbackHandler {
             .is_some()
         {
             unsafe {
-                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)?;
+                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
+                    .ok()?;
             }
         }
 
@@ -152,7 +155,8 @@ impl CallbackHandler {
                 Arc::as_ptr(&cb) as *const c_void, // context
                 BOOLEAN::from(false),              // initial notification,
                 &mut handle,
-            )?;
+            )
+            .ok()?;
         }
 
         self.route_callbacks.insert(handle.0 as isize, cb);
@@ -171,7 +175,8 @@ impl CallbackHandler {
             .is_some()
         {
             unsafe {
-                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)?;
+                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
+                    .ok()?;
             }
         }
 
