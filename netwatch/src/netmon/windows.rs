@@ -4,7 +4,7 @@ use libc::c_void;
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
-    Foundation::{BOOLEAN, HANDLE as Handle},
+    Foundation::HANDLE as Handle,
     NetworkManagement::IpHelper::{
         MIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
     },
@@ -111,7 +111,7 @@ impl CallbackHandler {
                 windows::Win32::Networking::WinSock::AF_UNSPEC,
                 Some(unicast_change_callback),
                 Some(Arc::as_ptr(&cb) as *const c_void), // context
-                BOOLEAN::from(false),                    // initial notification,
+                false,                                   // initial notification,
                 &mut handle,
             )
             .ok()?;
@@ -153,7 +153,7 @@ impl CallbackHandler {
                 windows::Win32::Networking::WinSock::AF_UNSPEC,
                 Some(route_change_callback),
                 Arc::as_ptr(&cb) as *const c_void, // context
-                BOOLEAN::from(false),              // initial notification,
+                false,                             // initial notification,
                 &mut handle,
             )
             .ok()?;
