@@ -226,7 +226,9 @@
 <a href="#225" id="225">225</a>
 <a href="#226" id="226">226</a>
 <a href="#227" id="227">227</a>
-<a href="#228" id="228">228</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
+<a href="#228" id="228">228</a>
+<a href="#229" id="229">229</a>
+<a href="#230" id="230">230</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
 
 </span><span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">use </span>futures_util::TryStreamExt;
@@ -241,9 +243,11 @@
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[error(<span class="string">"IO {0}"</span>)]
     </span>Io(<span class="attr">#[from] </span>std::io::Error),
-    <span class="attr">#[error(<span class="string">"no netlink response"</span>)]
+    <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
+    #[error(<span class="string">"no netlink response"</span>)]
     </span>NoResponse,
-    <span class="attr">#[error(<span class="string">"interface not found"</span>)]
+    <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
+    #[error(<span class="string">"interface not found"</span>)]
     </span>InterfaceNotFound,
     <span class="attr">#[error(<span class="string">"iface field is missing"</span>)]
     </span>MissingIfaceField,
