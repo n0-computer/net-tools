@@ -1,6 +1,5 @@
 //! Linux-specific network interfaces implementations.
 
-use anyhow::{anyhow, Result};
 #[cfg(not(target_os = "android"))]
 use futures_util::TryStreamExt;
 use tokio::{
@@ -9,6 +8,26 @@ use tokio::{
 };
 
 use super::DefaultRouteDetails;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+    #[cfg(not(target_os = "android"))]
+    #[error("no netlink response")]
+    NoResponse,
+    #[cfg(not(target_os = "android"))]
+    #[error("interface not found")]
+    InterfaceNotFound,
+    #[error("iface field is missing")]
+    MissingIfaceField,
+    #[error("destination field is missing")]
+    MissingDestinationField,
+    #[error("mask field is missing")]
+    MissingMaskField,
+    #[error("netlink")]
+    Netlink(#[from] rtnetlink::Error),
+}
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
     let route = default_route_proc().await;
@@ -27,7 +46,7 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
 
 const PROC_NET_ROUTE_PATH: &str = "/proc/net/route";
 
-async fn default_route_proc() -> Result<Option<DefaultRouteDetails>> {
+async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     const ZERO_ADDR: &str = "00000000";
     let file = File::open(PROC_NET_ROUTE_PATH).await?;
 
@@ -50,9 +69,9 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>> {
             continue;
         }
         let mut fields = line.split_ascii_whitespace();
-        let iface = fields.next().ok_or(anyhow!("iface field missing"))?;
-        let destination = fields.next().ok_or(anyhow!("destination field missing"))?;
-        let mask = fields.nth(5).ok_or(anyhow!("mask field missing"))?;
+        let iface = fields.next().ok_or(Error::MissingIfaceField)?;
+        let destination = fields.next().ok_or(Error::MissingDestinationField)?;
+        let mask = fields.nth(5).ok_or(Error::MissingMaskField)?;
         // if iface.starts_with("tailscale") || iface.starts_with("wg") {
         //     continue;
         // }
@@ -70,7 +89,7 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>> {
 /// We use this on Android where /proc/net/route can be missing entries or have locked-down
 /// permissions.  See also comments in <https://github.com/tailscale/tailscale/pull/666>.
 #[cfg(target_os = "android")]
-pub async fn default_route_android_ip_route() -> Result<Option<DefaultRouteDetails>> {
+pub async fn default_route_android_ip_route() -> Result<Option<DefaultRouteDetails>, Error> {
     use tokio::process::Command;
 
     let output = Command::new("/system/bin/ip")
@@ -78,7 +97,7 @@ pub async fn default_route_android_ip_route() -> Result<Option<DefaultRouteDetai
         .kill_on_drop(true)
         .output()
         .await?;
-    let stdout = std::str::from_utf8(&output.stdout)?;
+    let stdout = std::string::String::from_utf8_lossy(&output.stdout);
     let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
         interface_name: iface.to_string(),
     });
@@ -104,7 +123,7 @@ fn parse_android_ip_route(stdout: &str) -> Option<&str> {
 }
 
 #[cfg(not(target_os = "android"))]
-async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>> {
+async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     use tracing::{info_span, Instrument};
 
     let (connection, handle, _receiver) = rtnetlink::new_connection()?;
@@ -127,7 +146,7 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>> {
 async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
     family: rtnetlink::IpVersion,
-) -> Result<Option<(String, u32)>> {
+) -> Result<Option<(String, u32)>, Error> {
     use netlink_packet_route::route::RouteAttribute;
 
     let mut routes = handle.route().get(family).execute();
@@ -165,21 +184,18 @@ async fn default_route_netlink_family(
 }
 
 #[cfg(not(target_os = "android"))]
-async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String> {
+async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String, Error> {
     use netlink_packet_route::link::LinkAttribute;
 
     let mut links = handle.link().get().match_index(index).execute();
-    let msg = links
-        .try_next()
-        .await?
-        .ok_or_else(|| anyhow!("No netlink response"))?;
+    let msg = links.try_next().await?.ok_or(Error::NoResponse)?;
 
     for nla in msg.attributes {
         if let LinkAttribute::IfName(name) = nla {
             return Ok(name);
         }
     }
-    Err(anyhow!("Interface name not found"))
+    Err(Error::InterfaceNotFound)
 }
 
 #[cfg(test)]

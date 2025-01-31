@@ -1,4 +1,3 @@
-use anyhow::Result;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{RTAX_DST, RTAX_IFP};
 use tokio::{io::AsyncReadExt, sync::mpsc};
@@ -15,7 +14,13 @@ pub(super) struct RouteMonitor {
     _handle: AbortOnDropHandle<()>,
 }
 
-fn create_socket() -> Result<tokio::net::UnixStream> {
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+}
+
+fn create_socket() -> std::io::Result<tokio::net::UnixStream> {
     let socket = socket2::Socket::new(libc::AF_ROUTE.into(), socket2::Type::RAW, None)?;
     socket.set_nonblocking(true)?;
     let socket_std: std::os::unix::net::UnixStream = socket.into();
@@ -27,7 +32,7 @@ fn create_socket() -> Result<tokio::net::UnixStream> {
 }
 
 impl RouteMonitor {
-    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self> {
+    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
         let mut socket = create_socket()?;
         let handle = tokio::task::spawn(async move {
             trace!("AF_ROUTE monitor started");

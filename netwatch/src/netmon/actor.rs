@@ -4,11 +4,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Result;
 use futures_lite::future::Boxed as BoxFuture;
+pub(super) use os::Error;
 use os::{is_interesting_interface, RouteMonitor};
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 #[cfg(target_os = "android")]
 use super::android as os;
@@ -77,7 +77,7 @@ pub(super) enum ActorMessage {
 }
 
 impl Actor {
-    pub(super) async fn new() -> Result<Self> {
+    pub(super) async fn new() -> Result<Self, os::Error> {
         let interface_state = State::new().await;
         let wall_time = Instant::now();
 
@@ -114,9 +114,7 @@ impl Actor {
 
                 _ = debounce_interval.tick() => {
                     if let Some(time_jumped) = last_event.take() {
-                        if let Err(err) = self.handle_potential_change(time_jumped).await {
-                            warn!("failed to handle network changes: {:?}", err);
-                        };
+                        self.handle_potential_change(time_jumped).await;
                     }
                 }
                 _ = wall_time_interval.tick() => {
@@ -172,7 +170,7 @@ impl Actor {
         token
     }
 
-    async fn handle_potential_change(&mut self, time_jumped: bool) -> Result<()> {
+    async fn handle_potential_change(&mut self, time_jumped: bool) {
         trace!("potential change");
 
         let new_state = State::new().await;
@@ -181,7 +179,7 @@ impl Actor {
         // No major changes, continue on
         if !time_jumped && old_state == &new_state {
             debug!("no changes detected");
-            return Ok(());
+            return;
         }
 
         let is_major = is_major_change(old_state, &new_state) || time_jumped;
@@ -197,8 +195,6 @@ impl Actor {
                 cb(is_major).await;
             });
         }
-
-        Ok(())
     }
 
     /// Reports whether wall time jumped more than 150%

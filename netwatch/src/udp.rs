@@ -814,12 +814,12 @@ impl Drop for UdpSocket {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Context;
+    use testresult::TestResult;
 
     use super::*;
 
     #[tokio::test]
-    async fn test_reconnect() -> anyhow::Result<()> {
+    async fn test_reconnect() -> TestResult {
         let (s_b, mut r_b) = tokio::sync::mpsc::channel(16);
         let handle_a = tokio::task::spawn(async move {
             let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
@@ -843,7 +843,7 @@ mod tests {
                 }
             }
             socket.close().await;
-            anyhow::Ok(())
+            Ok::<_, testresult::TestError>(())
         });
 
         let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
@@ -854,8 +854,8 @@ mod tests {
         let mut buffer = [0u8; 16];
         for i in 0u8..100 {
             println!("round one - {}", i);
-            socket.send_to(&[i][..], addr).await.context("send")?;
-            let (count, from) = socket.recv_from(&mut buffer).await.context("recv")?;
+            socket.send_to(&[i][..], addr).await?;
+            let (count, from) = socket.recv_from(&mut buffer).await?;
             assert_eq!(addr, from);
             assert_eq!(count, 1);
             assert_eq!(buffer[0], i);
@@ -876,7 +876,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_udp_mark_broken() -> anyhow::Result<()> {
+    async fn test_udp_mark_broken() -> TestResult {
         let socket_a = UdpSocket::bind_local(IpFamily::V4, 0)?;
         let addr_a = socket_a.local_addr()?;
         println!("socket bound to {:?}", addr_a);

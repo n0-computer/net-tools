@@ -3,7 +3,6 @@ use std::{
     net::IpAddr,
 };
 
-use anyhow::Result;
 use futures_lite::StreamExt;
 use libc::{
     RTNLGRP_IPV4_IFADDR, RTNLGRP_IPV4_ROUTE, RTNLGRP_IPV4_RULE, RTNLGRP_IPV6_IFADDR,
@@ -32,6 +31,12 @@ impl Drop for RouteMonitor {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+}
+
 const fn nl_mgrp(group: u32) -> u32 {
     if group > 31 {
         panic!("use netlink_sys::Socket::add_membership() for this group");
@@ -52,7 +57,7 @@ macro_rules! get_nla {
 }
 
 impl RouteMonitor {
-    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self> {
+    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
         let (mut conn, mut _handle, mut messages) = new_connection()?;
 
         // Specify flags to listen on.

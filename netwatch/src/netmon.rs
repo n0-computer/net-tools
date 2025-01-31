@@ -1,6 +1,5 @@
 //! Monitoring of networking interfaces and route changes.
 
-use anyhow::Result;
 use futures_lite::future::Boxed as BoxFuture;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::task::AbortOnDropHandle;
@@ -32,9 +31,29 @@ pub struct Monitor {
     actor_tx: mpsc::Sender<ActorMessage>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("channel closed")]
+    ChannelClosed,
+    #[error("actor {0}")]
+    Actor(#[from] actor::Error),
+}
+
+impl<T> From<mpsc::error::SendError<T>> for Error {
+    fn from(_value: mpsc::error::SendError<T>) -> Self {
+        Self::ChannelClosed
+    }
+}
+
+impl From<oneshot::error::RecvError> for Error {
+    fn from(_value: oneshot::error::RecvError) -> Self {
+        Self::ChannelClosed
+    }
+}
+
 impl Monitor {
     /// Create a new monitor.
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, Error> {
         let actor = Actor::new().await?;
         let actor_tx = actor.subscribe();
 
@@ -49,7 +68,7 @@ impl Monitor {
     }
 
     /// Subscribe to network changes.
-    pub async fn subscribe<F>(&self, callback: F) -> Result<CallbackToken>
+    pub async fn subscribe<F>(&self, callback: F) -> Result<CallbackToken, Error>
     where
         F: Fn(bool) -> BoxFuture<()> + 'static + Sync + Send,
     {
@@ -62,7 +81,7 @@ impl Monitor {
     }
 
     /// Unsubscribe a callback from network changes, using the provided token.
-    pub async fn unsubscribe(&self, token: CallbackToken) -> Result<()> {
+    pub async fn unsubscribe(&self, token: CallbackToken) -> Result<(), Error> {
         let (s, r) = oneshot::channel();
         self.actor_tx
             .send(ActorMessage::Unsubscribe(token, s))
@@ -72,7 +91,7 @@ impl Monitor {
     }
 
     /// Potential change detected outside
-    pub async fn network_change(&self) -> Result<()> {
+    pub async fn network_change(&self) -> Result<(), Error> {
         self.actor_tx.send(ActorMessage::NetworkChange).await?;
         Ok(())
     }

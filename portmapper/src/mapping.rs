@@ -2,8 +2,6 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use anyhow::Result;
-
 use super::{nat_pmp, pcp, upnp};
 
 pub(super) trait PortMapped: std::fmt::Debug + Unpin {
@@ -23,6 +21,18 @@ pub enum Mapping {
     NatPmp(nat_pmp::Mapping),
 }
 
+/// Mapping error.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("PCP mapping failed: {0}")]
+    Pcp(#[from] pcp::Error),
+    #[error("NAT-PMP mapping failed: {0}")]
+    NatPmp(#[from] nat_pmp::Error),
+    #[error("UPnP mapping failed: {0}")]
+    Upnp(#[from] upnp::Error),
+}
+
 impl Mapping {
     /// Create a new PCP mapping.
     pub(crate) async fn new_pcp(
@@ -30,10 +40,11 @@ impl Mapping {
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         external_addr: Option<(Ipv4Addr, NonZeroU16)>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         pcp::Mapping::new(local_ip, local_port, gateway, external_addr)
             .await
             .map(Self::Pcp)
+            .map_err(Into::into)
     }
 
     /// Create a new NAT-PMP mapping.
@@ -42,7 +53,7 @@ impl Mapping {
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         external_addr: Option<(Ipv4Addr, NonZeroU16)>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         nat_pmp::Mapping::new(
             local_ip,
             local_port,
@@ -51,6 +62,7 @@ impl Mapping {
         )
         .await
         .map(Self::NatPmp)
+        .map_err(Into::into)
     }
 
     /// Create a new UPnP mapping.
@@ -59,19 +71,21 @@ impl Mapping {
         local_port: NonZeroU16,
         gateway: Option<upnp::Gateway>,
         external_port: Option<NonZeroU16>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         upnp::Mapping::new(local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
+            .map_err(Into::into)
     }
 
     /// Release the mapping.
-    pub(crate) async fn release(self) -> Result<()> {
+    pub(crate) async fn release(self) -> Result<(), Error> {
         match self {
-            Mapping::Upnp(m) => m.release().await,
-            Mapping::Pcp(m) => m.release().await,
-            Mapping::NatPmp(m) => m.release().await,
+            Mapping::Upnp(m) => m.release().await?,
+            Mapping::Pcp(m) => m.release().await?,
+            Mapping::NatPmp(m) => m.release().await?,
         }
+        Ok(())
     }
 }
 

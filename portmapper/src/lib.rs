@@ -6,7 +6,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Result};
 use current_mapping::CurrentMapping;
 use futures_lite::StreamExt;
 use iroh_metrics::inc;
@@ -67,6 +66,29 @@ impl ProbeOutput {
     }
 }
 
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum ProbeError {
+    #[error("Mapping channel is full")]
+    ChannelFull,
+    #[error("Mapping channel is closed")]
+    ChannelClosed,
+    #[error("No gateway found for probe")]
+    NoGateway,
+    #[error("gateway found is ipv6, ignoring")]
+    Ipv6Gateway,
+    #[error("Join is_panic: {is_panic}, is_cancelled: {is_cancelled}")]
+    Join { is_panic: bool, is_cancelled: bool },
+}
+
+impl From<tokio::task::JoinError> for ProbeError {
+    fn from(value: tokio::task::JoinError) -> Self {
+        Self::Join {
+            is_panic: value.is_panic(),
+            is_cancelled: value.is_cancelled(),
+        }
+    }
+}
+
 #[derive(derive_more::Debug)]
 enum Message {
     /// Attempt to get a mapping if the local port is set but there is no mapping.
@@ -84,7 +106,7 @@ enum Message {
     Probe {
         /// Sender side to communicate the result of the probe.
         #[debug("_")]
-        result_tx: oneshot::Sender<Result<ProbeOutput, String>>,
+        result_tx: oneshot::Sender<Result<ProbeOutput, ProbeError>>,
     },
 }
 
@@ -120,7 +142,7 @@ pub struct Client {
     /// Channel used to communicate with the port mapping service.
     service_tx: mpsc::Sender<Message>,
     /// A handle to the service that will cancel the spawned task once the client is dropped.
-    _service_handle: std::sync::Arc<AbortOnDropHandle<Result<()>>>,
+    _service_handle: std::sync::Arc<AbortOnDropHandle<()>>,
 }
 
 impl Default for Client {
@@ -150,7 +172,7 @@ impl Client {
     /// Request a probe to the port mapping protocols.
     ///
     /// Returns the [`oneshot::Receiver`] used to obtain the result of the probe.
-    pub fn probe(&self) -> oneshot::Receiver<Result<ProbeOutput, String>> {
+    pub fn probe(&self) -> oneshot::Receiver<Result<ProbeOutput, ProbeError>> {
         let (result_tx, result_rx) = oneshot::channel();
 
         if let Err(e) = self.service_tx.try_send(Message::Probe { result_tx }) {
@@ -158,15 +180,15 @@ impl Client {
 
             // recover the sender and return the error there
             let (result_tx, e) = match e {
-                Full(Message::Probe { result_tx }) => (result_tx, "Port mapping channel full"),
-                Closed(Message::Probe { result_tx }) => (result_tx, "Port mapping channel closed"),
+                Full(Message::Probe { result_tx }) => (result_tx, ProbeError::ChannelFull),
+                Closed(Message::Probe { result_tx }) => (result_tx, ProbeError::ChannelClosed),
                 Full(_) | Closed(_) => unreachable!("Sent value is a probe."),
             };
 
             // sender was just created. If it's dropped we have two send error and are likely
             // shutting down
             // NOTE: second Err is infallible match due to being the sent value
-            if let Err(Err(e)) = result_tx.send(Err(e.into())) {
+            if let Err(Err(e)) = result_tx.send(Err(e)) {
                 trace!("Failed to request probe: {e}")
             }
         }
@@ -382,7 +404,7 @@ impl Probe {
 }
 
 // mainly to make clippy happy
-type ProbeResult = Result<ProbeOutput, String>;
+type ProbeResult = Result<ProbeOutput, ProbeError>;
 
 /// A port mapping client.
 #[derive(Debug)]
@@ -402,7 +424,7 @@ pub struct Service {
     ///
     /// This task will be cancelled if a request to set the local port arrives before it's
     /// finished.
-    mapping_task: Option<AbortOnDropHandle<Result<mapping::Mapping>>>,
+    mapping_task: Option<AbortOnDropHandle<Result<mapping::Mapping, mapping::Error>>>,
     /// Task probing the necessary protocols.
     ///
     /// Requests for a probe that arrive while this task is still in progress will receive the same
@@ -446,7 +468,7 @@ impl Service {
         }
     }
 
-    async fn run(mut self) -> Result<()> {
+    async fn run(mut self) {
         debug!("portmap starting");
         loop {
             tokio::select! {
@@ -468,17 +490,13 @@ impl Service {
                     self.mapping_task = None;
                     // there isn't really a way to react to a join error here. Flatten it to make
                     // it easier to work with
-                    let result = match mapping_result {
-                        Ok(result) => result,
-                        Err(join_err) => Err(anyhow!("Failed to obtain a result {join_err}"))
-                    };
-                    self.on_mapping_result(result);
+                    self.on_mapping_result(mapping_result);
                 }
                 probe_result = util::MaybeFuture{ inner: self.probing_task.as_mut().map(|(fut, _rec)| fut) } => {
                     trace!("tick: probe ready");
                     // retrieve the receivers and clear the task
                     let receivers = self.probing_task.take().expect("is some").1;
-                    let probe_result = probe_result.map_err(|join_err| anyhow!("Failed to obtain a result {join_err}"));
+                    let probe_result = probe_result.map_err(Into::into);
                     self.on_probe_result(probe_result, receivers);
                 }
                 Some(event) = self.current_mapping.next() => {
@@ -492,36 +510,39 @@ impl Service {
                 }
             }
         }
-        Ok(())
     }
 
     fn on_probe_result(
         &mut self,
-        result: Result<Probe>,
+        result: Result<Probe, ProbeError>,
         receivers: Vec<oneshot::Sender<ProbeResult>>,
     ) {
-        let result = match result {
-            Err(e) => Err(e.to_string()),
-            Ok(probe) => {
-                self.full_probe.update(probe);
-                // TODO(@divma): the gateway of the current mapping could have changed. Tailscale
-                // still assumes the current mapping is valid/active and will return it even after
-                // this
-                let output = self.full_probe.output();
-                trace!(?output, "probe output");
-                Ok(output)
-            }
-        };
+        let result = result.map(|probe| {
+            self.full_probe.update(probe);
+            // TODO(@divma): the gateway of the current mapping could have changed. Tailscale
+            // still assumes the current mapping is valid/active and will return it even after
+            // this
+            let output = self.full_probe.output();
+            trace!(?output, "probe output");
+            output
+        });
         for tx in receivers {
             // ignore the error. If the receiver is no longer there we don't really care
             let _ = tx.send(result.clone());
         }
     }
 
-    fn on_mapping_result(&mut self, result: Result<mapping::Mapping>) {
+    fn on_mapping_result(
+        &mut self,
+        result: Result<Result<mapping::Mapping, mapping::Error>, tokio::task::JoinError>,
+    ) {
         match result {
-            Ok(mapping) => {
+            Ok(Ok(mapping)) => {
                 self.current_mapping.update(Some(mapping));
+            }
+            Ok(Err(e)) => {
+                debug!("failed to get a port mapping {e}");
+                inc!(Metrics, mapping_failures);
             }
             Err(e) => {
                 debug!("failed to get a port mapping {e}");
@@ -622,6 +643,7 @@ impl Service {
                     .as_ref()
                     .map(|(gateway, _last_seen)| gateway.clone());
                 let task = mapping::Mapping::new_upnp(local_ip, local_port, gateway, external_port);
+
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("upnp")),
                 )))
@@ -629,6 +651,7 @@ impl Service {
                 // if no service is available and the default fallback (upnp) is disabled, try pcp
                 // first
                 let task = mapping::Mapping::new_pcp(local_ip, local_port, gateway, external_addr);
+
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pcp")),
                 )))
@@ -651,7 +674,7 @@ impl Service {
     /// If there is a task getting a probe, the receiver will be added with any other waiting for a
     /// result. If no probe is underway, a result can be returned immediately if it's still
     /// considered valid. Otherwise, a new probe task will be started.
-    fn probe_request(&mut self, result_tx: oneshot::Sender<Result<ProbeOutput, String>>) {
+    fn probe_request(&mut self, result_tx: oneshot::Sender<Result<ProbeOutput, ProbeError>>) {
         match self.probing_task.as_mut() {
             Some((_task_handle, receivers)) => receivers.push(result_tx),
             None => {
@@ -667,7 +690,7 @@ impl Service {
                         Err(e) => {
                             // there is no guarantee this will be displayed, so log it anyway
                             debug!("could not start probe: {e}");
-                            let _ = result_tx.send(Err(e.to_string()));
+                            let _ = result_tx.send(Err(e));
                             return;
                         }
                     };
@@ -689,9 +712,9 @@ impl Service {
 }
 
 /// Gets the local ip and gateway address for port mapping.
-fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr)> {
+fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
     let Some(HomeRouter { gateway, my_ip }) = HomeRouter::new() else {
-        anyhow::bail!("no gateway found for probe");
+        return Err(ProbeError::NoGateway);
     };
 
     let local_ip = match my_ip {
@@ -707,7 +730,7 @@ fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr)> {
     };
 
     let std::net::IpAddr::V4(gateway) = gateway else {
-        anyhow::bail!("gateway found is ipv6, ignoring");
+        return Err(ProbeError::Ipv6Gateway);
     };
 
     Ok((local_ip, gateway))

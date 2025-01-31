@@ -16,7 +16,6 @@ rust-version = "1.81"
 workspace = true
 
 [dependencies]
-anyhow = { version = "1" }
 atomic-waker = "1.1.2"
 bytes = "1.7"
 futures-lite = "2.5"
@@ -58,11 +57,13 @@ rtnetlink = "=0.13.1" # pinned because of https://github.com/rust-netlink/rtnetl
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.14"
-windows = { version = "0.58", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
+windows = { version = "0.59", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
+windows-result = "0.3"
 serde = { version = "1", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["debug"] }
 
 [dev-dependencies]
+testresult = "0.4.1"
 tokio = { version = "1", features = [
     "io-util",
     "sync",

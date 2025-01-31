@@ -1,7 +1,10 @@
-use anyhow::Result;
 use tokio::sync::mpsc;
 
 use super::actor::NetworkMessage;
+
+#[derive(Debug, thiserror::Error)]
+#[error("error")]
+pub struct Error;
 
 #[derive(Debug)]
 pub(super) struct RouteMonitor {
@@ -9,7 +12,7 @@ pub(super) struct RouteMonitor {
 }
 
 impl RouteMonitor {
-    pub(super) fn new(_sender: mpsc::Sender<NetworkMessage>) -> Result<Self> {
+    pub(super) fn new(_sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
         // Very sad monitor. Android doesn't allow us to do this
 
         Ok(RouteMonitor { _sender })
