@@ -13,7 +13,15 @@ struct Win32_IP4RouteTable {
     Name: String,
 }
 
-fn get_default_route() -> anyhow::Result<DefaultRouteDetails> {
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+    #[error("not route found")]
+    NoRoute,
+}
+
+fn get_default_route() -> Result<DefaultRouteDetails, Error> {
     let com_con = COMLibrary::new()?;
     let wmi_con = WMIConnection::new(com_con)?;
 
@@ -22,7 +30,7 @@ fn get_default_route() -> anyhow::Result<DefaultRouteDetails> {
         .filtered_query(&query)?
         .drain(..)
         .next()
-        .ok_or_else(|| anyhow::anyhow!("no route found"))?;
+        .ok_or(Error::NoRoute)?;
 
     Ok(DefaultRouteDetails {
         interface_name: route.Name,

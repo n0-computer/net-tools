@@ -1,11 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
 use libc::c_void;
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
-    Foundation::{BOOLEAN, HANDLE as Handle},
+    Foundation::{BOOLEAN, HANDLE as Handle, WIN32_ERROR},
     NetworkManagement::IpHelper::{
         MIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
     },
@@ -19,8 +18,15 @@ pub(super) struct RouteMonitor {
     cb_handler: CallbackHandler,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+    NotifyUnicastIpAddressChange(#[from] WIN32_ERROR),
+}
+
 impl RouteMonitor {
-    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self> {
+    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
         // Register two callbacks with the windows api
         let mut cb_handler = CallbackHandler::default();
 
@@ -100,19 +106,13 @@ impl CallbackHandler {
         let mut handle = Handle::default();
         let cb = Arc::new(cb);
         unsafe {
-            let r = windows::Win32::NetworkManagement::IpHelper::NotifyUnicastIpAddressChange(
+            windows::Win32::NetworkManagement::IpHelper::NotifyUnicastIpAddressChange(
                 windows::Win32::Networking::WinSock::AF_UNSPEC,
                 Some(unicast_change_callback),
                 Some(Arc::as_ptr(&cb) as *const c_void), // context
                 BOOLEAN::from(false),                    // initial notification,
                 &mut handle,
-            );
-            if r.is_err() {
-                return Err(anyhow::anyhow!(
-                    "NotifyUnicastIpAddressChange failed: {:?}",
-                    r
-                ));
-            }
+            )?;
         }
 
         self.unicast_callbacks.insert(handle.0 as isize, cb);
@@ -123,7 +123,7 @@ impl CallbackHandler {
     fn unregister_unicast_address_change_callback(
         &mut self,
         handle: UnicastCallbackHandle,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         trace!("unregistering unicast callback");
         if self
             .unicast_callbacks
@@ -131,32 +131,28 @@ impl CallbackHandler {
             .is_some()
         {
             unsafe {
-                let r =
-                    windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0);
-                if r.is_err() {
-                    return Err(anyhow::anyhow!("CancelMibChangeNotify2 failed: {:?}", r));
-                }
+                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)?;
             }
         }
 
         Ok(())
     }
 
-    fn register_route_change_callback(&mut self, cb: RouteCallback) -> Result<RouteCallbackHandle> {
+    fn register_route_change_callback(
+        &mut self,
+        cb: RouteCallback,
+    ) -> Result<RouteCallbackHandle, Error> {
         trace!("registering route change callback");
         let mut handle = Handle::default();
         let cb = Arc::new(cb);
         unsafe {
-            let r = windows::Win32::NetworkManagement::IpHelper::NotifyRouteChange2(
+            windows::Win32::NetworkManagement::IpHelper::NotifyRouteChange2(
                 windows::Win32::Networking::WinSock::AF_UNSPEC,
                 Some(route_change_callback),
                 Arc::as_ptr(&cb) as *const c_void, // context
                 BOOLEAN::from(false),              // initial notification,
                 &mut handle,
-            );
-            if r.is_err() {
-                return Err(anyhow::anyhow!("NotifyRouteChange2 failed: {:?}", r));
-            }
+            )?;
         }
 
         self.route_callbacks.insert(handle.0 as isize, cb);
@@ -164,7 +160,10 @@ impl CallbackHandler {
         Ok(RouteCallbackHandle(handle))
     }
 
-    fn unregister_route_change_callback(&mut self, handle: RouteCallbackHandle) -> Result<()> {
+    fn unregister_route_change_callback(
+        &mut self,
+        handle: RouteCallbackHandle,
+    ) -> Result<(), Error> {
         trace!("unregistering route callback");
         if self
             .route_callbacks
@@ -172,11 +171,7 @@ impl CallbackHandler {
             .is_some()
         {
             unsafe {
-                let r =
-                    windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0);
-                if r.is_err() {
-                    return Err(anyhow::anyhow!("CancelMibChangeNotify2 failed: {:?}", r));
-                }
+                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)?;
             }
         }
 

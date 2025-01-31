@@ -16,7 +16,6 @@ rust-version = "1.81"
 workspace = true
 
 [dependencies]
-anyhow = { version = "1" }
 atomic-waker = "1.1.2"
 bytes = "1.7"
 futures-lite = "2.5"
@@ -63,6 +62,7 @@ serde = { version = "1", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["debug"] }
 
 [dev-dependencies]
+testresult = "0.4.1"
 tokio = { version = "1", features = [
     "io-util",
     "sync",
