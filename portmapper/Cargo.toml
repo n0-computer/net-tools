@@ -16,7 +16,6 @@ rust-version = "1.81"
 workspace = true
 
 [dependencies]
-anyhow = { version = "1" }
 base64 = "0.22.1"
 bytes = "1.7"
 derive_more = { version = "1.0.0", features = ["debug", "display", "from", "try_into", "deref"] }

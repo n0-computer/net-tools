@@ -31,6 +31,19 @@ pub struct Mapping {
     lifetime_seconds: u32,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("server returned unexpected response for mapping request")]
+    UnexpectedServerResponse,
+    #[error("received 0 port from server as external port")]
+    ZeroExternalPort,
+    #[error("IO: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Protocol: {0}")]
+    Protocol(#[from] protocol::Error),
+}
+
 impl super::mapping::PortMapped for Mapping {
     fn external(&self) -> (Ipv4Addr, NonZeroU16) {
         (self.external_addr, self.external_port)
@@ -48,7 +61,7 @@ impl Mapping {
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         external_port: Option<NonZeroU16>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         // create the socket and send the request
         let socket = UdpSocket::bind_full((local_ip, 0))?;
         socket.connect((gateway, protocol::SERVER_PORT).into())?;
@@ -64,7 +77,11 @@ impl Mapping {
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
-        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer)).await??;
+        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??;
         let response = Response::decode(&buffer[..read])?;
 
         let (external_port, lifetime_seconds) = match response {
@@ -75,12 +92,12 @@ impl Mapping {
                 external_port,
                 lifetime_seconds,
             } if private_port == Into::<u16>::into(local_port) => (external_port, lifetime_seconds),
-            _ => anyhow::bail!("server returned unexpected response for mapping request"),
+            _ => return Err(Error::UnexpectedServerResponse),
         };
 
         let external_port = external_port
             .try_into()
-            .map_err(|_| anyhow::anyhow!("received 0 port from server as external port"))?;
+            .map_err(|_| Error::ZeroExternalPort)?;
 
         // now send the second request to get the external address
         let req = Request::ExternalAddress;
@@ -88,7 +105,11 @@ impl Mapping {
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
-        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer)).await??;
+        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??;
         let response = Response::decode(&buffer[..read])?;
 
         let external_addr = match response {
@@ -96,7 +117,7 @@ impl Mapping {
                 epoch_time: _,
                 public_ip,
             } => public_ip,
-            _ => anyhow::bail!("server returned unexpected response for mapping request"),
+            _ => return Err(Error::UnexpectedServerResponse),
         };
 
         Ok(Mapping {
@@ -110,7 +131,7 @@ impl Mapping {
     }
 
     /// Releases the mapping.
-    pub(crate) async fn release(self) -> anyhow::Result<()> {
+    pub(crate) async fn release(self) -> Result<(), Error> {
         // A client requests explicit deletion of a mapping by sending a message to the NAT gateway
         // requesting the mapping, with the Requested Lifetime in Seconds set to zero. The
         // Suggested External Port MUST be set to zero by the client on sending
@@ -164,7 +185,7 @@ pub async fn probe_available(local_ip: Ipv4Addr, gateway: Ipv4Addr) -> bool {
 async fn probe_available_fallible(
     local_ip: Ipv4Addr,
     gateway: Ipv4Addr,
-) -> anyhow::Result<Response> {
+) -> Result<Response, Error> {
     // create the socket and send the request
     let socket = UdpSocket::bind_full((local_ip, 0))?;
     socket.connect((gateway, protocol::SERVER_PORT).into())?;
@@ -173,7 +194,11 @@ async fn probe_available_fallible(
 
     // wait for the response and decode it
     let mut buffer = vec![0; Response::MAX_SIZE];
-    let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer)).await??;
+    let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+        .await
+        .map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+        })??;
     let response = Response::decode(&buffer[..read])?;
 
     Ok(response)

@@ -34,6 +34,29 @@ pub struct Mapping {
     nonce: [u8; 12],
 }
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("received nonce does not match sent request")]
+    NonceMissmatch,
+    #[error("received mapping is not for UDP")]
+    ProtocolMissmatch,
+    #[error("received mapping is for a local port that does not match the requested one")]
+    PortMissmatch,
+    #[error("received 0 external port for mapping")]
+    ZeroExternalPort,
+    #[error("received external address is not ipv4")]
+    NotIpv4,
+    #[error("received an announce response for a map request")]
+    InvalidAnnounce,
+    #[error("IO: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Protocol: {0}")]
+    Protocol(#[from] protocol::Error),
+    #[error("Protocol Decode: {0}")]
+    ProtocolDecode(#[from] protocol::DecodeError),
+}
+
 impl super::mapping::PortMapped for Mapping {
     fn external(&self) -> (Ipv4Addr, NonZeroU16) {
         (self.external_address, self.external_port)
@@ -51,7 +74,7 @@ impl Mapping {
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         preferred_external_address: Option<(Ipv4Addr, NonZeroU16)>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         // create the socket and send the request
         let socket = UdpSocket::bind_full((local_ip, 0))?;
         socket.connect((gateway, protocol::SERVER_PORT).into())?;
@@ -77,7 +100,11 @@ impl Mapping {
 
         // wait for the response and decode it
         let mut buffer = vec![0; protocol::Response::MAX_SIZE];
-        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer)).await??;
+        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??;
         let response = protocol::Response::decode(&buffer[..read])?;
 
         // verify that the response is correct and matches the request
@@ -98,24 +125,22 @@ impl Mapping {
                 } = map_data;
 
                 if nonce != received_nonce {
-                    anyhow::bail!("received nonce does not match sent request");
+                    return Err(Error::NonceMissmatch);
                 }
 
                 if protocol != protocol::MapProtocol::Udp {
-                    anyhow::bail!("received mapping is not for UDP");
+                    return Err(Error::ProtocolMissmatch);
                 }
 
                 let sent_port: u16 = local_port.into();
                 if received_local_port != sent_port {
-                    anyhow::bail!("received mapping is for a local port that does not match the requested one");
+                    return Err(Error::PortMissmatch);
                 }
                 let external_port = external_port
                     .try_into()
-                    .map_err(|_| anyhow::anyhow!("received 0 external port for mapping"))?;
+                    .map_err(|_| Error::ZeroExternalPort)?;
 
-                let external_address = external_address
-                    .to_ipv4_mapped()
-                    .ok_or(anyhow::anyhow!("received external address is not ipv4"))?;
+                let external_address = external_address.to_ipv4_mapped().ok_or(Error::NotIpv4)?;
 
                 Ok(Mapping {
                     external_port,
@@ -127,13 +152,11 @@ impl Mapping {
                     gateway,
                 })
             }
-            protocol::OpcodeData::Announce => {
-                anyhow::bail!("received an announce response for a map request")
-            }
+            protocol::OpcodeData::Announce => Err(Error::InvalidAnnounce),
         }
     }
 
-    pub async fn release(self) -> anyhow::Result<()> {
+    pub async fn release(self) -> Result<(), Error> {
         let Mapping {
             nonce,
             local_ip,
@@ -185,7 +208,7 @@ pub async fn probe_available(local_ip: Ipv4Addr, gateway: Ipv4Addr) -> bool {
 async fn probe_available_fallible(
     local_ip: Ipv4Addr,
     gateway: Ipv4Addr,
-) -> anyhow::Result<protocol::Response> {
+) -> Result<protocol::Response, Error> {
     // create the socket and send the request
     let socket = UdpSocket::bind_full((local_ip, 0))?;
     socket.connect((gateway, protocol::SERVER_PORT).into())?;
@@ -194,7 +217,11 @@ async fn probe_available_fallible(
 
     // wait for the response and decode it
     let mut buffer = vec![0; protocol::Response::MAX_SIZE];
-    let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer)).await??;
+    let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+        .await
+        .map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+        })??;
     let response = protocol::Response::decode(&buffer[..read])?;
 
     Ok(response)

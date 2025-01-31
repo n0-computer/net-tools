@@ -4,8 +4,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Result};
-use igd_next::aio as aigd;
+use igd_next::{aio as aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
 use iroh_metrics::inc;
 use tracing::debug;
 
@@ -36,13 +35,32 @@ pub struct Mapping {
     external_port: NonZeroU16,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("Zero external port")]
+    ZeroExternalPort,
+    #[error("igd device's external ip is ipv6")]
+    NotIpv4,
+    #[error("Remove Port {0}")]
+    RemovePort(#[from] RemovePortError),
+    #[error("Search {0}")]
+    Search(#[from] SearchError),
+    #[error("Get external IP {0}")]
+    GetExternalIp(#[from] GetExternalIpError),
+    #[error("Add any port {0}")]
+    AddAnyPort(#[from] AddAnyPortError),
+    #[error("IO {0}")]
+    Io(#[from] std::io::Error),
+}
+
 impl Mapping {
     pub(crate) async fn new(
         local_addr: Ipv4Addr,
         port: NonZeroU16,
         gateway: Option<Gateway>,
         preferred_port: Option<NonZeroU16>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         let local_addr = SocketAddrV4::new(local_addr, port.into());
 
         // search for a gateway if there is not one already
@@ -57,11 +75,14 @@ impl Mapping {
                     ..Default::default()
                 }),
             )
-            .await??
+            .await
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??
         };
 
         let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
-            return Err(anyhow!("igd device's external ip is ipv6"));
+            return Err(Error::NotIpv4);
         };
 
         // if we are trying to get a specific external port, try this first. If this fails, default
@@ -95,7 +116,7 @@ impl Mapping {
             )
             .await?
             .try_into()
-            .map_err(|_| anyhow::anyhow!("upnp mapping got zero external port"))?;
+            .map_err(|_| Error::ZeroExternalPort)?;
 
         Ok(Mapping {
             gateway,
@@ -109,7 +130,7 @@ impl Mapping {
     }
 
     /// Releases the mapping.
-    pub(crate) async fn release(self) -> Result<()> {
+    pub(crate) async fn release(self) -> Result<(), Error> {
         let Mapping {
             gateway,
             external_port,
