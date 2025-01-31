@@ -4,7 +4,7 @@ use libc::c_void;
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
-    Foundation::{BOOLEAN, HANDLE as Handle, WIN32_ERROR},
+    Foundation::{BOOLEAN, HANDLE as Handle},
     NetworkManagement::IpHelper::{
         MIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
     },
@@ -23,7 +23,7 @@ pub enum Error {
     #[error("IO {0}")]
     Io(#[from] std::io::Error),
     #[error("win32: {0}")]
-    Win32(#[from] windows::Win32::Foundation::Error),
+    Win32(#[from] windows_result::Error),
 }
 
 impl RouteMonitor {

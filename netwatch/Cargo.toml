@@ -58,6 +58,7 @@ rtnetlink = "=0.13.1" # pinned because of https://github.com/rust-netlink/rtnetl
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.14"
 windows = { version = "0.58", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
+windows-result = "0.3"
 serde = { version = "1", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["debug"] }
 

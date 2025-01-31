@@ -95,7 +95,7 @@ pub async fn default_route_android_ip_route() -> Result<Option<DefaultRouteDetai
         .kill_on_drop(true)
         .output()
         .await?;
-    let stdout = std::str::from_utf8(&output.stdout)?;
+    let stdout = std::string::String::from_utf8_lossy(&output.stdout);
     let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
         interface_name: iface.to_string(),
     });
@@ -186,7 +186,7 @@ async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String
     use netlink_packet_route::link::LinkAttribute;
 
     let mut links = handle.link().get().match_index(index).execute();
-    let msg = links.try_next().await?.ok_or_else(|| Error::NoResponse)?;
+    let msg = links.try_next().await?.ok_or(Error::NoResponse)?;
 
     for nla in msg.attributes {
         if let LinkAttribute::IfName(name) = nla {
