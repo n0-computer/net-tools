@@ -1,7 +1,7 @@
 //! Linux-specific network interfaces implementations.
 
 #[cfg(not(target_os = "android"))]
-use futures_util::TryStreamExt;
+use n0_future::TryStreamExt;
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},

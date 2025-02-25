@@ -5,6 +5,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::LazyLock,
 };
 
 use libc::{c_int, uintptr_t, AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET};
@@ -12,7 +13,6 @@ use libc::{c_int, uintptr_t, AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CT
 use libc::{
     NET_RT_DUMP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTA_IFP, RTF_GATEWAY,
 };
-use once_cell::sync::Lazy;
 use tracing::warn;
 
 use super::DefaultRouteDetails;
@@ -459,7 +459,7 @@ enum MessageType {
     InterfaceAnnounce,
 }
 
-static ROUTING_STACK: Lazy<RoutingStack> = Lazy::new(probe_routing_stack);
+static ROUTING_STACK: LazyLock<RoutingStack> = LazyLock::new(probe_routing_stack);
 
 struct RoutingStack {
     rtm_version: i32,

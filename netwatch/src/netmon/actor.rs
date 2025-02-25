@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures_lite::future::Boxed as BoxFuture;
+use n0_future::boxed::BoxFuture;
 pub(super) use os::Error;
 use os::{is_interesting_interface, RouteMonitor};
 use tokio::sync::{mpsc, oneshot};

@@ -1,6 +1,6 @@
 //! Monitoring of networking interfaces and route changes.
 
-use futures_lite::future::Boxed as BoxFuture;
+use n0_future::boxed::BoxFuture;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::task::AbortOnDropHandle;
 
@@ -99,7 +99,7 @@ impl Monitor {
 
 #[cfg(test)]
 mod tests {
-    use futures_util::FutureExt;
+    use n0_future::future::FutureExt;
 
     use super::*;
 

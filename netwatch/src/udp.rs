@@ -291,7 +291,7 @@ impl UdpSocket {
                 return Poll::Ready(Err(err));
             }
 
-            let guard = futures_lite::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
@@ -352,7 +352,7 @@ impl UdpSocket {
                 return Poll::Ready(Err(err));
             }
 
-            let guard = futures_lite::ready!(self.poll_read_socket(&self.recv_waker, cx));
+            let guard = n0_future::ready!(self.poll_read_socket(&self.recv_waker, cx));
             let (socket, state) = guard.try_get_connected()?;
 
             match socket.poll_recv_ready(cx) {
@@ -447,7 +447,7 @@ impl Future for RecvFut<'_, '_> {
                 return Poll::Ready(Err(err));
             }
 
-            let guard = futures_lite::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
+            let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
             let (inner_socket, _state) = guard.try_get_connected()?;
 
             match inner_socket.poll_recv_ready(cx) {
@@ -497,7 +497,7 @@ impl Future for RecvFromFut<'_, '_> {
                 return Poll::Ready(Err(err));
             }
 
-            let guard = futures_lite::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
+            let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
             let (inner_socket, _state) = guard.try_get_connected()?;
 
             match inner_socket.poll_recv_ready(cx) {
@@ -546,7 +546,7 @@ impl Future for SendFut<'_, '_> {
             }
 
             let guard =
-                futures_lite::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
@@ -596,7 +596,7 @@ impl Future for SendToFut<'_, '_> {
             }
 
             let guard =
-                futures_lite::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
