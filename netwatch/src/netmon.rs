@@ -1,8 +1,10 @@
 //! Monitoring of networking interfaces and route changes.
 
-use n0_future::boxed::BoxFuture;
+use n0_future::{
+    boxed::BoxFuture,
+    task::{self, AbortOnDropHandle},
+};
 use tokio::sync::{mpsc, oneshot};
-use tokio_util::task::AbortOnDropHandle;
 
 mod actor;
 #[cfg(target_os = "android")]
@@ -59,7 +61,7 @@ impl Monitor {
         let actor = Actor::new().await?;
         let actor_tx = actor.subscribe();
 
-        let handle = tokio::task::spawn(async move {
+        let handle = task::spawn(async move {
             actor.run().await;
         });
 

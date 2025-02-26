@@ -1,6 +1,6 @@
 use js_sys::{
     wasm_bindgen::{prelude::Closure, JsCast, JsValue},
-    JsString, Reflect,
+    Function, JsString, Reflect,
 };
 use n0_future::{
     task::{self, AbortOnDropHandle},

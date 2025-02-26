@@ -20,7 +20,9 @@ impl Interface {
     async fn new() -> Self {
         let is_up = Self::is_up();
         tracing::debug!(onLine = is_up, "Fetched globalThis.navigator.onLine");
-        Self { is_up }
+        Self {
+            is_up: is_up.unwrap_or(true),
+        }
     }
 
     fn is_up() -> Option<bool> {
