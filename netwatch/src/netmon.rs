@@ -17,6 +17,8 @@ mod android;
 mod bsd;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
 
