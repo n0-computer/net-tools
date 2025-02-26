@@ -1,6 +1,8 @@
 //! IP address related utilities.
 
-use std::net::{IpAddr, Ipv6Addr};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 const IFF_UP: u32 = 0x1;
