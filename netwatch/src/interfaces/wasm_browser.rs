@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt};
 
+use js_sys::{JsString, Reflect};
+
 pub const BROWSER_INTERFACE: &str = "browserif";
 
 /// Represents a network interface.
@@ -16,7 +18,21 @@ impl fmt::Display for Interface {
 
 impl Interface {
     async fn new() -> Self {
-        Self { is_up: true } // TODO
+        let is_up = Self::is_up();
+        tracing::debug!(onLine = is_up, "Fetched globalThis.navigator.onLine");
+        Self { is_up }
+    }
+
+    fn is_up() -> Option<bool> {
+        let navigator = Reflect::get(
+            js_sys::global().as_ref(),
+            JsString::from("navigator").as_ref(),
+        )
+        .ok()?;
+
+        let is_up = Reflect::get(&navigator, JsString::from("onLine").as_ref()).ok()?;
+
+        is_up.as_bool()
     }
 
     /// The name of the interface.
