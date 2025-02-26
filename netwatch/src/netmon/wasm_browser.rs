@@ -1,13 +1,9 @@
 use js_sys::{
-    wasm_bindgen::{prelude::Closure, JsCast, JsValue},
-    Function, JsString, Reflect,
+    wasm_bindgen::{prelude::Closure, JsCast},
+    Function,
 };
-use n0_future::{
-    task::{self, AbortOnDropHandle},
-    TryFutureExt,
-};
+use n0_future::task;
 use tokio::sync::mpsc;
-use tracing::{info_span, Instrument};
 use web_sys::{EventListener, EventTarget};
 
 use super::actor::NetworkMessage;
@@ -18,50 +14,46 @@ pub struct Error;
 
 #[derive(Debug)]
 pub(super) struct RouteMonitor {
-    listeners: Listeners,
+    _listeners: Option<Listeners>,
 }
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let closure: Function =
-            Closure::new(move || {
-                // task::spawn is effectively translated into a queueMicrotask in JS
-                task::spawn(sender.send(NetworkMessage::Change).inspect_err(|err| {
-                    tracing::debug!(?err, "failed sending NetworkMessage::Change")
-                }));
-            })
-            .into_js_value()
-            .unchecked_into();
+        let closure: Function = Closure::<dyn Fn()>::new(move || {
+            tracing::trace!("browser RouteMonitor event triggered");
+            // task::spawn is effectively translated into a queueMicrotask in JS
+            let sender = sender.clone();
+            task::spawn(async move {
+                sender
+                    .send(NetworkMessage::Change)
+                    .await
+                    .inspect_err(|err| {
+                        tracing::debug!(?err, "failed sending NetworkMessage::Change")
+                    })
+            });
+        })
+        .into_js_value()
+        .unchecked_into();
         // The closure keeps itself alive via reference counting internally
-        let listeners = add_event_listeners(&closure);
-        Ok(RouteMonitor { listeners })
+        let _listeners = add_event_listeners(&closure);
+        Ok(RouteMonitor { _listeners })
     }
 }
 
-fn get_navigator() -> Option<JsValue> {
-    Reflect::get(
-        js_sys::global().as_ref(),
-        JsString::from("navigator").as_ref(),
-    )
-    .inspect_err(|err| tracing::debug!(?err, "failed fetching globalThis.navigator"))
-    .ok()
-}
-
 fn add_event_listeners(f: &Function) -> Option<Listeners> {
-    let navigator = get_navigator()?;
-
     let online_listener = EventListener::new();
     online_listener.set_handle_event(f);
     let offline_listener = EventListener::new();
     offline_listener.set_handle_event(f);
 
-    let navigator: EventTarget = navigator.unchecked_into();
-    navigator
+    // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/onLine#listening_for_changes_in_network_status
+    let window: EventTarget = js_sys::global().unchecked_into();
+    window
         .add_event_listener_with_event_listener("online", &online_listener)
         .inspect_err(|err| tracing::debug!(?err, "failed adding event listener"))
         .ok()?;
 
-    navigator
+    window
         .add_event_listener_with_event_listener("offline", &offline_listener)
         .inspect_err(|err| tracing::debug!(?err, "failed adding event listener"))
         .ok()?;
@@ -80,12 +72,13 @@ struct Listeners {
 
 impl Drop for Listeners {
     fn drop(&mut self) {
-        if let Some(navigator) = get_navigator() {
-            let et: EventTarget = navigator.unchecked_into();
-            et.remove_event_listener_with_event_listener("online", &self.online_listener)
-                .ok();
-            et.remove_event_listener_with_event_listener("offline", &self.offline_listener)
-                .ok();
-        }
+        tracing::trace!("Removing online/offline event listeners");
+        let window: EventTarget = js_sys::global().unchecked_into();
+        window
+            .remove_event_listener_with_event_listener("online", &self.online_listener)
+            .ok();
+        window
+            .remove_event_listener_with_event_listener("offline", &self.offline_listener)
+            .ok();
     }
 }

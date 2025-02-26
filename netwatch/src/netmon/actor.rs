@@ -1,10 +1,10 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc};
 
-use n0_future::{boxed::BoxFuture, task};
+use n0_future::{
+    boxed::BoxFuture,
+    task,
+    time::{self, Duration, Instant},
+};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use os::is_interesting_interface;
 pub(super) use os::Error;
@@ -108,8 +108,8 @@ impl Actor {
         const DEBOUNCE: Duration = Duration::from_millis(250);
 
         let mut last_event = None;
-        let mut debounce_interval = tokio::time::interval(DEBOUNCE);
-        let mut wall_time_interval = tokio::time::interval(POLL_WALL_TIME_INTERVAL);
+        let mut debounce_interval = time::interval(DEBOUNCE);
+        let mut wall_time_interval = time::interval(POLL_WALL_TIME_INTERVAL);
 
         loop {
             tokio::select! {
