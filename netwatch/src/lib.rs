@@ -5,7 +5,6 @@
     path = "interfaces/wasm_browser.rs"
 )]
 pub mod interfaces;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod ip;
 mod ip_family;
 pub mod netmon;
