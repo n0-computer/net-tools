@@ -157,8 +157,7 @@
 <a href="#156" id="156">156</a>
 <a href="#157" id="157">157</a>
 <a href="#158" id="158">158</a>
-<a href="#159" id="159">159</a>
-<a href="#160" id="160">160</a></pre></div><pre class="rust"><code><span class="doccomment">//! IP address related utilities.
+<a href="#159" id="159">159</a></pre></div><pre class="rust"><code><span class="doccomment">//! IP address related utilities.
 
 </span><span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
 </span><span class="kw">use </span>std::net::IpAddr;
@@ -308,11 +307,10 @@
 
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
-    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-
-    <span class="attr">#[test]
+    <span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+    #[test]
     </span><span class="kw">fn </span>test_local_addresses() {
-        <span class="kw">let </span>addrs = LocalAddresses::new();
+        <span class="kw">let </span>addrs = <span class="kw">super</span>::LocalAddresses::new();
         <span class="macro">dbg!</span>(<span class="kw-2">&amp;</span>addrs);
         <span class="macro">assert!</span>(!addrs.loopback.is_empty());
         <span class="macro">assert!</span>(!addrs.regular.is_empty());
