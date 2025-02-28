@@ -148,11 +148,10 @@ pub const fn is_unicast_link_local(addr: Ipv6Addr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[test]
     fn test_local_addresses() {
-        let addrs = LocalAddresses::new();
+        let addrs = super::LocalAddresses::new();
         dbg!(&addrs);
         assert!(!addrs.loopback.is_empty());
         assert!(!addrs.regular.is_empty());
