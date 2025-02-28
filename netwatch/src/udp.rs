@@ -291,7 +291,7 @@ impl UdpSocket {
                 return Poll::Ready(Err(err));
             }
 
-            let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let guard = std::task::ready!(self.poll_read_socket(&self.send_waker, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
