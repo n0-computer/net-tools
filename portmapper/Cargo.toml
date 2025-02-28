@@ -1,6 +1,6 @@
 [package]
 name = "portmapper"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 readme = "README.md"
 description = "Portmapping utilities"
@@ -22,7 +22,7 @@ derive_more = { version = "1.0.0", features = ["debug", "display", "from", "try_
 futures-lite = "2.5"
 futures-util = "0.3.25"
 igd-next = { version = "0.15.1", features = ["aio_tokio"] }
-iroh-metrics = { version = "0.31", default-features = false }
+iroh-metrics = { version = "0.32", default-features = false }
 libc = "0.2.139"
 netwatch = { version = "0.3.0", path = "../netwatch" }
 num_enum = "0.7"
