@@ -159,17 +159,17 @@
 <a href="#158" id="158">158</a>
 <a href="#159" id="159">159</a></pre></div><pre class="rust"><code><span class="doccomment">//! IP address related utilities.
 
-</span><span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+</span><span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">use </span>std::net::IpAddr;
 <span class="kw">use </span>std::net::Ipv6Addr;
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">const </span>IFF_UP: u32 = <span class="number">0x1</span>;
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">const </span>IFF_LOOPBACK: u32 = <span class="number">0x8</span>;
 
 <span class="doccomment">/// List of machine's IP addresses.
-</span><span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+</span><span class="attr">#[cfg(not(wasm_browser))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 </span><span class="kw">pub struct </span>LocalAddresses {
     <span class="doccomment">/// Loopback addresses.
@@ -178,14 +178,14 @@
     </span><span class="kw">pub </span>regular: Vec&lt;IpAddr&gt;,
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">impl </span>Default <span class="kw">for </span>LocalAddresses {
     <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
         <span class="self">Self</span>::new()
     }
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">impl </span>LocalAddresses {
     <span class="doccomment">/// Returns the machine's IP addresses.
     /// If there are no regular addresses it will return any IPv4 linklocal or IPv6 unique local
@@ -257,12 +257,12 @@
     }
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const fn </span>is_up(interface: <span class="kw-2">&amp;</span>netdev::Interface) -&gt; bool {
     interface.flags &amp; IFF_UP != <span class="number">0
 </span>}
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const fn </span>is_loopback(interface: <span class="kw-2">&amp;</span>netdev::Interface) -&gt; bool {
     interface.flags &amp; IFF_LOOPBACK != <span class="number">0
 </span>}
@@ -270,7 +270,7 @@
 <span class="doccomment">/// Reports whether ip is a private address, according to RFC 1918
 /// (IPv4 addresses) and RFC 4193 (IPv6 addresses). That is, it reports whether
 /// ip is in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or fc00::/7.
-</span><span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+</span><span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>is_private(ip: <span class="kw-2">&amp;</span>IpAddr) -&gt; bool {
     <span class="kw">match </span>ip {
         IpAddr::V4(ip) =&gt; {
@@ -285,13 +285,13 @@
     }
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>is_private_v6(ip: <span class="kw-2">&amp;</span>Ipv6Addr) -&gt; bool {
     <span class="comment">// RFC 4193 allocates fc00::/7 as the unique local unicast IPv6 address subnet.
     </span>ip.octets()[<span class="number">0</span>] &amp; <span class="number">0xfe </span>== <span class="number">0xfc
 </span>}
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>is_link_local(ip: IpAddr) -&gt; bool {
     <span class="kw">match </span>ip {
         IpAddr::V4(ip) =&gt; ip.is_link_local(),
@@ -307,7 +307,7 @@
 
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
-    <span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+    <span class="attr">#[cfg(not(wasm_browser))]
     #[test]
     </span><span class="kw">fn </span>test_local_addresses() {
         <span class="kw">let </span>addrs = <span class="kw">super</span>::LocalAddresses::new();

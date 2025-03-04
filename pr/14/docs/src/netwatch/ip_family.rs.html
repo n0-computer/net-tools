@@ -83,7 +83,7 @@
     }
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">impl </span>From&lt;IpFamily&gt; <span class="kw">for </span>socket2::Domain {
     <span class="kw">fn </span>from(value: IpFamily) -&gt; <span class="self">Self </span>{
         <span class="kw">match </span>value {

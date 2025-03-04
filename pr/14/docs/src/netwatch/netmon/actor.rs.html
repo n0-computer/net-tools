@@ -279,7 +279,7 @@
     task,
     time::{<span class="self">self</span>, Duration, Instant},
 };
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">use </span>os::is_interesting_interface;
 <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">use </span>os::Error;
 <span class="kw">use </span>os::RouteMonitor;
@@ -298,12 +298,12 @@
 </span><span class="kw">use </span><span class="kw">super</span>::bsd <span class="kw">as </span>os;
 <span class="attr">#[cfg(target_os = <span class="string">"linux"</span>)]
 </span><span class="kw">use </span><span class="kw">super</span>::linux <span class="kw">as </span>os;
-<span class="attr">#[cfg(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>))]
+<span class="attr">#[cfg(wasm_browser)]
 </span><span class="kw">use </span><span class="kw">super</span>::wasm_browser <span class="kw">as </span>os;
 <span class="attr">#[cfg(target_os = <span class="string">"windows"</span>)]
 </span><span class="kw">use </span><span class="kw">super</span>::windows <span class="kw">as </span>os;
 <span class="kw">use </span><span class="kw">crate</span>::interfaces::State;
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">use crate</span>::{interfaces::IpNet, ip::is_link_local};
 
 <span class="doccomment">/// The message sent by the OS specific monitors.
@@ -489,14 +489,14 @@
     }
 }
 
-<span class="attr">#[cfg(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>))]
+<span class="attr">#[cfg(wasm_browser)]
 </span><span class="kw">fn </span>is_major_change(s1: <span class="kw-2">&amp;</span>State, s2: <span class="kw-2">&amp;</span>State) -&gt; bool {
     <span class="comment">// All changes are major.
     // In the browser, there only are changes from online to offline
     </span>s1 != s2
 }
 
-<span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+<span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">fn </span>is_major_change(s1: <span class="kw-2">&amp;</span>State, s2: <span class="kw-2">&amp;</span>State) -&gt; bool {
     <span class="kw">if </span>s1.have_v6 != s2.have_v6
         || s1.have_v4 != s2.have_v4
@@ -525,7 +525,7 @@
 
 <span class="doccomment">/// Checks whether `a` and `b` are equal after ignoring uninteresting
 /// things, like link-local, loopback and multicast addresses.
-</span><span class="attr">#[cfg(not(all(target_family = <span class="string">"wasm"</span>, target_os = <span class="string">"unknown"</span>)))]
+</span><span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">fn </span>prefixes_major_equal(a: <span class="kw">impl </span>Iterator&lt;Item = IpNet&gt;, b: <span class="kw">impl </span>Iterator&lt;Item = IpNet&gt;) -&gt; bool {
     <span class="kw">fn </span>is_interesting(p: <span class="kw-2">&amp;</span>IpNet) -&gt; bool {
         <span class="kw">let </span>a = p.addr();
