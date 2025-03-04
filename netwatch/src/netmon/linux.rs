@@ -3,11 +3,11 @@ use std::{
     net::IpAddr,
 };
 
-use futures_lite::StreamExt;
 use libc::{
     RTNLGRP_IPV4_IFADDR, RTNLGRP_IPV4_ROUTE, RTNLGRP_IPV4_RULE, RTNLGRP_IPV6_IFADDR,
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
+use n0_future::StreamExt;
 use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};

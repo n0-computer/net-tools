@@ -1,8 +1,10 @@
 //! Monitoring of networking interfaces and route changes.
 
-use futures_lite::future::Boxed as BoxFuture;
+use n0_future::{
+    boxed::BoxFuture,
+    task::{self, AbortOnDropHandle},
+};
 use tokio::sync::{mpsc, oneshot};
-use tokio_util::task::AbortOnDropHandle;
 
 mod actor;
 #[cfg(target_os = "android")]
@@ -17,6 +19,8 @@ mod android;
 mod bsd;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(wasm_browser)]
+mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -57,7 +61,7 @@ impl Monitor {
         let actor = Actor::new().await?;
         let actor_tx = actor.subscribe();
 
-        let handle = tokio::task::spawn(async move {
+        let handle = task::spawn(async move {
             actor.run().await;
         });
 
@@ -99,7 +103,7 @@ impl Monitor {
 
 #[cfg(test)]
 mod tests {
-    use futures_util::FutureExt;
+    use n0_future::future::FutureExt;
 
     use super::*;
 
