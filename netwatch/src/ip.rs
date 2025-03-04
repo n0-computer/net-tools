@@ -1,16 +1,16 @@
 //! IP address related utilities.
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 use std::net::IpAddr;
 use std::net::Ipv6Addr;
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 const IFF_UP: u32 = 0x1;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 const IFF_LOOPBACK: u32 = 0x8;
 
 /// List of machine's IP addresses.
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalAddresses {
     /// Loopback addresses.
@@ -19,14 +19,14 @@ pub struct LocalAddresses {
     pub regular: Vec<IpAddr>,
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 impl Default for LocalAddresses {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 impl LocalAddresses {
     /// Returns the machine's IP addresses.
     /// If there are no regular addresses it will return any IPv4 linklocal or IPv6 unique local
@@ -98,12 +98,12 @@ impl LocalAddresses {
     }
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 pub(crate) const fn is_up(interface: &netdev::Interface) -> bool {
     interface.flags & IFF_UP != 0
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 pub(crate) const fn is_loopback(interface: &netdev::Interface) -> bool {
     interface.flags & IFF_LOOPBACK != 0
 }
@@ -111,7 +111,7 @@ pub(crate) const fn is_loopback(interface: &netdev::Interface) -> bool {
 /// Reports whether ip is a private address, according to RFC 1918
 /// (IPv4 addresses) and RFC 4193 (IPv6 addresses). That is, it reports whether
 /// ip is in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or fc00::/7.
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 pub(crate) fn is_private(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
@@ -126,13 +126,13 @@ pub(crate) fn is_private(ip: &IpAddr) -> bool {
     }
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 pub(crate) fn is_private_v6(ip: &Ipv6Addr) -> bool {
     // RFC 4193 allocates fc00::/7 as the unique local unicast IPv6 address subnet.
     ip.octets()[0] & 0xfe == 0xfc
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 pub(super) fn is_link_local(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => ip.is_link_local(),
@@ -148,7 +148,7 @@ pub const fn is_unicast_link_local(addr: Ipv6Addr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[cfg(not(wasm_browser))]
     #[test]
     fn test_local_addresses() {
         let addrs = super::LocalAddresses::new();

@@ -5,7 +5,7 @@ use n0_future::{
     task,
     time::{self, Duration, Instant},
 };
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 use os::is_interesting_interface;
 pub(super) use os::Error;
 use os::RouteMonitor;
@@ -24,12 +24,12 @@ use super::android as os;
 use super::bsd as os;
 #[cfg(target_os = "linux")]
 use super::linux as os;
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(wasm_browser)]
 use super::wasm_browser as os;
 #[cfg(target_os = "windows")]
 use super::windows as os;
 use crate::interfaces::State;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 use crate::{interfaces::IpNet, ip::is_link_local};
 
 /// The message sent by the OS specific monitors.
@@ -215,14 +215,14 @@ impl Actor {
     }
 }
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(wasm_browser)]
 fn is_major_change(s1: &State, s2: &State) -> bool {
     // All changes are major.
     // In the browser, there only are changes from online to offline
     s1 != s2
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 fn is_major_change(s1: &State, s2: &State) -> bool {
     if s1.have_v6 != s2.have_v6
         || s1.have_v4 != s2.have_v4
@@ -251,7 +251,7 @@ fn is_major_change(s1: &State, s2: &State) -> bool {
 
 /// Checks whether `a` and `b` are equal after ignoring uninteresting
 /// things, like link-local, loopback and multicast addresses.
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = IpNet>) -> bool {
     fn is_interesting(p: &IpNet) -> bool {
         let a = p.addr();

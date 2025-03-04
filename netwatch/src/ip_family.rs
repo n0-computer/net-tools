@@ -36,7 +36,7 @@ impl IpFamily {
     }
 }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(wasm_browser))]
 impl From<IpFamily> for socket2::Domain {
     fn from(value: IpFamily) -> Self {
         match value {
