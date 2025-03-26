@@ -25,6 +25,7 @@ pub enum Error {
     MissingDestinationField,
     #[error("mask field is missing")]
     MissingMaskField,
+    #[cfg(not(target_os = "android"))]
     #[error("netlink")]
     Netlink(#[from] rtnetlink::Error),
 }
