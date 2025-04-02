@@ -70,7 +70,7 @@ derive_more = { version = "1.0.0", features = ["debug"] }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["EventListener", "EventTarget"] }
+web-sys = { version = "0.3.70", features = ["EventListener", "EventTarget"] }
 
 [dev-dependencies]
 testresult = "0.4.1"
