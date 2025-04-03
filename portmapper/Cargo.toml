@@ -21,7 +21,7 @@ bytes = "1.7"
 derive_more = { version = "1.0.0", features = ["debug", "display", "from", "try_into", "deref"] }
 futures-lite = "2.5"
 futures-util = "0.3.25"
-igd-next = { version = "0.15.1", features = ["aio_tokio"] }
+igd-next = { version = "0.16.1", features = ["aio_tokio"] }
 iroh-metrics = { version = "0.34", default-features = false }
 libc = "0.2.139"
 nested_enum_utils = "0.2.0"
@@ -37,6 +37,10 @@ tokio = { version = "1", features = ["io-util", "macros", "sync", "rt", "net", "
 tokio-util = { version = "0.7", features = ["io-util", "io", "codec", "rt"] }
 tracing = "0.1"
 url = { version = "2.5", features = ["serde"] }
+
+# fix minimal crates
+hyper-util = "0.1.11"
+tower-layer = "0.3.3"
 
 [dev-dependencies]
 ntest = "0.9"
