@@ -175,7 +175,9 @@
 <a href="#174" id="174">174</a>
 <a href="#175" id="175">175</a>
 <a href="#176" id="176">176</a>
-<a href="#177" id="177">177</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
 };
@@ -186,9 +188,11 @@
 };
 <span class="kw">use </span>n0_future::StreamExt;
 <span class="kw">use </span>netlink_sys::{AsyncSocket, SocketAddr};
-<span class="kw">use </span>rtnetlink::new_connection;
-<span class="kw">use </span>rtnetlink::packet_core::NetlinkPayload;
-<span class="kw">use </span>rtnetlink::packet_route::{address, route, RouteNetlinkMessage};
+<span class="kw">use </span>rtnetlink::{
+    new_connection,
+    packet_core::NetlinkPayload,
+    packet_route::{address, route, RouteNetlinkMessage},
+};
 <span class="kw">use </span>tokio::{sync::mpsc, task::JoinHandle};
 <span class="kw">use </span>tracing::{trace, warn};
 
