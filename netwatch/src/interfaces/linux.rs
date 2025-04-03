@@ -137,10 +137,10 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     let (connection, handle, _receiver) = rtnetlink::new_connection().context(IoSnafu)?;
     let task = tokio::spawn(connection.instrument(info_span!("rtnetlink.conn")));
 
-    let default = default_route_netlink_family(&handle, rtnetlink::IpVersion::V4).await?;
+    let default = default_route_netlink_family(&handle, rtnetlink::AddressFamily::Inet).await?;
     let default = match default {
         Some(default) => Some(default),
-        None => default_route_netlink_family(&handle, rtnetlink::IpVersion::V6).await?,
+        None => default_route_netlink_family(&handle, rtnetlink::AddressFamily::Inet6).await?,
     };
     task.abort();
     task.await.ok();
@@ -153,11 +153,20 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
 #[cfg(not(target_os = "android"))]
 async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
-    family: rtnetlink::IpVersion,
+    family: rtnetlink::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
     use netlink_packet_route::route::RouteAttribute;
 
-    let mut routes = handle.route().get(family).execute();
+    let mut routes = match family {
+        rtnetlink::AddressFamily::Inet => {
+            let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv4Addr>::new().build();
+            handle.route().get(msg).execute();
+        }
+        rtnetlink::AddressFamily::Inet6 => {
+            let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv6Addr>::new().build();
+        }
+        _ => unimplemented!(),
+    };
     while let Some(route) = routes.try_next().await.context(NetlinkSnafu)? {
         let route_attrs = route.attributes;
 
