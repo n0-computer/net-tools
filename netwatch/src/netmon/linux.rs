@@ -8,10 +8,10 @@ use libc::{
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
 use n0_future::StreamExt;
-use netlink_packet_core::NetlinkPayload;
-use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use rtnetlink::new_connection;
+use rtnetlink::packet_core::NetlinkPayload;
+use rtnetlink::packet_route::{address, route, RouteNetlinkMessage};
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{trace, warn};

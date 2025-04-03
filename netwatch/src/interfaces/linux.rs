@@ -162,12 +162,13 @@ async fn default_route_netlink_family(
     use rtnetlink::packet_route::route::RouteAttribute;
 
     let mut routes = match family {
-        rtnetlink::AddressFamily::Inet => {
+        rtnetlink::packet_route::AddressFamily::Inet => {
             let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv4Addr>::new().build();
-            handle.route().get(msg).execute();
+            handle.route().get(msg).execute()
         }
-        rtnetlink::AddressFamily::Inet6 => {
+        rtnetlink::packet_route::AddressFamily::Inet6 => {
             let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv6Addr>::new().build();
+            handle.route().get(msg).execute()
         }
         _ => unimplemented!(),
     };
