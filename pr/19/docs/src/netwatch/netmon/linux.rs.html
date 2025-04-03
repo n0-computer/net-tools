@@ -185,10 +185,10 @@
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
 <span class="kw">use </span>n0_future::StreamExt;
-<span class="kw">use </span>netlink_packet_core::NetlinkPayload;
-<span class="kw">use </span>netlink_packet_route::{address, route, RouteNetlinkMessage};
 <span class="kw">use </span>netlink_sys::{AsyncSocket, SocketAddr};
 <span class="kw">use </span>rtnetlink::new_connection;
+<span class="kw">use </span>rtnetlink::packet_core::NetlinkPayload;
+<span class="kw">use </span>rtnetlink::packet_route::{address, route, RouteNetlinkMessage};
 <span class="kw">use </span>tokio::{sync::mpsc, task::JoinHandle};
 <span class="kw">use </span>tracing::{trace, warn};
 
