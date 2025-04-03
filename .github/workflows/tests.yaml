@@ -238,7 +238,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [windows-latest, ubuntu-latest, macOS-arm-latest]
+        name: [ubuntu-latest, macOS-arm-latest] # TODO: figure out install on windows
         include:
           - name: ubuntu-latest
             os: ubuntu-latest
