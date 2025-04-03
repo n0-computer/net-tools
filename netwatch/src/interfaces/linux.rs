@@ -152,7 +152,7 @@ async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
     family: rtnetlink::packet_route::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
-    use netlink_packet_route::route::RouteAttribute;
+    use rtnetlink::packet_route::route::RouteAttribute;
 
     let mut routes = match family {
         rtnetlink::AddressFamily::Inet => {
@@ -199,7 +199,7 @@ async fn default_route_netlink_family(
 
 #[cfg(not(target_os = "android"))]
 async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String, Error> {
-    use netlink_packet_route::link::LinkAttribute;
+    use rtnetlink::packet_route::link::LinkAttribute;
 
     let mut links = handle.link().get().match_index(index).execute();
     let msg = links.try_next().await?.ok_or(Error::NoResponse)?;
