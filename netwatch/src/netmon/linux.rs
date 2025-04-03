@@ -9,9 +9,11 @@ use libc::{
 };
 use n0_future::StreamExt;
 use netlink_sys::{AsyncSocket, SocketAddr};
-use rtnetlink::new_connection;
-use rtnetlink::packet_core::NetlinkPayload;
-use rtnetlink::packet_route::{address, route, RouteNetlinkMessage};
+use rtnetlink::{
+    new_connection,
+    packet_core::NetlinkPayload,
+    packet_route::{address, route, RouteNetlinkMessage},
+};
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{trace, warn};
