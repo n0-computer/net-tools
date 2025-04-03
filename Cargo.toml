@@ -37,3 +37,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)"] }
 
 [workspace.lints.clippy]
 unused-async = "warn"
+
+[patch.crates-io]
+n0-future = { path = "../n0-future" }
