@@ -250,9 +250,6 @@ jobs:
             release-os: darwin
             release-arch: aarch64
             runner: [self-hosted, macOS, ARM64]
-          - name: windows-latest
-            os: windows
-            runner: [self-hosted, windows, x64]
     steps:
       - uses: actions/checkout@v2
       - uses: dtolnay/rust-toolchain@nightly
