@@ -137,10 +137,14 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     let (connection, handle, _receiver) = rtnetlink::new_connection().context(IoSnafu)?;
     let task = tokio::spawn(connection.instrument(info_span!("rtnetlink.conn")));
 
-    let default = default_route_netlink_family(&handle, rtnetlink::AddressFamily::Inet).await?;
+    let default =
+        default_route_netlink_family(&handle, rtnetlink::packet_route::AddressFamily::Inet).await?;
     let default = match default {
         Some(default) => Some(default),
-        None => default_route_netlink_family(&handle, rtnetlink::AddressFamily::Inet6).await?,
+        None => {
+            default_route_netlink_family(&handle, rtnetlink::packet_route::AddressFamily::Inet6)
+                .await?
+        }
     };
     task.abort();
     task.await.ok();
@@ -153,7 +157,7 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
 #[cfg(not(target_os = "android"))]
 async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
-    family: rtnetlink::AddressFamily,
+    family: rtnetlink::packet_route::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
     use netlink_packet_route::route::RouteAttribute;
 
