@@ -111,7 +111,7 @@ jobs:
     - name: list ignored tests
       run: |
         cargo nextest list --workspace ${{ env.FEATURES }} --lib --bins --tests --run-ignored ignored-only
-      env: 
+      env:
         NEXTEST_NO_TESTS: "pass"
 
     - name: run tests
@@ -224,7 +224,7 @@ jobs:
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG'}}
         NEXTEST_EXPERIMENTAL_LIBTEST_JSON: 1
         NEXTEST_NO_TESTS: "pass"
-  
+
     - name: upload results
       if: ${{ failure() && inputs.flaky }}
       uses: actions/upload-artifact@v4
@@ -233,3 +233,31 @@ jobs:
         path: output
         retention-days: 1
         compression-level: 0
+  minimal-crates:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [windows-latest, ubuntu-latest, macOS-arm-latest]
+        include:
+          - name: ubuntu-latest
+            os: ubuntu-latest
+            release-os: linux
+            release-arch: amd64
+            runner: [self-hosted, linux, X64]
+          - name: macOS-arm-latest
+            os: macOS-latest
+            release-os: darwin
+            release-arch: aarch64
+            runner: [self-hosted, macOS, ARM64]
+          - name: windows-latest
+            os: windows
+            runner: [self-hosted, windows, x64]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: swatinem/rust-cache@v2
+      - name: cargo check
+        run: |
+          rm -f Cargo.lock
+          cargo +nightly check -Z minimal-versions --workspace --all-features --lib --bins
