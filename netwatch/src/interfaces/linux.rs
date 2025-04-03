@@ -159,7 +159,7 @@ async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
     family: rtnetlink::packet_route::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
-    use netlink_packet_route::route::RouteAttribute;
+    use rtnetlink::packet_route::route::RouteAttribute;
 
     let mut routes = match family {
         rtnetlink::AddressFamily::Inet => {
