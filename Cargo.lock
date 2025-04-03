@@ -1224,7 +1224,6 @@ dependencies = [
  "netdev",
  "netlink-packet-core",
  "netlink-packet-route 0.17.1",
- "netlink-packet-route 0.22.0",
  "netlink-sys",
  "rtnetlink 0.13.1",
  "rtnetlink 0.16.0",
