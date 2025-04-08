@@ -8,7 +8,6 @@ use std::{
 
 use current_mapping::CurrentMapping;
 use futures_lite::StreamExt;
-use iroh_metrics::inc;
 use netwatch::interfaces::HomeRouter;
 use snafu::Snafu;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -139,6 +138,8 @@ pub struct Client {
     port_mapping: watch::Receiver<Option<SocketAddrV4>>,
     /// Channel used to communicate with the port mapping service.
     service_tx: mpsc::Sender<Message>,
+    /// Metrics collected by the service.
+    metrics: Metrics,
     /// A handle to the service that will cancel the spawned task once the client is dropped.
     _service_handle: std::sync::Arc<AbortOnDropHandle<()>>,
 }
@@ -152,9 +153,14 @@ impl Default for Client {
 impl Client {
     /// Create a new port mapping client.
     pub fn new(config: Config) -> Self {
+        Self::with_metrics(config, Default::default())
+    }
+
+    /// Creates a new port mapping client with a previously created metrics collector.
+    pub fn with_metrics(config: Config, metrics: Metrics) -> Self {
         let (service_tx, service_rx) = mpsc::channel(SERVICE_CHANNEL_CAPACITY);
 
-        let (service, watcher) = Service::new(config, service_rx);
+        let (service, watcher) = Service::new(config, service_rx, metrics.clone());
 
         let handle = AbortOnDropHandle::new(tokio::spawn(
             async move { service.run().await }.instrument(info_span!("portmapper.service")),
@@ -163,6 +169,7 @@ impl Client {
         Client {
             port_mapping: watcher,
             service_tx,
+            metrics,
             _service_handle: std::sync::Arc::new(handle),
         }
     }
@@ -230,6 +237,11 @@ impl Client {
     pub fn watch_external_address(&self) -> watch::Receiver<Option<SocketAddrV4>> {
         self.port_mapping.clone()
     }
+
+    /// Returns the metrics collected by the service.
+    pub fn metrics(&self) -> &Metrics {
+        &self.metrics
+    }
 }
 
 /// Port mapping protocol information obtained during a probe.
@@ -261,6 +273,7 @@ impl Probe {
         output: ProbeOutput,
         local_ip: Ipv4Addr,
         gateway: Ipv4Addr,
+        metrics: Metrics,
     ) -> Probe {
         let ProbeOutput { upnp, pcp, nat_pmp } = output;
         let Config {
@@ -280,8 +293,9 @@ impl Probe {
 
         let mut pcp_probing_task = util::MaybeFuture {
             inner: (enable_pcp && !pcp).then(|| {
-                Box::pin(async {
-                    inc!(Metrics, pcp_probes);
+                let metrics = metrics.clone();
+                Box::pin(async move {
+                    metrics.pcp_probes.inc();
                     pcp::probe_available(local_ip, gateway)
                         .await
                         .then(Instant::now)
@@ -300,7 +314,7 @@ impl Probe {
         };
 
         if upnp_probing_task.inner.is_some() {
-            inc!(Metrics, upnp_probes);
+            metrics.upnp_probes.inc();
         }
 
         let mut upnp_done = upnp_probing_task.inner.is_none();
@@ -359,7 +373,7 @@ impl Probe {
     }
 
     /// Updates a probe with the `Some` values of another probe that is _assumed_ newer.
-    fn update(&mut self, probe: Probe) {
+    fn update(&mut self, probe: Probe, metrics: &Metrics) {
         let Probe {
             last_probe,
             last_upnp_gateway_addr,
@@ -367,7 +381,7 @@ impl Probe {
             last_nat_pmp,
         } = probe;
         if last_upnp_gateway_addr.is_some() {
-            inc!(Metrics, upnp_available);
+            metrics.upnp_available.inc();
             let new_gateway = last_upnp_gateway_addr
                 .as_ref()
                 .map(|(addr, _last_seen)| addr);
@@ -376,7 +390,7 @@ impl Probe {
                 .as_ref()
                 .map(|(addr, _last_seen)| addr);
             if new_gateway != old_gateway {
-                inc!(Metrics, upnp_gateway_updated);
+                metrics.upnp_gateway_updated.inc();
                 debug!(
                     "upnp gateway changed {:?} -> {:?}",
                     old_gateway
@@ -390,7 +404,7 @@ impl Probe {
             self.last_upnp_gateway_addr = last_upnp_gateway_addr;
         }
         if last_pcp.is_some() {
-            inc!(Metrics, pcp_available);
+            metrics.pcp_available.inc();
             self.last_pcp = last_pcp;
         }
         if last_nat_pmp.is_some() {
@@ -428,12 +442,14 @@ pub struct Service {
     /// Requests for a probe that arrive while this task is still in progress will receive the same
     /// result.
     probing_task: Option<(AbortOnDropHandle<Probe>, Vec<oneshot::Sender<ProbeResult>>)>,
+    metrics: Metrics,
 }
 
 impl Service {
     fn new(
         config: Config,
         rx: mpsc::Receiver<Message>,
+        metrics: Metrics,
     ) -> (Self, watch::Receiver<Option<SocketAddrV4>>) {
         let (current_mapping, watcher) = CurrentMapping::new();
         let mut full_probe = Probe::empty();
@@ -452,6 +468,7 @@ impl Service {
             full_probe,
             mapping_task: None,
             probing_task: None,
+            metrics,
         };
 
         (service, watcher)
@@ -516,7 +533,7 @@ impl Service {
         receivers: Vec<oneshot::Sender<ProbeResult>>,
     ) {
         let result = result.map(|probe| {
-            self.full_probe.update(probe);
+            self.full_probe.update(probe, &self.metrics);
             // TODO(@divma): the gateway of the current mapping could have changed. Tailscale
             // still assumes the current mapping is valid/active and will return it even after
             // this
@@ -540,11 +557,11 @@ impl Service {
             }
             Ok(Err(e)) => {
                 debug!("failed to get a port mapping {e}");
-                inc!(Metrics, mapping_failures);
+                self.metrics.mapping_failures.inc();
             }
             Err(e) => {
                 debug!("failed to get a port mapping {e}");
-                inc!(Metrics, mapping_failures);
+                self.metrics.mapping_failures.inc();
             }
         }
     }
@@ -564,7 +581,7 @@ impl Service {
     async fn update_local_port(&mut self, local_port: Option<NonZeroU16>) {
         // ignore requests to update the local port in a way that does not produce a change
         if local_port != self.local_port {
-            inc!(Metrics, local_port_updates);
+            self.metrics.local_port_updates.inc();
             let old_port = std::mem::replace(&mut self.local_port, local_port);
 
             // clear the current mapping task if any
@@ -602,7 +619,7 @@ impl Service {
 
     fn get_mapping(&mut self, external_addr: Option<(Ipv4Addr, NonZeroU16)>) {
         if let Some(local_port) = self.local_port {
-            inc!(Metrics, mapping_attempts);
+            self.metrics.mapping_attempts.inc();
 
             let (local_ip, gateway) = match ip_and_gateway() {
                 Ok(ip_and_gw) => ip_and_gw,
@@ -681,7 +698,7 @@ impl Service {
                     // we don't care if the requester is no longer there
                     let _ = result_tx.send(Ok(probe_output));
                 } else {
-                    inc!(Metrics, probes_started);
+                    self.metrics.probes_started.inc();
 
                     let (local_ip, gateway) = match ip_and_gateway() {
                         Ok(ip_and_gw) => ip_and_gw,
@@ -694,13 +711,14 @@ impl Service {
                     };
 
                     let config = self.config.clone();
-                    let handle =
-                        tokio::spawn(
-                            async move {
-                                Probe::from_output(config, probe_output, local_ip, gateway).await
-                            }
-                            .instrument(info_span!("portmapper.probe")),
-                        );
+                    let metrics = self.metrics.clone();
+                    let handle = tokio::spawn(
+                        async move {
+                            Probe::from_output(config, probe_output, local_ip, gateway, metrics)
+                                .await
+                        }
+                        .instrument(info_span!("portmapper.probe")),
+                    );
                     let receivers = vec![result_tx];
                     self.probing_task = Some((AbortOnDropHandle::new(handle), receivers));
                 }

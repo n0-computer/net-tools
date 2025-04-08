@@ -953,8 +953,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0f7cd1ffe3b152a5f4f4c1880e01e07d96001f20e02cc143cb7842987c616b3"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fmetric-sets#7edb7839128f79089e113e76ae045ce3a3370427"
 dependencies = [
  "erased_set",
  "prometheus-client",
