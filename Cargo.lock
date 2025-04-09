@@ -941,7 +941,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.32.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#edca9ebc27d6ef7ba10a99b340356e8ff1c197f5"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#04b9c4fca09b15856d00da4640cfa3d882f3c750"
 dependencies = [
  "prometheus-client",
  "serde",
@@ -1961,9 +1961,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.43.0"
+version = "1.44.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
+checksum = "e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48"
 dependencies = [
  "backtrace",
  "bytes",
