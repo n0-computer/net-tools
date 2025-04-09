@@ -287,12 +287,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "erased_set"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a02a5d186d7bf1cb21f1f95e1a9cfa5c1f2dcd803a47aad454423ceec13525c5"
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -953,9 +947,8 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.32.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fmetric-sets#7edb7839128f79089e113e76ae045ce3a3370427"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#83b0335857dcfe379ffbf4e854851f209ddeeb6c"
 dependencies = [
- "erased_set",
  "prometheus-client",
  "serde",
  "struct_iterable",
