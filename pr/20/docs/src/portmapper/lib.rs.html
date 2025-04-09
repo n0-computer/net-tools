@@ -753,11 +753,14 @@
 <a href="#752" id="752">752</a>
 <a href="#753" id="753">753</a>
 <a href="#754" id="754">754</a>
-<a href="#755" id="755">755</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
 
 </span><span class="kw">use </span>std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -896,7 +899,7 @@
     <span class="doccomment">/// Channel used to communicate with the port mapping service.
     </span>service_tx: mpsc::Sender&lt;Message&gt;,
     <span class="doccomment">/// Metrics collected by the service.
-    </span>metrics: Metrics,
+    </span>metrics: Arc&lt;Metrics&gt;,
     <span class="doccomment">/// A handle to the service that will cancel the spawned task once the client is dropped.
     </span>_service_handle: std::sync::Arc&lt;AbortOnDropHandle&lt;()&gt;&gt;,
 }
@@ -914,7 +917,7 @@
     }
 
     <span class="doccomment">/// Creates a new port mapping client with a previously created metrics collector.
-    </span><span class="kw">pub fn </span>with_metrics(config: Config, metrics: Metrics) -&gt; <span class="self">Self </span>{
+    </span><span class="kw">pub fn </span>with_metrics(config: Config, metrics: Arc&lt;Metrics&gt;) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>(service_tx, service_rx) = mpsc::channel(SERVICE_CHANNEL_CAPACITY);
 
         <span class="kw">let </span>(service, watcher) = Service::new(config, service_rx, metrics.clone());
@@ -996,7 +999,7 @@
     }
 
     <span class="doccomment">/// Returns the metrics collected by the service.
-    </span><span class="kw">pub fn </span>metrics(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Metrics {
+    </span><span class="kw">pub fn </span>metrics(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Arc&lt;Metrics&gt; {
         <span class="kw-2">&amp;</span><span class="self">self</span>.metrics
     }
 }
@@ -1030,7 +1033,7 @@
         output: ProbeOutput,
         local_ip: Ipv4Addr,
         gateway: Ipv4Addr,
-        metrics: Metrics,
+        metrics: Arc&lt;Metrics&gt;,
     ) -&gt; Probe {
         <span class="kw">let </span>ProbeOutput { upnp, pcp, nat_pmp } = output;
         <span class="kw">let </span>Config {
@@ -1040,8 +1043,9 @@
         } = config;
         <span class="kw">let </span><span class="kw-2">mut </span>upnp_probing_task = util::MaybeFuture {
             inner: (enable_upnp &amp;&amp; !upnp).then(|| {
-                Box::pin(<span class="kw">async </span>{
-                    upnp::probe_available()
+                <span class="kw">let </span>metrics = metrics.clone();
+                Box::pin(<span class="kw">async move </span>{
+                    upnp::probe_available(<span class="kw-2">&amp;</span>metrics)
                         .<span class="kw">await
                         </span>.map(|addr| (addr, Instant::now()))
                 })
@@ -1130,7 +1134,7 @@
     }
 
     <span class="doccomment">/// Updates a probe with the `Some` values of another probe that is _assumed_ newer.
-    </span><span class="kw">fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, probe: Probe, metrics: <span class="kw-2">&amp;</span>Metrics) {
+    </span><span class="kw">fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, probe: Probe, metrics: <span class="kw-2">&amp;</span>Arc&lt;Metrics&gt;) {
         <span class="kw">let </span>Probe {
             last_probe,
             last_upnp_gateway_addr,
@@ -1199,16 +1203,16 @@
     /// Requests for a probe that arrive while this task is still in progress will receive the same
     /// result.
     </span>probing_task: <span class="prelude-ty">Option</span>&lt;(AbortOnDropHandle&lt;Probe&gt;, Vec&lt;oneshot::Sender&lt;ProbeResult&gt;&gt;)&gt;,
-    metrics: Metrics,
+    metrics: Arc&lt;Metrics&gt;,
 }
 
 <span class="kw">impl </span>Service {
     <span class="kw">fn </span>new(
         config: Config,
         rx: mpsc::Receiver&lt;Message&gt;,
-        metrics: Metrics,
+        metrics: Arc&lt;Metrics&gt;,
     ) -&gt; (<span class="self">Self</span>, watch::Receiver&lt;<span class="prelude-ty">Option</span>&lt;SocketAddrV4&gt;&gt;) {
-        <span class="kw">let </span>(current_mapping, watcher) = CurrentMapping::new();
+        <span class="kw">let </span>(current_mapping, watcher) = CurrentMapping::new(metrics.clone());
         <span class="kw">let </span><span class="kw-2">mut </span>full_probe = Probe::empty();
         <span class="kw">if let </span><span class="prelude-val">Some</span>(in_the_past) = full_probe
             .last_probe
