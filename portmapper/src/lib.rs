@@ -3,6 +3,7 @@
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -141,7 +142,7 @@ pub struct Client {
     /// Channel used to communicate with the port mapping service.
     service_tx: mpsc::Sender<Message>,
     /// Metrics collected by the service.
-    metrics: Metrics,
+    metrics: Arc<Metrics>,
     /// A handle to the service that will cancel the spawned task once the client is dropped.
     _service_handle: std::sync::Arc<AbortOnDropHandle<()>>,
 }
@@ -159,7 +160,7 @@ impl Client {
     }
 
     /// Creates a new port mapping client with a previously created metrics collector.
-    pub fn with_metrics(config: Config, metrics: Metrics) -> Self {
+    pub fn with_metrics(config: Config, metrics: Arc<Metrics>) -> Self {
         let (service_tx, service_rx) = mpsc::channel(SERVICE_CHANNEL_CAPACITY);
 
         let (service, watcher) = Service::new(config, service_rx, metrics.clone());
@@ -241,7 +242,7 @@ impl Client {
     }
 
     /// Returns the metrics collected by the service.
-    pub fn metrics(&self) -> &Metrics {
+    pub fn metrics(&self) -> &Arc<Metrics> {
         &self.metrics
     }
 }
@@ -275,7 +276,7 @@ impl Probe {
         output: ProbeOutput,
         local_ip: Ipv4Addr,
         gateway: Ipv4Addr,
-        metrics: Metrics,
+        metrics: Arc<Metrics>,
     ) -> Probe {
         let ProbeOutput { upnp, pcp, nat_pmp } = output;
         let Config {
@@ -285,8 +286,9 @@ impl Probe {
         } = config;
         let mut upnp_probing_task = util::MaybeFuture {
             inner: (enable_upnp && !upnp).then(|| {
-                Box::pin(async {
-                    upnp::probe_available()
+                let metrics = metrics.clone();
+                Box::pin(async move {
+                    upnp::probe_available(&metrics)
                         .await
                         .map(|addr| (addr, Instant::now()))
                 })
@@ -375,7 +377,7 @@ impl Probe {
     }
 
     /// Updates a probe with the `Some` values of another probe that is _assumed_ newer.
-    fn update(&mut self, probe: Probe, metrics: &Metrics) {
+    fn update(&mut self, probe: Probe, metrics: &Arc<Metrics>) {
         let Probe {
             last_probe,
             last_upnp_gateway_addr,
@@ -444,16 +446,16 @@ pub struct Service {
     /// Requests for a probe that arrive while this task is still in progress will receive the same
     /// result.
     probing_task: Option<(AbortOnDropHandle<Probe>, Vec<oneshot::Sender<ProbeResult>>)>,
-    metrics: Metrics,
+    metrics: Arc<Metrics>,
 }
 
 impl Service {
     fn new(
         config: Config,
         rx: mpsc::Receiver<Message>,
-        metrics: Metrics,
+        metrics: Arc<Metrics>,
     ) -> (Self, watch::Receiver<Option<SocketAddrV4>>) {
-        let (current_mapping, watcher) = CurrentMapping::new();
+        let (current_mapping, watcher) = CurrentMapping::new(metrics.clone());
         let mut full_probe = Probe::empty();
         if let Some(in_the_past) = full_probe
             .last_probe
