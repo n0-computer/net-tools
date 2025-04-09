@@ -941,7 +941,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.32.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#edca9ebc27d6ef7ba10a99b340356e8ff1c197f5"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#04b9c4fca09b15856d00da4640cfa3d882f3c750"
 dependencies = [
  "prometheus-client",
  "serde",
