@@ -63,7 +63,7 @@
 <a href="#62" id="62">62</a>
 <a href="#63" id="63">63</a>
 <a href="#64" id="64">64</a>
-<a href="#65" id="65">65</a></pre></div><pre class="rust"><code><span class="kw">use </span>iroh_metrics::{struct_iterable::Iterable, Counter, Metric};
+<a href="#65" id="65">65</a></pre></div><pre class="rust"><code><span class="kw">use </span>iroh_metrics::{struct_iterable::Iterable, Counter, MetricsGroup};
 
 <span class="doccomment">/// Enum of metrics for the module
 </span><span class="attr">#[allow(missing_docs)]
@@ -123,7 +123,7 @@
     }
 }
 
-<span class="kw">impl </span>Metric <span class="kw">for </span>Metrics {
+<span class="kw">impl </span>MetricsGroup <span class="kw">for </span>Metrics {
     <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
         <span class="string">"portmap"
     </span>}
