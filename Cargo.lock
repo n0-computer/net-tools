@@ -938,7 +938,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.32.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor2#7ddd198e69230b4716806e69eb141eef04affd1a"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#a1a6e1090892bde5c2d2c115afd03a409f12f6a3"
 dependencies = [
  "iroh-metrics-derive",
  "prometheus-client",
@@ -950,7 +950,7 @@ dependencies = [
 [[package]]
 name = "iroh-metrics-derive"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor2#7ddd198e69230b4716806e69eb141eef04affd1a"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Frefactor#a1a6e1090892bde5c2d2c115afd03a409f12f6a3"
 dependencies = [
  "heck",
  "proc-macro2",
