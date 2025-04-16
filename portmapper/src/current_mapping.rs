@@ -5,13 +5,15 @@ use std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
     pin::Pin,
+    sync::Arc,
     task::Poll,
     time::Duration,
 };
 
-use iroh_metrics::inc;
 use tokio::{sync::watch, time};
 use tracing::{debug, trace};
+
+use crate::Metrics;
 
 /// This is an implementation detail to facilitate testing.
 pub(super) trait Mapping: std::fmt::Debug + Unpin {
@@ -73,16 +75,18 @@ pub(super) struct CurrentMapping<M = super::mapping::Mapping> {
     /// Waker to ensure this is polled when needed.
     #[debug(skip)]
     waker: Option<std::task::Waker>,
+    metrics: Arc<Metrics>,
 }
 
 impl<M: Mapping> CurrentMapping<M> {
     /// Creates a new [`CurrentMapping`] and returns the watcher over its external address.
-    pub(super) fn new() -> (Self, watch::Receiver<Option<SocketAddrV4>>) {
+    pub(super) fn new(metrics: Arc<Metrics>) -> (Self, watch::Receiver<Option<SocketAddrV4>>) {
         let (address_tx, address_rx) = watch::channel(None);
         let wrapper = CurrentMapping {
             mapping: None,
             address_tx,
             waker: None,
+            metrics,
         };
         (wrapper, address_rx)
     }
@@ -108,7 +112,7 @@ impl<M: Mapping> CurrentMapping<M> {
             // inform only if this produces a different external address
             let update = old_addr != maybe_external_addr;
             if update {
-                inc!(super::Metrics, external_address_updated);
+                self.metrics.external_address_updated.inc();
             };
             update
         });
@@ -201,7 +205,7 @@ mod tests {
         const TEST_PORT: NonZeroU16 = // SAFETY: it's clearly non zero
             unsafe { NonZeroU16::new_unchecked(9586) };
         const TEST_IP: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
-        let (mut c, mut watcher) = CurrentMapping::<M>::new();
+        let (mut c, mut watcher) = CurrentMapping::<M>::new(Default::default());
         let now = std::time::Instant::now();
         c.update(Some((TEST_IP, TEST_PORT)));
 
