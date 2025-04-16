@@ -251,9 +251,8 @@ jobs:
             release-arch: aarch64
             runner: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: swatinem/rust-cache@v2
       - name: cargo check
         run: |
           rm -f Cargo.lock
