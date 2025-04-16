@@ -39,4 +39,4 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)"] }
 unused-async = "warn"
 
 [patch.crates-io]
-n0-future = { git = "https://github.com/n0-computer/n0-future", branch = "minimal-versions" }
+n0-future = { git = "https://github.com/n0-computer/n0-future", branch = "main" }

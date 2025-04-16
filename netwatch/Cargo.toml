@@ -50,7 +50,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 netlink-packet-route = "0.17.1"
 netlink-proto = "0.11.5"
 netlink-sys = "0.8.7"
@@ -58,10 +58,6 @@ rtnetlink = "0.16.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 derive_more = { version = "1.0.0", features = ["display"] }
-# netlink-packet-core = "0.7.0"
-# netlink-packet-route = "0.17.0" # 0.20/21 is blocked on rtnetlink bumping its dependency
-# netlink-sys = "0.8.7"
-# rtnetlink = "=0.13.1" # pinned because of https://github.com/rust-netlink/rtnetlink/issues/83
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.14"
