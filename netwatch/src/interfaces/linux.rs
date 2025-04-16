@@ -130,10 +130,14 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     let (connection, handle, _receiver) = rtnetlink::new_connection()?;
     let task = tokio::spawn(connection.instrument(info_span!("rtnetlink.conn")));
 
-    let default = default_route_netlink_family(&handle, rtnetlink::IpVersion::V4).await?;
+    let default =
+        default_route_netlink_family(&handle, rtnetlink::packet_route::AddressFamily::Inet).await?;
     let default = match default {
         Some(default) => Some(default),
-        None => default_route_netlink_family(&handle, rtnetlink::IpVersion::V6).await?,
+        None => {
+            default_route_netlink_family(&handle, rtnetlink::packet_route::AddressFamily::Inet6)
+                .await?
+        }
     };
     task.abort();
     task.await.ok();
@@ -146,11 +150,21 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
 #[cfg(not(target_os = "android"))]
 async fn default_route_netlink_family(
     handle: &rtnetlink::Handle,
-    family: rtnetlink::IpVersion,
+    family: rtnetlink::packet_route::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
-    use netlink_packet_route::route::RouteAttribute;
+    use rtnetlink::packet_route::route::RouteAttribute;
 
-    let mut routes = handle.route().get(family).execute();
+    let mut routes = match family {
+        rtnetlink::packet_route::AddressFamily::Inet => {
+            let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv4Addr>::new().build();
+            handle.route().get(msg).execute()
+        }
+        rtnetlink::packet_route::AddressFamily::Inet6 => {
+            let msg = rtnetlink::RouteMessageBuilder::<std::net::Ipv6Addr>::new().build();
+            handle.route().get(msg).execute()
+        }
+        _ => unimplemented!(),
+    };
     while let Some(route) = routes.try_next().await? {
         let route_attrs = route.attributes;
 
@@ -186,7 +200,7 @@ async fn default_route_netlink_family(
 
 #[cfg(not(target_os = "android"))]
 async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String, Error> {
-    use netlink_packet_route::link::LinkAttribute;
+    use rtnetlink::packet_route::link::LinkAttribute;
 
     let mut links = handle.link().get().match_index(index).execute();
     let msg = links.try_next().await?.ok_or(Error::NoResponse)?;
