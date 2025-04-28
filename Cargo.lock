@@ -932,7 +932,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.33.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#f8a2a047fc9f4232e0920501150efddc11be7060"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#ff3c5270a5e5e6bd909e9cd0214d659f899f0073"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
@@ -944,7 +944,7 @@ dependencies = [
 [[package]]
 name = "iroh-metrics-derive"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#f8a2a047fc9f4232e0920501150efddc11be7060"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#ff3c5270a5e5e6bd909e9cd0214d659f899f0073"
 dependencies = [
  "heck",
  "proc-macro2",
