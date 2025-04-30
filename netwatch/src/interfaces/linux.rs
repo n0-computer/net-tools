@@ -3,11 +3,20 @@
 #[cfg(not(target_os = "android"))]
 use n0_future::{Either, TryStream, TryStreamExt};
 use nested_enum_utils::common_fields;
+#[cfg(not(target_os = "android"))]
+use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
+#[cfg(not(target_os = "android"))]
+use netlink_packet_route::{link::LinkMessage, route::RouteMessage, RouteNetlinkMessage};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
 };
+
+#[cfg(not(target_os = "android"))]
+type Handle = netlink_proto::ConnectionHandle<RouteNetlinkMessage>;
+#[cfg(not(target_os = "android"))]
+type NetlinkError = netlink_proto::Error<RouteNetlinkMessage>;
 
 use super::DefaultRouteDetails;
 
@@ -95,13 +104,13 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
 
 macro_rules! try_rtnl {
     ($msg: expr, $message_type:path) => {{
-        use netlink_packet_core::{NetlinkMessage, NetlinkPayload};
+        use netlink_packet_core::NetlinkPayload;
         use netlink_packet_route::RouteNetlinkMessage;
 
         let (header, payload) = $msg.into_parts();
         match payload {
             NetlinkPayload::InnerMessage($message_type(msg)) => msg,
-            NetlinkPayload::Error(err) => return Err(err),
+            NetlinkPayload::Error(err) => return Err(Error::from(err)),
             _ => return Err(Error::UnexpectedNetlinkMessage),
         }
     }};
@@ -152,9 +161,8 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     use netlink_sys::protocols::NETLINK_ROUTE;
     use tracing::{info_span, Instrument};
 
-    let (conn, handle, _receiver) =
-        netlink_proto::new_connection::<netlink_packet_route::RouteNetlinkMessage>(NETLINK_ROUTE)
-            .context(IoSnafu)?;
+    let (connection, handle, _receiver) =
+        netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE).context(IoSnafu)?;
 
     let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
 
@@ -173,17 +181,11 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     }))
 }
 
-type Handle = netlink_proto::ConnectionHandle<netlink_packet_core::RouteNetlinkMessage>;
-type NetlinkError = netlink_proto::Error<netlink_packet_core::RouteNetlinkMessage>;
-
-use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
-use netlink_packet_route::{link::LinkMessage, route::RouteMessage, RouteNetlinkMessage};
-
 #[cfg(not(target_os = "android"))]
 fn get_route(
     mut handle: Handle,
     message: RouteMessage,
-) -> impl TryStream<Ok = RouteMessage, Error = Error> {
+) -> impl TryStream<Ok = RouteMessage, Err = Error> {
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetRoute(message));
     req.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
 
@@ -191,7 +193,7 @@ fn get_route(
         Ok(response) => {
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))))
         }
-        Err(e) => Either::Right(future::err::<RouteMessage, Error>(e).into_stream()),
+        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(e)),
     }
 }
 
@@ -203,7 +205,7 @@ fn create_route_message(family: netlink_packet_route::AddressFamily) -> RouteMes
     message.header.protocol = RouteProtocol::Static;
     message.header.scope = RouteScope::Universe;
     message.header.kind = RouteType::Unicast;
-    message.header.kind = family;
+    message.header.address_family = family;
     message
 }
 
@@ -213,7 +215,7 @@ async fn default_route_netlink_family(
     handle: &Handle,
     family: netlink_packet_route::AddressFamily,
 ) -> Result<Option<(String, u32)>, Error> {
-    use netlink_packet_route::{route::RouteAttribute, AddressFamily};
+    use netlink_packet_route::route::RouteAttribute;
 
     let msg = create_route_message(family);
     let mut routes = get_route(handle.clone(), msg);
@@ -255,7 +257,7 @@ async fn default_route_netlink_family(
 fn get_link(
     mut handle: Handle,
     message: LinkMessage,
-) -> impl TryStream<Ok = LinkMessage, Error = Error> {
+) -> impl TryStream<Ok = LinkMessage, Err = Error> {
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
     req.header.flags = NLM_F_REQUEST;
 
@@ -263,7 +265,7 @@ fn get_link(
         Ok(response) => {
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))))
         }
-        Err(e) => Either::Right(future::err::<RouteMessage, Error>(e).into_stream()),
+        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(e)),
     }
 }
 
