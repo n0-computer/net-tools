@@ -1,7 +1,7 @@
 //! Linux-specific network interfaces implementations.
 
 #[cfg(not(target_os = "android"))]
-use n0_future::{Either, TryStream, TryStreamExt};
+use n0_future::{Either, StreamExt, TryStream, TryStreamExt};
 use nested_enum_utils::common_fields;
 #[cfg(not(target_os = "android"))]
 use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
@@ -43,8 +43,14 @@ pub enum Error {
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink"))]
     Netlink { source: NetlinkError },
+    #[cfg(not(target_os = "android"))]
     #[snafu(display("unexpected netlink message"))]
     UnexpectedNetlinkMessage {},
+    #[cfg(not(target_os = "android"))]
+    #[snafu(display("netlink error message: {0:?}"))]
+    NetlinkErrorMessage {
+        source: netlink_packet_core::error::ErrorMessage,
+    },
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
@@ -110,7 +116,7 @@ macro_rules! try_rtnl {
         let (header, payload) = $msg.into_parts();
         match payload {
             NetlinkPayload::InnerMessage($message_type(msg)) => msg,
-            NetlinkPayload::Error(err) => return Err(Error::from(err)),
+            NetlinkPayload::Error(err) => return Err(Error::NetlinkErrorMessage(err)),
             _ => return Err(Error::UnexpectedNetlinkMessage),
         }
     }};
@@ -193,7 +199,9 @@ fn get_route(
         Ok(response) => {
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))))
         }
-        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(e)),
+        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
+            e,
+        ))),
     }
 }
 
@@ -265,7 +273,9 @@ fn get_link(
         Ok(response) => {
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))))
         }
-        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(e)),
+        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
+            e,
+        ))),
     }
 }
 
