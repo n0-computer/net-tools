@@ -177,7 +177,8 @@
 <a href="#176" id="176">176</a>
 <a href="#177" id="177">177</a>
 <a href="#178" id="178">178</a>
-<a href="#179" id="179">179</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
 };
@@ -187,12 +188,9 @@
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
 <span class="kw">use </span>n0_future::StreamExt;
+<span class="kw">use </span>netlink_packet_core::NetlinkPayload;
+<span class="kw">use </span>netlink_packet_route::{address, route, RouteNetlinkMessage};
 <span class="kw">use </span>netlink_sys::{AsyncSocket, SocketAddr};
-<span class="kw">use </span>rtnetlink::{
-    new_connection,
-    packet_core::NetlinkPayload,
-    packet_route::{address, route, RouteNetlinkMessage},
-};
 <span class="kw">use </span>tokio::{sync::mpsc, task::JoinHandle};
 <span class="kw">use </span>tracing::{trace, warn};
 
@@ -239,7 +237,11 @@
 
 <span class="kw">impl </span>RouteMonitor {
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>new(sender: mpsc::Sender&lt;NetworkMessage&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-        <span class="kw">let </span>(<span class="kw-2">mut </span>conn, <span class="kw-2">mut </span>_handle, <span class="kw-2">mut </span>messages) = new_connection()<span class="question-mark">?</span>;
+        <span class="kw">use </span>netlink_sys::protocols::NETLINK_ROUTE;
+
+        <span class="kw">let </span>(<span class="kw-2">mut </span>conn, _handle, <span class="kw-2">mut </span>messages) = netlink_proto::new_connection::&lt;
+            netlink_packet_route::RouteNetlinkMessage,
+        &gt;(NETLINK_ROUTE)<span class="question-mark">?</span>;
 
         <span class="comment">// Specify flags to listen on.
         </span><span class="kw">let </span>groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
