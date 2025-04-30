@@ -932,19 +932,19 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.33.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#ff3c5270a5e5e6bd909e9cd0214d659f899f0073"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=main#a589407937d851c5e9424431b86eee24e3dddd93"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
  "serde",
- "thiserror 2.0.11",
+ "snafu",
  "tracing",
 ]
 
 [[package]]
 name = "iroh-metrics-derive"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-metrics?branch=Frando%2Fderive-metricsgroupset#ff3c5270a5e5e6bd909e9cd0214d659f899f0073"
+source = "git+https://github.com/n0-computer/iroh-metrics?branch=main#a589407937d851c5e9424431b86eee24e3dddd93"
 dependencies = [
  "heck",
  "proc-macro2",
