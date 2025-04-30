@@ -62,9 +62,10 @@ macro_rules! get_nla {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let (mut conn, _handle, mut messages) = netlink_proto::new_connection_with_socket::<
+        use netlink_sys::protocols::NETLINK_ROUTE;
+
+        let (mut conn, _handle, mut messages) = netlink_proto::new_connection::<
             netlink_packet_route::RouteNetlinkMessage,
-            netlink_sys::AsyncSocket,
         >(NETLINK_ROUTE)
         .context(IoSnafu)?;
 

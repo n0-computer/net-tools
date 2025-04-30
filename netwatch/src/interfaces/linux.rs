@@ -1,7 +1,7 @@
 //! Linux-specific network interfaces implementations.
 
 #[cfg(not(target_os = "android"))]
-use n0_future::{stream::TryStream, TryStreamExt};
+use n0_future::{Either, TryStream, TryStreamExt};
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::{
@@ -148,15 +148,13 @@ fn parse_android_ip_route(stdout: &str) -> Option<&str> {
 
 #[cfg(not(target_os = "android"))]
 async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
-    use netlink_packet_route::AdressFamily;
+    use netlink_packet_route::AddressFamily;
     use netlink_sys::protocols::NETLINK_ROUTE;
     use tracing::{info_span, Instrument};
 
-    let (conn, handle, _receiver) = netlink_proto::new_connection_with_socket::<
-        netlink_packet_route::RouteNetlinkMessage,
-        netlink_sys::AsyncSocket,
-    >(NETLINK_ROUTE)
-    .context(IoSnafu)?;
+    let (conn, handle, _receiver) =
+        netlink_proto::new_connection::<netlink_packet_route::RouteNetlinkMessage>(NETLINK_ROUTE)
+            .context(IoSnafu)?;
 
     let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
 
@@ -179,9 +177,7 @@ type Handle = netlink_proto::ConnectionHandle<netlink_packet_core::RouteNetlinkM
 type NetlinkError = netlink_proto::Error<netlink_packet_core::RouteNetlinkMessage>;
 
 use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
-use netlink_packet_route::link::LinkMessage;
-use netlink_packet_route::route::RouteMessage;
-use netlink_packet_route::RouteNetLinkMessage;
+use netlink_packet_route::{link::LinkMessage, route::RouteMessage, RouteNetlinkMessage};
 
 #[cfg(not(target_os = "android"))]
 fn get_route(
@@ -259,7 +255,7 @@ async fn default_route_netlink_family(
 fn get_link(
     mut handle: Handle,
     message: LinkMessage,
-) -> impl TryStream<Ok = LinkMesssage, Error = Error> {
+) -> impl TryStream<Ok = LinkMessage, Error = Error> {
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
     req.header.flags = NLM_F_REQUEST;
 

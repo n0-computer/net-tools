@@ -1222,6 +1222,7 @@ dependencies = [
  "n0-future",
  "nested_enum_utils",
  "netdev",
+ "netlink-packet-core",
  "netlink-packet-route 0.23.0",
  "netlink-proto",
  "netlink-sys",
