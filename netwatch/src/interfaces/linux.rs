@@ -108,6 +108,7 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     Ok(None)
 }
 
+#[cfg(not(target_os = "android"))]
 macro_rules! try_rtnl {
     ($msg: expr, $message_type:path) => {{
         use netlink_packet_core::NetlinkPayload;
