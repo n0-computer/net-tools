@@ -1,7 +1,7 @@
 //! Linux-specific network interfaces implementations.
 
 #[cfg(not(target_os = "android"))]
-use n0_future::{Either, StreamExt, TryStream, TryStreamExt};
+use n0_future::{Either, TryStream, TryStreamExt};
 use nested_enum_utils::common_fields;
 #[cfg(not(target_os = "android"))]
 use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
@@ -192,6 +192,8 @@ fn get_route(
     mut handle: Handle,
     message: RouteMessage,
 ) -> impl TryStream<Ok = RouteMessage, Err = Error> {
+    use n0_future::StreamExt;
+
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetRoute(message));
     req.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
 
@@ -200,7 +202,7 @@ fn get_route(
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))))
         }
         Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
-            e,
+            Error::from(e),
         ))),
     }
 }
@@ -266,6 +268,8 @@ fn get_link(
     mut handle: Handle,
     message: LinkMessage,
 ) -> impl TryStream<Ok = LinkMessage, Err = Error> {
+    use n0_future::StreamExt;
+
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
     req.header.flags = NLM_F_REQUEST;
 
@@ -273,8 +277,8 @@ fn get_link(
         Ok(response) => {
             Either::Left(response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))))
         }
-        Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
-            e,
+        Err(e) => Either::Right(n0_future::stream::once::<Result<LinkMessage, Error>>(Err(
+            Error::from(e),
         ))),
     }
 }
