@@ -22,7 +22,7 @@ derive_more = { version = "1.0.0", features = ["debug", "display", "from", "try_
 futures-lite = "2.5"
 futures-util = "0.3.25"
 igd-next = { version = "0.15.1", features = ["aio_tokio"] }
-iroh-metrics = { git = "https://github.com/n0-computer/iroh-metrics", branch = "Frando/derive-metricsgroupset" }
+iroh-metrics = { git = "https://github.com/n0-computer/iroh-metrics", branch = "main" }
 libc = "0.2.139"
 netwatch = { version = "0.4.0", path = "../netwatch" }
 num_enum = "0.7"
