@@ -324,7 +324,8 @@
 <a href="#323" id="323">323</a>
 <a href="#324" id="324">324</a>
 <a href="#325" id="325">325</a>
-<a href="#326" id="326">326</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
 
 </span><span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">use </span>n0_future::{Either, TryStream, TryStreamExt};
@@ -426,7 +427,8 @@
     <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>)
 }
 
-<span class="macro">macro_rules!</span> try_rtnl {
+<span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
+</span><span class="macro">macro_rules!</span> try_rtnl {
     (<span class="macro-nonterminal">$msg</span>: expr, <span class="macro-nonterminal">$message_type</span>:path) =&gt; {{
         <span class="kw">use </span>netlink_packet_core::NetlinkPayload;
         <span class="kw">use </span>netlink_packet_route::RouteNetlinkMessage;
