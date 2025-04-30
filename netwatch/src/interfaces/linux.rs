@@ -113,7 +113,7 @@ macro_rules! try_rtnl {
         use netlink_packet_core::NetlinkPayload;
         use netlink_packet_route::RouteNetlinkMessage;
 
-        let (header, payload) = $msg.into_parts();
+        let (_header, payload) = $msg.into_parts();
         match payload {
             NetlinkPayload::InnerMessage($message_type(msg)) => msg,
             NetlinkPayload::Error(err) => return Err(Error::NetlinkErrorMessage(err)),
@@ -189,7 +189,7 @@ async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
 
 #[cfg(not(target_os = "android"))]
 fn get_route(
-    mut handle: Handle,
+    handle: Handle,
     message: RouteMessage,
 ) -> impl TryStream<Ok = RouteMessage, Err = Error> {
     use n0_future::StreamExt;
@@ -264,10 +264,7 @@ async fn default_route_netlink_family(
 }
 
 #[cfg(not(target_os = "android"))]
-fn get_link(
-    mut handle: Handle,
-    message: LinkMessage,
-) -> impl TryStream<Ok = LinkMessage, Err = Error> {
+fn get_link(handle: Handle, message: LinkMessage) -> impl TryStream<Ok = LinkMessage, Err = Error> {
     use n0_future::StreamExt;
 
     let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
@@ -286,7 +283,6 @@ fn get_link(
 #[cfg(not(target_os = "android"))]
 fn create_link_get_message(index: u32) -> LinkMessage {
     let mut message = LinkMessage::default();
-    // self.dump = false;
     message.header.index = index;
     message
 }
