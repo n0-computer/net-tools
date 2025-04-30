@@ -324,11 +324,7 @@
 <a href="#323" id="323">323</a>
 <a href="#324" id="324">324</a>
 <a href="#325" id="325">325</a>
-<a href="#326" id="326">326</a>
-<a href="#327" id="327">327</a>
-<a href="#328" id="328">328</a>
-<a href="#329" id="329">329</a>
-<a href="#330" id="330">330</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
+<a href="#326" id="326">326</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
 
 </span><span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">use </span>n0_future::{Either, TryStream, TryStreamExt};
@@ -435,7 +431,7 @@
         <span class="kw">use </span>netlink_packet_core::NetlinkPayload;
         <span class="kw">use </span>netlink_packet_route::RouteNetlinkMessage;
 
-        <span class="kw">let </span>(header, payload) = <span class="macro-nonterminal">$msg</span>.into_parts();
+        <span class="kw">let </span>(_header, payload) = <span class="macro-nonterminal">$msg</span>.into_parts();
         <span class="kw">match </span>payload {
             NetlinkPayload::InnerMessage(<span class="macro-nonterminal">$message_type</span>(msg)) =&gt; msg,
             NetlinkPayload::Error(err) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(Error::NetlinkErrorMessage(err)),
@@ -510,7 +506,7 @@
 
 <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">fn </span>get_route(
-    <span class="kw-2">mut </span>handle: Handle,
+    handle: Handle,
     message: RouteMessage,
 ) -&gt; <span class="kw">impl </span>TryStream&lt;<span class="prelude-val">Ok </span>= RouteMessage, <span class="prelude-val">Err </span>= Error&gt; {
     <span class="kw">use </span>n0_future::StreamExt;
@@ -585,10 +581,7 @@
 }
 
 <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
-</span><span class="kw">fn </span>get_link(
-    <span class="kw-2">mut </span>handle: Handle,
-    message: LinkMessage,
-) -&gt; <span class="kw">impl </span>TryStream&lt;<span class="prelude-val">Ok </span>= LinkMessage, <span class="prelude-val">Err </span>= Error&gt; {
+</span><span class="kw">fn </span>get_link(handle: Handle, message: LinkMessage) -&gt; <span class="kw">impl </span>TryStream&lt;<span class="prelude-val">Ok </span>= LinkMessage, <span class="prelude-val">Err </span>= Error&gt; {
     <span class="kw">use </span>n0_future::StreamExt;
 
     <span class="kw">let </span><span class="kw-2">mut </span>req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
@@ -607,8 +600,7 @@
 <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">fn </span>create_link_get_message(index: u32) -&gt; LinkMessage {
     <span class="kw">let </span><span class="kw-2">mut </span>message = LinkMessage::default();
-    <span class="comment">// self.dump = false;
-    </span>message.header.index = index;
+    message.header.index = index;
     message
 }
 
