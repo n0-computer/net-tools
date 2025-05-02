@@ -23,6 +23,7 @@ struct Win32_IP4RouteTable {
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum Error {
+    #[allow(dead_code)] // not sure why we have this here?
     #[snafu(display("IO"))]
     Io { source: std::io::Error },
     #[snafu(display("not route found"))]
