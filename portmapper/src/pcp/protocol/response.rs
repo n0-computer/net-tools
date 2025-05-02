@@ -130,6 +130,7 @@ pub struct Response {
     span_trace: n0_snafu::SpanTrace,
 })]
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum DecodeError {
     /// Request is too short or is otherwise malformed.
     #[snafu(display("Response is malformed"))]
@@ -168,6 +169,7 @@ impl PartialEq for DecodeError {
 impl Eq for DecodeError {}
 
 #[derive(Debug, Snafu, PartialEq, Eq)]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(transparent)]
     DecodeError { source: DecodeError },
