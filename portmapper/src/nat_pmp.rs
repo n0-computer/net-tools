@@ -3,6 +3,7 @@
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
 use netwatch::UdpSocket;
+use snafu::{Backtrace, Snafu};
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
@@ -31,17 +32,27 @@ pub struct Mapping {
     lifetime_seconds: u32,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[error("server returned unexpected response for mapping request")]
-    UnexpectedServerResponse,
-    #[error("received 0 port from server as external port")]
-    ZeroExternalPort,
-    #[error("IO: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Protocol: {0}")]
-    Protocol(#[from] protocol::Error),
+    #[snafu(display("server returned unexpected response for mapping request"))]
+    UnexpectedServerResponse {
+        backtrace: Option<Backtrace>,
+        #[snafu(implicit)]
+        span_trace: n0_snafu::SpanTrace,
+    },
+    #[snafu(display("received 0 port from server as external port"))]
+    ZeroExternalPort {
+        backtrace: Option<Backtrace>,
+        #[snafu(implicit)]
+        span_trace: n0_snafu::SpanTrace,
+    },
+    #[snafu(transparent)]
+    Io { source: std::io::Error },
+    #[snafu(transparent)]
+    Protocol { source: protocol::Error },
 }
 
 impl super::mapping::PortMapped for Mapping {
@@ -92,12 +103,12 @@ impl Mapping {
                 external_port,
                 lifetime_seconds,
             } if private_port == Into::<u16>::into(local_port) => (external_port, lifetime_seconds),
-            _ => return Err(Error::UnexpectedServerResponse),
+            _ => return Err(UnexpectedServerResponseSnafu.build()),
         };
 
         let external_port = external_port
             .try_into()
-            .map_err(|_| Error::ZeroExternalPort)?;
+            .map_err(|_| ZeroExternalPortSnafu.build())?;
 
         // now send the second request to get the external address
         let req = Request::ExternalAddress;
@@ -117,7 +128,7 @@ impl Mapping {
                 epoch_time: _,
                 public_ip,
             } => public_ip,
-            _ => return Err(Error::UnexpectedServerResponse),
+            _ => return Err(UnexpectedServerResponseSnafu.build()),
         };
 
         Ok(Mapping {

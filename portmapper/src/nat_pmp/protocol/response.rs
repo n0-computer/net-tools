@@ -2,7 +2,9 @@
 
 use std::net::Ipv4Addr;
 
+use nested_enum_utils::common_fields;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use snafu::Snafu;
 
 use super::{MapProtocol, Opcode, Version};
 
@@ -51,37 +53,45 @@ pub enum ResultCode {
 }
 
 /// Errors that can occur when decoding a [`Response`] from a server.
-#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+    #[snafu(implicit)]
+    span_trace: n0_snafu::SpanTrace,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu, PartialEq, Eq)]
+#[non_exhaustive]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     /// Request is too short or is otherwise malformed.
-    #[display("Response is malformed")]
+    #[snafu(display("Response is malformed"))]
     Malformed,
     /// The [`Response::RESPONSE_INDICATOR`] is not present.
-    #[display("Packet does not appear to be a response")]
+    #[snafu(display("Packet does not appear to be a response"))]
     NotAResponse,
     /// The received opcode is not recognized.
-    #[display("Invalid Opcode received")]
+    #[snafu(display("Invalid Opcode received"))]
     InvalidOpcode,
     /// The received version is not recognized.
-    #[display("Invalid version received")]
+    #[snafu(display("Invalid version received"))]
     InvalidVersion,
     /// The received result code is not recognized.
-    #[display("Invalid result code received")]
+    #[snafu(display("Invalid result code received"))]
     InvalidResultCode,
     /// Received an error code indicating the server does not support the sent version.
-    #[display("Server does not support the version")]
+    #[snafu(display("Server does not support the version"))]
     UnsupportedVersion,
     /// Received an error code indicating the operation is supported but not authorized.
-    #[display("Operation is supported but not authorized")]
+    #[snafu(display("Operation is supported but not authorized"))]
     NotAuthorizedOrRefused,
     /// Received an error code indicating the server experienced a network failure
-    #[display("Server experienced a network failure")]
+    #[snafu(display("Server experienced a network failure"))]
     NetworkFailure,
     /// Received an error code indicating the server cannot create more mappings at this time.
-    #[display("Server is out of resources")]
+    #[snafu(display("Server is out of resources"))]
     OutOfResources,
     /// Received an error code indicating the Opcode is not supported by the server.
-    #[display("Server does not support this opcode")]
+    #[snafu(display("Server does not support this opcode"))]
     UnsupportedOpcode,
 }
 
@@ -110,30 +120,30 @@ impl Response {
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
         if buf.len() < Self::MIN_SIZE || buf.len() > Self::MAX_SIZE {
-            return Err(Error::Malformed);
+            return Err(MalformedSnafu.build());
         }
-        let _: Version = buf[0].try_into().map_err(|_| Error::InvalidVersion)?;
+        let _: Version = buf[0].try_into().map_err(|_| InvalidVersionSnafu.build())?;
         let opcode = buf[1];
         if opcode & Self::RESPONSE_INDICATOR != Self::RESPONSE_INDICATOR {
-            return Err(Error::NotAResponse);
+            return Err(NotAResponseSnafu.build());
         }
         let opcode: Opcode = (opcode & !Self::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|_| Error::InvalidOpcode)?;
+            .map_err(|_| InvalidOpcodeSnafu.build())?;
 
         let result_bytes =
             u16::from_be_bytes(buf[2..4].try_into().expect("slice has the right len"));
         let result_code = result_bytes
             .try_into()
-            .map_err(|_| Error::InvalidResultCode)?;
+            .map_err(|_| InvalidResultCodeSnafu.build())?;
 
         match result_code {
             ResultCode::Success => Ok(()),
-            ResultCode::UnsupportedVersion => Err(Error::UnsupportedVersion),
-            ResultCode::NotAuthorizedOrRefused => Err(Error::NotAuthorizedOrRefused),
-            ResultCode::NetworkFailure => Err(Error::NetworkFailure),
-            ResultCode::OutOfResources => Err(Error::OutOfResources),
-            ResultCode::UnsupportedOpcode => Err(Error::UnsupportedOpcode),
+            ResultCode::UnsupportedVersion => Err(UnsupportedVersionSnafu.build()),
+            ResultCode::NotAuthorizedOrRefused => Err(NotAuthorizedOrRefusedSnafu.build()),
+            ResultCode::NetworkFailure => Err(NetworkFailureSnafu.build()),
+            ResultCode::OutOfResources => Err(OutOfResourcesSnafu.build()),
+            ResultCode::UnsupportedOpcode => Err(UnsupportedOpcodeSnafu.build()),
         }?;
 
         let response = match opcode {

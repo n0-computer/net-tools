@@ -6,6 +6,8 @@ use std::{
 
 use igd_next::{aio as aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
 use iroh_metrics::inc;
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, ResultExt, Snafu};
 use tracing::debug;
 
 use super::Metrics;
@@ -35,23 +37,30 @@ pub struct Mapping {
     external_port: NonZeroU16,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+    #[snafu(implicit)]
+    span_trace: n0_snafu::SpanTrace,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[error("Zero external port")]
-    ZeroExternalPort,
-    #[error("igd device's external ip is ipv6")]
-    NotIpv4,
-    #[error("Remove Port {0}")]
-    RemovePort(#[from] RemovePortError),
-    #[error("Search {0}")]
-    Search(#[from] SearchError),
-    #[error("Get external IP {0}")]
-    GetExternalIp(#[from] GetExternalIpError),
-    #[error("Add any port {0}")]
-    AddAnyPort(#[from] AddAnyPortError),
-    #[error("IO {0}")]
-    Io(#[from] std::io::Error),
+    #[snafu(display("Zero external port"))]
+    ZeroExternalPort {},
+    #[snafu(display("igd device's external ip is ipv6"))]
+    NotIpv4 {},
+    #[snafu(display("Remove Port"))]
+    RemovePort { source: RemovePortError },
+    #[snafu(display("Search"))]
+    Search { source: SearchError },
+    #[snafu(display("Get external IP"))]
+    GetExternalIp { source: GetExternalIpError },
+    #[snafu(display("Add any port"))]
+    AddAnyPort { source: AddAnyPortError },
+    #[snafu(display("IO"))]
+    Io { source: std::io::Error },
 }
 
 impl Mapping {
@@ -78,11 +87,17 @@ impl Mapping {
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })??
+            })
+            .context(IoSnafu)?
+            .context(SearchSnafu)?
         };
 
-        let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
-            return Err(Error::NotIpv4);
+        let std::net::IpAddr::V4(external_ip) = gateway
+            .get_external_ip()
+            .await
+            .context(GetExternalIpSnafu)?
+        else {
+            return Err(NotIpv4Snafu.build());
         };
 
         // if we are trying to get a specific external port, try this first. If this fails, default
@@ -114,9 +129,10 @@ impl Mapping {
                 PORT_MAPPING_LEASE_DURATION_SECONDS,
                 PORT_MAPPING_DESCRIPTION,
             )
-            .await?
+            .await
+            .context(AddAnyPortSnafu)?
             .try_into()
-            .map_err(|_| Error::ZeroExternalPort)?;
+            .map_err(|_| ZeroExternalPortSnafu.build())?;
 
         Ok(Mapping {
             gateway,
@@ -138,7 +154,8 @@ impl Mapping {
         } = self;
         gateway
             .remove_port(igd_next::PortMappingProtocol::UDP, external_port.into())
-            .await?;
+            .await
+            .context(RemovePortSnafu)?;
         Ok(())
     }
 
