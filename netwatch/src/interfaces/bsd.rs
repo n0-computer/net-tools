@@ -651,7 +651,7 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             )
         };
         if err != 0 {
-            return Err(std::io::Error::last_os_error().into_error(IoSnafu { name: "sysctl" }));
+            return Err(IoSnafu { name: "sysctl" }.into_error(std::io::Error::last_os_error()));
         }
         if n == 0 {
             // nothing available
@@ -677,7 +677,7 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             if io_err.raw_os_error().unwrap_or_default() == libc::ENOMEM && round < MAX_TRIES {
                 continue;
             }
-            return Err(io_err.into_error(IoSnafu { name: "sysctl" }));
+            return Err(IoSnafu { name: "sysctl" }.into_error(io_err));
         }
         // Truncate b, to the new length
         b.truncate(n);
