@@ -2,6 +2,8 @@
 
 #[cfg(not(target_os = "android"))]
 use n0_future::TryStreamExt;
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
@@ -9,25 +11,31 @@ use tokio::{
 
 use super::DefaultRouteDetails;
 
-#[derive(Debug, thiserror::Error)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+    #[snafu(implicit)]
+    span_trace: n0_snafu::SpanTrace,
+})]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("IO {0}")]
-    Io(#[from] std::io::Error),
+    #[snafu(display("IO"))]
+    Io { source: std::io::Error },
     #[cfg(not(target_os = "android"))]
-    #[error("no netlink response")]
+    #[snafu(display("no netlink response"))]
     NoResponse,
     #[cfg(not(target_os = "android"))]
-    #[error("interface not found")]
+    #[snafu(display("interface not found"))]
     InterfaceNotFound,
-    #[error("iface field is missing")]
+    #[snafu(display("iface field is missing"))]
     MissingIfaceField,
-    #[error("destination field is missing")]
+    #[snafu(display("destination field is missing"))]
     MissingDestinationField,
-    #[error("mask field is missing")]
+    #[snafu(display("mask field is missing"))]
     MissingMaskField,
     #[cfg(not(target_os = "android"))]
-    #[error("netlink")]
-    Netlink(#[from] rtnetlink::Error),
+    #[snafu(display("netlink"))]
+    Netlink { source: rtnetlink::Error },
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
@@ -49,7 +57,7 @@ const PROC_NET_ROUTE_PATH: &str = "/proc/net/route";
 
 async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     const ZERO_ADDR: &str = "00000000";
-    let file = File::open(PROC_NET_ROUTE_PATH).await?;
+    let file = File::open(PROC_NET_ROUTE_PATH).await.context(IoSnafu)?;
 
     // Explicitly set capacity, this is min(4096, DEFAULT_BUF_SIZE):
     // https://github.com/google/gvisor/issues/5732
@@ -65,7 +73,7 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     // read it all in one call.
     let reader = BufReader::with_capacity(8 * 1024, file);
     let mut lines_iter = reader.lines();
-    while let Some(line) = lines_iter.next_line().await? {
+    while let Some(line) = lines_iter.next_line().await.context(IoSnafu)? {
         if !line.contains(ZERO_ADDR) {
             continue;
         }
@@ -127,7 +135,7 @@ fn parse_android_ip_route(stdout: &str) -> Option<&str> {
 async fn default_route_netlink() -> Result<Option<DefaultRouteDetails>, Error> {
     use tracing::{info_span, Instrument};
 
-    let (connection, handle, _receiver) = rtnetlink::new_connection()?;
+    let (connection, handle, _receiver) = rtnetlink::new_connection().context(IoSnafu)?;
     let task = tokio::spawn(connection.instrument(info_span!("rtnetlink.conn")));
 
     let default = default_route_netlink_family(&handle, rtnetlink::IpVersion::V4).await?;
@@ -151,7 +159,7 @@ async fn default_route_netlink_family(
     use netlink_packet_route::route::RouteAttribute;
 
     let mut routes = handle.route().get(family).execute();
-    while let Some(route) = routes.try_next().await? {
+    while let Some(route) = routes.try_next().await.context(NetlinkSnafu)? {
         let route_attrs = route.attributes;
 
         if !route_attrs
@@ -187,9 +195,14 @@ async fn default_route_netlink_family(
 #[cfg(not(target_os = "android"))]
 async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String, Error> {
     use netlink_packet_route::link::LinkAttribute;
+    use snafu::OptionExt;
 
     let mut links = handle.link().get().match_index(index).execute();
-    let msg = links.try_next().await?.ok_or(Error::NoResponse)?;
+    let msg = links
+        .try_next()
+        .await
+        .context(NetlinkSnafu)?
+        .context(NoResponseSnafu)?;
 
     for nla in msg.attributes {
         if let LinkAttribute::IfName(name) = nla {

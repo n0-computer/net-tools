@@ -1130,6 +1130,7 @@ dependencies = [
 [[package]]
 name = "n0-snafu"
 version = "0.1.0"
+source = "git+https://github.com/n0-computer/n0-snafu?branch=matheus23%2Fclone#fcd966b7efe0d25ee5499b43608212a535a2fe53"
 dependencies = [
  "anyhow",
  "btparse",
@@ -1257,6 +1258,8 @@ dependencies = [
  "js-sys",
  "libc",
  "n0-future",
+ "n0-snafu",
+ "nested_enum_utils",
  "netdev",
  "netlink-packet-core",
  "netlink-packet-route 0.19.0",
@@ -1264,9 +1267,9 @@ dependencies = [
  "rtnetlink 0.13.1",
  "rtnetlink 0.14.1",
  "serde",
+ "snafu",
  "socket2",
  "testresult",
- "thiserror 2.0.11",
  "time",
  "tokio",
  "tokio-util",
@@ -1498,7 +1501,6 @@ dependencies = [
  "smallvec",
  "snafu",
  "socket2",
- "thiserror 2.0.11",
  "time",
  "tokio",
  "tokio-util",

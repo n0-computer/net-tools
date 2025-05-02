@@ -19,7 +19,9 @@ workspace = true
 atomic-waker = "1.1.2"
 bytes = "1.7"
 n0-future = "0.1.1"
-thiserror = "2"
+n0-snafu = { git = "https://github.com/n0-computer/n0-snafu", branch = "matheus23/clone" }
+nested_enum_utils = "0.2.0"
+snafu = "0.8.5"
 time = "0.3.20"
 tokio = { version = "1", features = [
     "io-util",

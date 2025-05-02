@@ -8,6 +8,9 @@ use std::{
     sync::LazyLock,
 };
 
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, IntoError, Snafu};
+
 use libc::{c_int, uintptr_t, AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{
@@ -627,20 +630,29 @@ pub struct InterfaceAnnounceMessage {
 /// Represents a type of routing information base.
 type RIBType = i32;
 
-#[derive(Debug, thiserror::Error)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+    #[snafu(implicit)]
+    span_trace: n0_snafu::SpanTrace,
+})]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum RouteError {
-    #[error("message mismatch")]
-    MessageMismatch,
-    #[error("message too short")]
-    MessageTooShort,
-    #[error("invalid message")]
-    InvalidMessage,
-    #[error("invalid address")]
-    InvalidAddress,
-    #[error("invalid rib type: {0}")]
-    InvalidRibType(RIBType),
-    #[error("io error calling: '{0}': {1:?}")]
-    Io(&'static str, std::io::Error),
+    #[snafu(display("message mismatch"))]
+    MessageMismatch {},
+    #[snafu(display("message too short"))]
+    MessageTooShort {},
+    #[snafu(display("invalid message"))]
+    InvalidMessage {},
+    #[snafu(display("invalid address"))]
+    InvalidAddress {},
+    #[snafu(display("invalid rib type {rib_type}"))]
+    InvalidRibType { rib_type: RIBType },
+    #[snafu(display("io error calling '{name}'"))]
+    Io {
+        source: std::io::Error,
+        name: &'static str,
+    },
 }
 
 /// FetchRIB fetches a routing information base from the operating system.
@@ -670,7 +682,7 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             )
         };
         if err != 0 {
-            return Err(RouteError::Io("sysctl", std::io::Error::last_os_error()));
+            return Err(std::io::Error::last_os_error().into_error(IoSnafu { name: "sysctl" }));
         }
         if n == 0 {
             // nothing available
@@ -696,7 +708,7 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             if io_err.raw_os_error().unwrap_or_default() == libc::ENOMEM && round < MAX_TRIES {
                 continue;
             }
-            return Err(RouteError::Io("sysctl", io_err));
+            return Err(io_err.into_error(IoSnafu { name: "sysctl" }));
         }
         // Truncate b, to the new length
         b.truncate(n);
