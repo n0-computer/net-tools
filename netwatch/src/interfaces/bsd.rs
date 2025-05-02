@@ -8,14 +8,13 @@ use std::{
     sync::LazyLock,
 };
 
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, IntoError, OptionExt, Snafu};
-
 use libc::{c_int, uintptr_t, AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{
     NET_RT_DUMP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTA_IFP, RTF_GATEWAY,
 };
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, IntoError, OptionExt, Snafu};
 use tracing::warn;
 
 use super::DefaultRouteDetails;
@@ -409,7 +408,7 @@ impl WireFormat {
                         continue;
                     }
                     name = std::str::from_utf8(&data[6..6 + i])
-                        .map_err(|_| RouteError::InvalidAddress)?
+                        .map_err(|_| InvalidAddressSnafu.build())?
                         .to_string();
                     break;
                 }
@@ -447,9 +446,7 @@ struct RoutingStack {
 
 /// Parses b as a routing information base and returns a list of routing messages.
 pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteError> {
-    if !is_valid_rib_type(typ) {
-        return Err(RouteError::InvalidRibType(typ));
-    }
+    snafu::ensure!(is_valid_rib_type(typ), InvalidRibTypeSnafu(typ));
 
     let mut msgs = Vec::new();
     let mut nmsgs = 0;
@@ -796,9 +793,7 @@ where
             let a = parse_default_addr(b)?;
             addrs.push(a);
             let l = roundup(b[0] as usize);
-            if b.len() < l {
-                return Err(RouteError::MessageTooShort);
-            }
+            snafu::ensure!(b.len() >= l, MessageTooShortSnafu);
             b = &b[l..];
         }
     }
@@ -850,7 +845,7 @@ fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
                 zone,
             })
         }
-        _ => Err(RouteError::InvalidAddress),
+        _ => Err(InvalidAddressSnafu.build()),
     }
 }
 

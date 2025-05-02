@@ -94,6 +94,7 @@ tokio = { version = "1", features = [
 
 # wasm-in-browser test/dev dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+derive_more = { version = "1.0.0", features = ["display"] }
 tracing-subscriber-wasm = "0.1.0"
 wasm-bindgen-test = "0.3"
 

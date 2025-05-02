@@ -153,6 +153,7 @@ pub enum DecodeError {
 }
 
 impl PartialEq for DecodeError {
+    #[allow(clippy::match_like_matches_macro)]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (DecodeError::Malformed { .. }, DecodeError::Malformed { .. }) => true,
