@@ -105,7 +105,8 @@ pub async fn default_route_android_ip_route() -> Result<Option<DefaultRouteDetai
         .args(["route", "show", "table", "0"])
         .kill_on_drop(true)
         .output()
-        .await?;
+        .await
+        .context(IoSnafu)?;
     let stdout = std::string::String::from_utf8_lossy(&output.stdout);
     let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
         interface_name: iface.to_string(),

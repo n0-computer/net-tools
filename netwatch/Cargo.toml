@@ -62,6 +62,7 @@ netlink-packet-core = "0.7.0"
 netlink-packet-route = "0.19" # 0.20/21 is blocked on rtnetlink bumping its dependency
 netlink-sys = "0.8.6"
 rtnetlink = "=0.13.1" # pinned because of https://github.com/rust-netlink/rtnetlink/issues/83
+derive_more = { version = "1.0.0", features = ["display"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.14"
