@@ -242,7 +242,8 @@
 <a href="#241" id="241">241</a>
 <a href="#242" id="242">242</a>
 <a href="#243" id="243">243</a>
-<a href="#244" id="244">244</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a></pre></div><pre class="rust"><code><span class="doccomment">//! Linux-specific network interfaces implementations.
 
 </span><span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">use </span>n0_future::TryStreamExt;
@@ -349,7 +350,8 @@
         .args([<span class="string">"route"</span>, <span class="string">"show"</span>, <span class="string">"table"</span>, <span class="string">"0"</span>])
         .kill_on_drop(<span class="bool-val">true</span>)
         .output()
-        .<span class="kw">await</span><span class="question-mark">?</span>;
+        .<span class="kw">await
+        </span>.context(IoSnafu)<span class="question-mark">?</span>;
     <span class="kw">let </span>stdout = std::string::String::from_utf8_lossy(<span class="kw-2">&amp;</span>output.stdout);
     <span class="kw">let </span>details = parse_android_ip_route(<span class="kw-2">&amp;</span>stdout).map(|iface| DefaultRouteDetails {
         interface_name: iface.to_string(),
