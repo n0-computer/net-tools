@@ -71,7 +71,9 @@ windows-result = "0.3"
 serde = { version = "1", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["debug"] }
 
+# wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+derive_more = { version = "1.0.0", features = ["display"] }
 js-sys = "0.3"
 web-sys = { version = "0.3.70", features = ["EventListener", "EventTarget"] }
 
@@ -94,7 +96,6 @@ tokio = { version = "1", features = [
 
 # wasm-in-browser test/dev dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
-derive_more = { version = "1.0.0", features = ["display"] }
 tracing-subscriber-wasm = "0.1.0"
 wasm-bindgen-test = "0.3"
 

@@ -446,7 +446,10 @@ struct RoutingStack {
 
 /// Parses b as a routing information base and returns a list of routing messages.
 pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteError> {
-    snafu::ensure!(is_valid_rib_type(typ), InvalidRibTypeSnafu(typ));
+    snafu::ensure!(
+        is_valid_rib_type(typ),
+        InvalidRibTypeSnafu { rib_type: typ }
+    );
 
     let mut msgs = Vec::new();
     let mut nmsgs = 0;
