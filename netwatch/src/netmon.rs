@@ -44,7 +44,7 @@ pub struct Monitor {
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("channel closed"))]
-    ChannelClosed,
+    ChannelClosed {},
     #[snafu(display("actor error"))]
     Actor { source: actor::Error },
 }

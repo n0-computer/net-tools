@@ -25,7 +25,7 @@ pub enum Error {
     #[snafu(display("IO"))]
     Io { source: std::io::Error },
     #[snafu(display("not route found"))]
-    NoRoute,
+    NoRoute {},
     #[snafu(display("WMI"))]
     Wmi { source: wmi::WMIError },
 }

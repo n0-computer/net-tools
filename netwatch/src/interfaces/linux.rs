@@ -21,16 +21,16 @@ pub enum Error {
     Io { source: std::io::Error },
     #[cfg(not(target_os = "android"))]
     #[snafu(display("no netlink response"))]
-    NoResponse,
+    NoResponse {},
     #[cfg(not(target_os = "android"))]
     #[snafu(display("interface not found"))]
-    InterfaceNotFound,
+    InterfaceNotFound {},
     #[snafu(display("iface field is missing"))]
-    MissingIfaceField,
+    MissingIfaceField {},
     #[snafu(display("destination field is missing"))]
-    MissingDestinationField,
+    MissingDestinationField {},
     #[snafu(display("mask field is missing"))]
-    MissingMaskField,
+    MissingMaskField {},
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink"))]
     Netlink { source: rtnetlink::Error },
