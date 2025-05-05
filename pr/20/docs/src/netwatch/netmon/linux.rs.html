@@ -175,7 +175,15 @@
 <a href="#174" id="174">174</a>
 <a href="#175" id="175">175</a>
 <a href="#176" id="176">176</a>
-<a href="#177" id="177">177</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
 };
@@ -189,6 +197,7 @@
 <span class="kw">use </span>netlink_packet_route::{address, route, RouteNetlinkMessage};
 <span class="kw">use </span>netlink_sys::{AsyncSocket, SocketAddr};
 <span class="kw">use </span>rtnetlink::new_connection;
+<span class="kw">use </span>snafu::{Backtrace, ResultExt, Snafu};
 <span class="kw">use </span>tokio::{sync::mpsc, task::JoinHandle};
 <span class="kw">use </span>tracing::{trace, warn};
 
@@ -208,10 +217,14 @@
     }
 }
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
+<span class="attr">#[derive(Debug, Snafu)]
+#[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
-    <span class="attr">#[error(<span class="string">"IO {0}"</span>)]
-    </span>Io(<span class="attr">#[from] </span>std::io::Error),
+    <span class="attr">#[snafu(display(<span class="string">"IO"</span>))]
+    </span>Io {
+        source: std::io::Error,
+        backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
+    },
 }
 
 <span class="kw">const fn </span>nl_mgrp(group: u32) -&gt; u32 {
@@ -235,7 +248,7 @@
 
 <span class="kw">impl </span>RouteMonitor {
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>new(sender: mpsc::Sender&lt;NetworkMessage&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-        <span class="kw">let </span>(<span class="kw-2">mut </span>conn, <span class="kw-2">mut </span>_handle, <span class="kw-2">mut </span>messages) = new_connection()<span class="question-mark">?</span>;
+        <span class="kw">let </span>(<span class="kw-2">mut </span>conn, <span class="kw-2">mut </span>_handle, <span class="kw-2">mut </span>messages) = new_connection().context(IoSnafu)<span class="question-mark">?</span>;
 
         <span class="comment">// Specify flags to listen on.
         </span><span class="kw">let </span>groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
@@ -246,7 +259,10 @@
             | nl_mgrp(RTNLGRP_IPV6_RULE);
 
         <span class="kw">let </span>addr = SocketAddr::new(<span class="number">0</span>, groups);
-        conn.socket_mut().socket_mut().bind(<span class="kw-2">&amp;</span>addr)<span class="question-mark">?</span>;
+        conn.socket_mut()
+            .socket_mut()
+            .bind(<span class="kw-2">&amp;</span>addr)
+            .context(IoSnafu)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>conn_handle = tokio::task::spawn(conn);
 

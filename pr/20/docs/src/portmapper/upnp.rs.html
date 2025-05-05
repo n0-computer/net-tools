@@ -176,7 +176,21 @@
 <a href="#175" id="175">175</a>
 <a href="#176" id="176">176</a>
 <a href="#177" id="177">177</a>
-<a href="#178" id="178">178</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
     sync::Arc,
@@ -184,6 +198,8 @@
 };
 
 <span class="kw">use </span>igd_next::{aio <span class="kw">as </span>aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
+<span class="kw">use </span>nested_enum_utils::common_fields;
+<span class="kw">use </span>snafu::{Backtrace, ResultExt, Snafu};
 <span class="kw">use </span>tracing::debug;
 
 <span class="kw">use </span><span class="kw">super</span>::Metrics;
@@ -213,23 +229,27 @@
     </span>external_port: NonZeroU16,
 }
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
+<span class="attr">#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
-    <span class="attr">#[error(<span class="string">"Zero external port"</span>)]
-    </span>ZeroExternalPort,
-    <span class="attr">#[error(<span class="string">"igd device's external ip is ipv6"</span>)]
-    </span>NotIpv4,
-    <span class="attr">#[error(<span class="string">"Remove Port {0}"</span>)]
-    </span>RemovePort(<span class="attr">#[from] </span>RemovePortError),
-    <span class="attr">#[error(<span class="string">"Search {0}"</span>)]
-    </span>Search(<span class="attr">#[from] </span>SearchError),
-    <span class="attr">#[error(<span class="string">"Get external IP {0}"</span>)]
-    </span>GetExternalIp(<span class="attr">#[from] </span>GetExternalIpError),
-    <span class="attr">#[error(<span class="string">"Add any port {0}"</span>)]
-    </span>AddAnyPort(<span class="attr">#[from] </span>AddAnyPortError),
-    <span class="attr">#[error(<span class="string">"IO {0}"</span>)]
-    </span>Io(<span class="attr">#[from] </span>std::io::Error),
+    <span class="attr">#[snafu(display(<span class="string">"Zero external port"</span>))]
+    </span>ZeroExternalPort {},
+    <span class="attr">#[snafu(display(<span class="string">"igd device's external ip is ipv6"</span>))]
+    </span>NotIpv4 {},
+    <span class="attr">#[snafu(display(<span class="string">"Remove Port"</span>))]
+    </span>RemovePort { source: RemovePortError },
+    <span class="attr">#[snafu(display(<span class="string">"Search"</span>))]
+    </span>Search { source: SearchError },
+    <span class="attr">#[snafu(display(<span class="string">"Get external IP"</span>))]
+    </span>GetExternalIp { source: GetExternalIpError },
+    <span class="attr">#[snafu(display(<span class="string">"Add any port"</span>))]
+    </span>AddAnyPort { source: AddAnyPortError },
+    <span class="attr">#[snafu(display(<span class="string">"IO"</span>))]
+    </span>Io { source: std::io::Error },
 }
 
 <span class="kw">impl </span>Mapping {
@@ -256,11 +276,17 @@
             .<span class="kw">await
             </span>.map_err(|<span class="kw">_</span>| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, <span class="string">"read timeout"</span>.to_string())
-            })<span class="question-mark">??
+            })
+            .context(IoSnafu)<span class="question-mark">?
+            </span>.context(SearchSnafu)<span class="question-mark">?
         </span>};
 
-        <span class="kw">let </span>std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().<span class="kw">await</span><span class="question-mark">? </span><span class="kw">else </span>{
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::NotIpv4);
+        <span class="kw">let </span>std::net::IpAddr::V4(external_ip) = gateway
+            .get_external_ip()
+            .<span class="kw">await
+            </span>.context(GetExternalIpSnafu)<span class="question-mark">?
+        </span><span class="kw">else </span>{
+            <span class="kw">return </span><span class="prelude-val">Err</span>(NotIpv4Snafu.build());
         };
 
         <span class="comment">// if we are trying to get a specific external port, try this first. If this fails, default
@@ -292,9 +318,10 @@
                 PORT_MAPPING_LEASE_DURATION_SECONDS,
                 PORT_MAPPING_DESCRIPTION,
             )
-            .<span class="kw">await</span><span class="question-mark">?
+            .<span class="kw">await
+            </span>.context(AddAnyPortSnafu)<span class="question-mark">?
             </span>.try_into()
-            .map_err(|<span class="kw">_</span>| Error::ZeroExternalPort)<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| ZeroExternalPortSnafu.build())<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(Mapping {
             gateway,
@@ -316,7 +343,8 @@
         } = <span class="self">self</span>;
         gateway
             .remove_port(igd_next::PortMappingProtocol::UDP, external_port.into())
-            .<span class="kw">await</span><span class="question-mark">?</span>;
+            .<span class="kw">await
+            </span>.context(RemovePortSnafu)<span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(())
     }
 

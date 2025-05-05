@@ -285,11 +285,20 @@
 <a href="#284" id="284">284</a>
 <a href="#285" id="285">285</a>
 <a href="#286" id="286">286</a>
-<a href="#287" id="287">287</a></pre></div><pre class="rust"><code><span class="doccomment">//! A NAT-PMP response encoding and decoding.
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a></pre></div><pre class="rust"><code><span class="doccomment">//! A NAT-PMP response encoding and decoding.
 
 </span><span class="kw">use </span>std::net::Ipv4Addr;
 
+<span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>num_enum::{IntoPrimitive, TryFromPrimitive};
+<span class="kw">use </span>snafu::{Backtrace, Snafu};
 
 <span class="kw">use super</span>::{MapProtocol, Opcode, Version};
 
@@ -338,38 +347,43 @@
 }
 
 <span class="doccomment">/// Errors that can occur when decoding a [`Response`] from a server.
-</span><span class="attr">#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+</span><span class="attr">#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
     <span class="doccomment">/// Request is too short or is otherwise malformed.
-    </span><span class="attr">#[display(<span class="string">"Response is malformed"</span>)]
-    </span>Malformed,
+    </span><span class="attr">#[snafu(display(<span class="string">"Response is malformed"</span>))]
+    </span>Malformed {},
     <span class="doccomment">/// The [`Response::RESPONSE_INDICATOR`] is not present.
-    </span><span class="attr">#[display(<span class="string">"Packet does not appear to be a response"</span>)]
-    </span>NotAResponse,
+    </span><span class="attr">#[snafu(display(<span class="string">"Packet does not appear to be a response"</span>))]
+    </span>NotAResponse {},
     <span class="doccomment">/// The received opcode is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid Opcode received"</span>)]
-    </span>InvalidOpcode,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid Opcode received"</span>))]
+    </span>InvalidOpcode {},
     <span class="doccomment">/// The received version is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid version received"</span>)]
-    </span>InvalidVersion,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid version received"</span>))]
+    </span>InvalidVersion {},
     <span class="doccomment">/// The received result code is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid result code received"</span>)]
-    </span>InvalidResultCode,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid result code received"</span>))]
+    </span>InvalidResultCode {},
     <span class="doccomment">/// Received an error code indicating the server does not support the sent version.
-    </span><span class="attr">#[display(<span class="string">"Server does not support the version"</span>)]
-    </span>UnsupportedVersion,
+    </span><span class="attr">#[snafu(display(<span class="string">"Server does not support the version"</span>))]
+    </span>UnsupportedVersion {},
     <span class="doccomment">/// Received an error code indicating the operation is supported but not authorized.
-    </span><span class="attr">#[display(<span class="string">"Operation is supported but not authorized"</span>)]
-    </span>NotAuthorizedOrRefused,
+    </span><span class="attr">#[snafu(display(<span class="string">"Operation is supported but not authorized"</span>))]
+    </span>NotAuthorizedOrRefused {},
     <span class="doccomment">/// Received an error code indicating the server experienced a network failure
-    </span><span class="attr">#[display(<span class="string">"Server experienced a network failure"</span>)]
-    </span>NetworkFailure,
+    </span><span class="attr">#[snafu(display(<span class="string">"Server experienced a network failure"</span>))]
+    </span>NetworkFailure {},
     <span class="doccomment">/// Received an error code indicating the server cannot create more mappings at this time.
-    </span><span class="attr">#[display(<span class="string">"Server is out of resources"</span>)]
-    </span>OutOfResources,
+    </span><span class="attr">#[snafu(display(<span class="string">"Server is out of resources"</span>))]
+    </span>OutOfResources {},
     <span class="doccomment">/// Received an error code indicating the Opcode is not supported by the server.
-    </span><span class="attr">#[display(<span class="string">"Server does not support this opcode"</span>)]
-    </span>UnsupportedOpcode,
+    </span><span class="attr">#[snafu(display(<span class="string">"Server does not support this opcode"</span>))]
+    </span>UnsupportedOpcode {},
 }
 
 <span class="kw">impl </span>Response {
@@ -397,30 +411,30 @@
     <span class="doccomment">/// Decode a response.
     </span><span class="kw">pub fn </span>decode(buf: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
         <span class="kw">if </span>buf.len() &lt; <span class="self">Self</span>::MIN_SIZE || buf.len() &gt; <span class="self">Self</span>::MAX_SIZE {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::Malformed);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(MalformedSnafu.build());
         }
-        <span class="kw">let _</span>: Version = buf[<span class="number">0</span>].try_into().map_err(|<span class="kw">_</span>| Error::InvalidVersion)<span class="question-mark">?</span>;
+        <span class="kw">let _</span>: Version = buf[<span class="number">0</span>].try_into().map_err(|<span class="kw">_</span>| InvalidVersionSnafu.build())<span class="question-mark">?</span>;
         <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
         <span class="kw">if </span>opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR != <span class="self">Self</span>::RESPONSE_INDICATOR {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::NotAResponse);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(NotAResponseSnafu.build());
         }
         <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|<span class="kw">_</span>| Error::InvalidOpcode)<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| InvalidOpcodeSnafu.build())<span class="question-mark">?</span>;
 
         <span class="kw">let </span>result_bytes =
             u16::from_be_bytes(buf[<span class="number">2</span>..<span class="number">4</span>].try_into().expect(<span class="string">"slice has the right len"</span>));
         <span class="kw">let </span>result_code = result_bytes
             .try_into()
-            .map_err(|<span class="kw">_</span>| Error::InvalidResultCode)<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| InvalidResultCodeSnafu.build())<span class="question-mark">?</span>;
 
         <span class="kw">match </span>result_code {
             ResultCode::Success =&gt; <span class="prelude-val">Ok</span>(()),
-            ResultCode::UnsupportedVersion =&gt; <span class="prelude-val">Err</span>(Error::UnsupportedVersion),
-            ResultCode::NotAuthorizedOrRefused =&gt; <span class="prelude-val">Err</span>(Error::NotAuthorizedOrRefused),
-            ResultCode::NetworkFailure =&gt; <span class="prelude-val">Err</span>(Error::NetworkFailure),
-            ResultCode::OutOfResources =&gt; <span class="prelude-val">Err</span>(Error::OutOfResources),
-            ResultCode::UnsupportedOpcode =&gt; <span class="prelude-val">Err</span>(Error::UnsupportedOpcode),
+            ResultCode::UnsupportedVersion =&gt; <span class="prelude-val">Err</span>(UnsupportedVersionSnafu.build()),
+            ResultCode::NotAuthorizedOrRefused =&gt; <span class="prelude-val">Err</span>(NotAuthorizedOrRefusedSnafu.build()),
+            ResultCode::NetworkFailure =&gt; <span class="prelude-val">Err</span>(NetworkFailureSnafu.build()),
+            ResultCode::OutOfResources =&gt; <span class="prelude-val">Err</span>(OutOfResourcesSnafu.build()),
+            ResultCode::UnsupportedOpcode =&gt; <span class="prelude-val">Err</span>(UnsupportedOpcodeSnafu.build()),
         }<span class="question-mark">?</span>;
 
         <span class="kw">let </span>response = <span class="kw">match </span>opcode {
@@ -560,7 +574,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::DetermineExternalAddress, <span class="kw-2">&amp;mut </span>gen);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 
     <span class="attr">#[test]
@@ -569,7 +583,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::MapUdp, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 }
 </code></pre></div></section></main></body></html>

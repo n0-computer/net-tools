@@ -753,9 +753,7 @@
 <a href="#752" id="752">752</a>
 <a href="#753" id="753">753</a>
 <a href="#754" id="754">754</a>
-<a href="#755" id="755">755</a>
-<a href="#756" id="756">756</a>
-<a href="#757" id="757">757</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
+<a href="#755" id="755">755</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
 
 </span><span class="kw">use </span>std::{
     net::{Ipv4Addr, SocketAddrV4},
@@ -767,6 +765,7 @@
 <span class="kw">use </span>current_mapping::CurrentMapping;
 <span class="kw">use </span>futures_lite::StreamExt;
 <span class="kw">use </span>netwatch::interfaces::HomeRouter;
+<span class="kw">use </span>snafu::Snafu;
 <span class="kw">use </span>tokio::sync::{mpsc, oneshot, watch};
 <span class="kw">use </span>tokio_util::task::AbortOnDropHandle;
 <span class="kw">use </span>tracing::{debug, info_span, trace, Instrument};
@@ -823,27 +822,24 @@
     }
 }
 
-<span class="attr">#[derive(Debug, thiserror::Error, Clone)]
+<span class="comment">// Cannot have backtrace due to Clone bound
+// #[nested_enum_utils::common_fields({
+//     backtrace: Option&lt;snafu::Backtrace&gt;,
+// })]
+</span><span class="attr">#[allow(missing_docs)]
+#[derive(Debug, Clone, Snafu)]
+#[non_exhaustive]
 </span><span class="kw">pub enum </span>ProbeError {
-    <span class="attr">#[error(<span class="string">"Mapping channel is full"</span>)]
+    <span class="attr">#[snafu(display(<span class="string">"Mapping channel is full"</span>))]
     </span>ChannelFull,
-    <span class="attr">#[error(<span class="string">"Mapping channel is closed"</span>)]
+    <span class="attr">#[snafu(display(<span class="string">"Mapping channel is closed"</span>))]
     </span>ChannelClosed,
-    <span class="attr">#[error(<span class="string">"No gateway found for probe"</span>)]
+    <span class="attr">#[snafu(display(<span class="string">"No gateway found for probe"</span>))]
     </span>NoGateway,
-    <span class="attr">#[error(<span class="string">"gateway found is ipv6, ignoring"</span>)]
+    <span class="attr">#[snafu(display(<span class="string">"gateway found is ipv6, ignoring"</span>))]
     </span>Ipv6Gateway,
-    <span class="attr">#[error(<span class="string">"Join is_panic: {is_panic}, is_cancelled: {is_cancelled}"</span>)]
+    <span class="attr">#[snafu(display(<span class="string">"Probe task stopped. is_panic: {is_panic}, is_cancelled: {is_cancelled}"</span>))]
     </span>Join { is_panic: bool, is_cancelled: bool },
-}
-
-<span class="kw">impl </span>From&lt;tokio::task::JoinError&gt; <span class="kw">for </span>ProbeError {
-    <span class="kw">fn </span>from(value: tokio::task::JoinError) -&gt; <span class="self">Self </span>{
-        <span class="self">Self</span>::Join {
-            is_panic: value.is_panic(),
-            is_cancelled: value.is_cancelled(),
-        }
-    }
 }
 
 <span class="attr">#[derive(derive_more::Debug)]
@@ -945,8 +941,8 @@
 
             <span class="comment">// recover the sender and return the error there
             </span><span class="kw">let </span>(result_tx, e) = <span class="kw">match </span>e {
-                Full(Message::Probe { result_tx }) =&gt; (result_tx, ProbeError::ChannelFull),
-                Closed(Message::Probe { result_tx }) =&gt; (result_tx, ProbeError::ChannelClosed),
+                Full(Message::Probe { result_tx }) =&gt; (result_tx, ChannelFullSnafu.build()),
+                Closed(Message::Probe { result_tx }) =&gt; (result_tx, ChannelClosedSnafu.build()),
                 Full(<span class="kw">_</span>) | Closed(<span class="kw">_</span>) =&gt; <span class="macro">unreachable!</span>(<span class="string">"Sent value is a probe."</span>),
             };
 
@@ -1272,7 +1268,7 @@
                     <span class="macro">trace!</span>(<span class="string">"tick: probe ready"</span>);
                     <span class="comment">// retrieve the receivers and clear the task
                     </span><span class="kw">let </span>receivers = <span class="self">self</span>.probing_task.take().expect(<span class="string">"is some"</span>).<span class="number">1</span>;
-                    <span class="kw">let </span>probe_result = probe_result.map_err(Into::into);
+                    <span class="kw">let </span>probe_result = probe_result.map_err(|e| JoinSnafu { is_panic: e.is_panic(), is_cancelled: e.is_cancelled() }.build());
                     <span class="self">self</span>.on_probe_result(probe_result, receivers);
                 }
                 <span class="prelude-val">Some</span>(event) = <span class="self">self</span>.current_mapping.next() =&gt; {
@@ -1491,7 +1487,7 @@
 <span class="doccomment">/// Gets the local ip and gateway address for port mapping.
 </span><span class="kw">fn </span>ip_and_gateway() -&gt; <span class="prelude-ty">Result</span>&lt;(Ipv4Addr, Ipv4Addr), ProbeError&gt; {
     <span class="kw">let </span><span class="prelude-val">Some</span>(HomeRouter { gateway, my_ip }) = HomeRouter::new() <span class="kw">else </span>{
-        <span class="kw">return </span><span class="prelude-val">Err</span>(ProbeError::NoGateway);
+        <span class="kw">return </span><span class="prelude-val">Err</span>(NoGatewaySnafu.build());
     };
 
     <span class="kw">let </span>local_ip = <span class="kw">match </span>my_ip {
@@ -1507,7 +1503,7 @@
     };
 
     <span class="kw">let </span>std::net::IpAddr::V4(gateway) = gateway <span class="kw">else </span>{
-        <span class="kw">return </span><span class="prelude-val">Err</span>(ProbeError::Ipv6Gateway);
+        <span class="kw">return </span><span class="prelude-val">Err</span>(Ipv6GatewaySnafu.build());
     };
 
     <span class="prelude-val">Ok</span>((local_ip, gateway))
