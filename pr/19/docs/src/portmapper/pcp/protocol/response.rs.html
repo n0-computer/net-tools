@@ -293,10 +293,21 @@
 <a href="#292" id="292">292</a>
 <a href="#293" id="293">293</a>
 <a href="#294" id="294">294</a>
-<a href="#295" id="295">295</a></pre></div><pre class="rust"><code><span class="doccomment">//! A PCP response encoding and decoding.
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a></pre></div><pre class="rust"><code><span class="doccomment">//! A PCP response encoding and decoding.
 
 </span><span class="kw">use </span>derive_more::Display;
+<span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
+<span class="kw">use </span>snafu::{Backtrace, Snafu};
 
 <span class="kw">use super</span>::{opcode_data::OpcodeData, Opcode, Version};
 
@@ -313,9 +324,7 @@
 ///
 /// Refer to [RFC 6887 Result Codes](https://datatracker.ietf.org/doc/html/rfc6887#section-7.4)
 </span><span class="comment">// NOTE: docs for each variant are largely adapted from the RFC's description of each code.
-</span><span class="attr">#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Display, thiserror::Error,
-)]
+</span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Display)]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>ErrorCode {
     <span class="doccomment">/// The version number at the start of the PCP Request header is not recognized by the PCP
@@ -367,6 +376,8 @@
     </span>ExcessiveRemotePeers = <span class="number">13</span>,
 }
 
+<span class="kw">impl </span>std::error::Error <span class="kw">for </span>ErrorCode {}
+
 <span class="doccomment">/// Result code of a PCP response.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub enum </span>ResultCode {
@@ -415,32 +426,39 @@
 }
 
 <span class="doccomment">/// Errors that can occur when decoding a [`Response`] from a server.
-</span><span class="attr">#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+</span><span class="attr">#[allow(missing_docs)]
+#[non_exhaustive]
+#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
+})]
+#[derive(Debug, Snafu)]
 </span><span class="kw">pub enum </span>DecodeError {
     <span class="doccomment">/// Request is too short or is otherwise malformed.
-    </span><span class="attr">#[display(<span class="string">"Response is malformed"</span>)]
-    </span>Malformed,
+    </span><span class="attr">#[snafu(display(<span class="string">"Response is malformed"</span>))]
+    </span>Malformed {},
     <span class="doccomment">/// The [`Response::RESPONSE_INDICATOR`] is not present.
-    </span><span class="attr">#[display(<span class="string">"Packet does not appear to be a response"</span>)]
-    </span>NotAResponse,
+    </span><span class="attr">#[snafu(display(<span class="string">"Packet does not appear to be a response"</span>))]
+    </span>NotAResponse {},
     <span class="doccomment">/// The received opcode is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid Opcode received"</span>)]
-    </span>InvalidOpcode,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid Opcode received"</span>))]
+    </span>InvalidOpcode {},
     <span class="doccomment">/// The received version is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid version received"</span>)]
-    </span>InvalidVersion,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid version received"</span>))]
+    </span>InvalidVersion {},
     <span class="doccomment">/// The received result code is not recognized.
-    </span><span class="attr">#[display(<span class="string">"Invalid result code received"</span>)]
-    </span>InvalidResultCode,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid result code received"</span>))]
+    </span>InvalidResultCode {},
     <span class="doccomment">/// The received opcode data could not be decoded.
-    </span><span class="attr">#[display(<span class="string">"Invalid opcode data received"</span>)]
-    </span>InvalidOpcodeData,
+    </span><span class="attr">#[snafu(display(<span class="string">"Invalid opcode data received"</span>))]
+    </span>InvalidOpcodeData {},
 }
 
-<span class="attr">#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+<span class="attr">#[derive(Debug, Snafu)]
 </span><span class="kw">pub enum </span>Error {
-    DecodeError(DecodeError),
-    ErrorCode(ErrorCode),
+    <span class="attr">#[snafu(transparent)]
+    </span>DecodeError { source: DecodeError },
+    <span class="attr">#[snafu(transparent)]
+    </span>ErrorCode { source: ErrorCode },
 }
 
 <span class="kw">impl </span>Response {
@@ -463,31 +481,31 @@
 
     <span class="doccomment">/// Decode a response.
     </span><span class="kw">pub fn </span>decode(buf: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-        <span class="kw">if </span>buf.len() &lt; <span class="self">Self</span>::MIN_SIZE || buf.len() &gt; <span class="self">Self</span>::MAX_SIZE {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::DecodeError(DecodeError::Malformed));
-        }
+        <span class="macro">snafu::ensure!</span>(
+            <span class="self">Self</span>::MIN_SIZE &lt;= buf.len() &amp;&amp; buf.len() &lt;= <span class="self">Self</span>::MAX_SIZE,
+            MalformedSnafu
+        );
 
-        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>]
-            .try_into()
-            .map_err(|<span class="kw">_</span>| Error::DecodeError(DecodeError::InvalidVersion))<span class="question-mark">?</span>;
+        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>].try_into().map_err(|<span class="kw">_</span>| InvalidVersionSnafu.build())<span class="question-mark">?</span>;
 
         <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
-        <span class="kw">if </span>opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR != <span class="self">Self</span>::RESPONSE_INDICATOR {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::DecodeError(DecodeError::NotAResponse));
-        }
+        <span class="macro">snafu::ensure!</span>(
+            opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR == <span class="self">Self</span>::RESPONSE_INDICATOR,
+            NotAResponseSnafu
+        );
         <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|<span class="kw">_</span>| Error::DecodeError(DecodeError::InvalidOpcode))<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| InvalidOpcodeSnafu.build())<span class="question-mark">?</span>;
 
         <span class="comment">// buf[2] reserved
 
         // return early if the result code is an error
         </span><span class="kw">let </span>result_code: ResultCode = buf[<span class="number">3</span>]
             .try_into()
-            .map_err(|<span class="kw">_</span>| Error::DecodeError(DecodeError::InvalidResultCode))<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| InvalidResultCodeSnafu.build())<span class="question-mark">?</span>;
         <span class="kw">match </span>result_code {
             ResultCode::Success =&gt; {}
-            ResultCode::Error(error_code) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorCode(error_code)),
+            ResultCode::Error(error_code) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(error_code.into()),
         }
 
         <span class="kw">let </span>lifetime_bytes = buf[<span class="number">4</span>..<span class="number">8</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
@@ -498,8 +516,8 @@
 
         <span class="comment">// buf[12..24] reserved
 
-        </span><span class="kw">let </span>data = OpcodeData::decode(opcode, <span class="kw-2">&amp;</span>buf[<span class="number">24</span>..])
-            .map_err(|<span class="kw">_</span>| Error::DecodeError(DecodeError::InvalidOpcodeData))<span class="question-mark">?</span>;
+        </span><span class="kw">let </span>data =
+            OpcodeData::decode(opcode, <span class="kw-2">&amp;</span>buf[<span class="number">24</span>..]).map_err(|<span class="kw">_</span>| InvalidOpcodeDataSnafu.build())<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(Response {
             lifetime_seconds,
@@ -564,7 +582,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::Announce, <span class="kw-2">&amp;mut </span>gen);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 
     <span class="attr">#[test]
@@ -585,7 +603,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::Map, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 }
 </code></pre></div></section></main></body></html>

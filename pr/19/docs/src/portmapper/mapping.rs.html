@@ -106,9 +106,19 @@
 <a href="#105" id="105">105</a>
 <a href="#106" id="106">106</a>
 <a href="#107" id="107">107</a>
-<a href="#108" id="108">108</a></pre></div><pre class="rust"><code><span class="doccomment">//! A port mapping created with one of the supported protocols.
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a></pre></div><pre class="rust"><code><span class="doccomment">//! A port mapping created with one of the supported protocols.
 
 </span><span class="kw">use </span>std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
+
+<span class="kw">use </span>nested_enum_utils::common_fields;
+<span class="kw">use </span>snafu::{Backtrace, ResultExt, Snafu};
 
 <span class="kw">use super</span>::{nat_pmp, pcp, upnp};
 
@@ -130,15 +140,19 @@
 }
 
 <span class="doccomment">/// Mapping error.
-</span><span class="attr">#[derive(Debug, thiserror::Error)]
+</span><span class="attr">#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
-    <span class="attr">#[error(<span class="string">"PCP mapping failed: {0}"</span>)]
-    </span>Pcp(<span class="attr">#[from] </span>pcp::Error),
-    <span class="attr">#[error(<span class="string">"NAT-PMP mapping failed: {0}"</span>)]
-    </span>NatPmp(<span class="attr">#[from] </span>nat_pmp::Error),
-    <span class="attr">#[error(<span class="string">"UPnP mapping failed: {0}"</span>)]
-    </span>Upnp(<span class="attr">#[from] </span>upnp::Error),
+    <span class="attr">#[snafu(display(<span class="string">"PCP mapping failed"</span>))]
+    </span>Pcp { source: pcp::Error },
+    <span class="attr">#[snafu(display(<span class="string">"NAT-PMP mapping failed"</span>))]
+    </span>NatPmp { source: nat_pmp::Error },
+    <span class="attr">#[snafu(display(<span class="string">"UPnP mapping failed"</span>))]
+    </span>Upnp { source: upnp::Error },
 }
 
 <span class="kw">impl </span>Mapping {
@@ -152,7 +166,7 @@
         pcp::Mapping::new(local_ip, local_port, gateway, external_addr)
             .<span class="kw">await
             </span>.map(<span class="self">Self</span>::Pcp)
-            .map_err(Into::into)
+            .context(PcpSnafu)
     }
 
     <span class="doccomment">/// Create a new NAT-PMP mapping.
@@ -170,7 +184,7 @@
         )
         .<span class="kw">await
         </span>.map(<span class="self">Self</span>::NatPmp)
-        .map_err(Into::into)
+        .context(NatPmpSnafu)
     }
 
     <span class="doccomment">/// Create a new UPnP mapping.
@@ -183,15 +197,15 @@
         upnp::Mapping::new(local_ip, local_port, gateway, external_port)
             .<span class="kw">await
             </span>.map(<span class="self">Self</span>::Upnp)
-            .map_err(Into::into)
+            .context(UpnpSnafu)
     }
 
     <span class="doccomment">/// Release the mapping.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>release(<span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">match </span><span class="self">self </span>{
-            Mapping::Upnp(m) =&gt; m.release().<span class="kw">await</span><span class="question-mark">?</span>,
-            Mapping::Pcp(m) =&gt; m.release().<span class="kw">await</span><span class="question-mark">?</span>,
-            Mapping::NatPmp(m) =&gt; m.release().<span class="kw">await</span><span class="question-mark">?</span>,
+            Mapping::Upnp(m) =&gt; m.release().<span class="kw">await</span>.context(UpnpSnafu)<span class="question-mark">?</span>,
+            Mapping::Pcp(m) =&gt; m.release().<span class="kw">await</span>.context(PcpSnafu)<span class="question-mark">?</span>,
+            Mapping::NatPmp(m) =&gt; m.release().<span class="kw">await</span>.context(NatPmpSnafu)<span class="question-mark">?</span>,
         }
         <span class="prelude-val">Ok</span>(())
     }

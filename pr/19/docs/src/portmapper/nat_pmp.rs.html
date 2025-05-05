@@ -203,11 +203,19 @@
 <a href="#202" id="202">202</a>
 <a href="#203" id="203">203</a>
 <a href="#204" id="204">204</a>
-<a href="#205" id="205">205</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a NAT-PMP server.
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a NAT-PMP server.
 
 </span><span class="kw">use </span>std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
+<span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>netwatch::UdpSocket;
+<span class="kw">use </span>snafu::{Backtrace, Snafu};
 <span class="kw">use </span>tracing::{debug, trace};
 
 <span class="kw">use </span><span class="self">self</span>::protocol::{MapProtocol, Request, Response};
@@ -236,17 +244,21 @@
     </span>lifetime_seconds: u32,
 }
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
+<span class="attr">#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
-    <span class="attr">#[error(<span class="string">"server returned unexpected response for mapping request"</span>)]
-    </span>UnexpectedServerResponse,
-    <span class="attr">#[error(<span class="string">"received 0 port from server as external port"</span>)]
-    </span>ZeroExternalPort,
-    <span class="attr">#[error(<span class="string">"IO: {0}"</span>)]
-    </span>Io(<span class="attr">#[from] </span>std::io::Error),
-    <span class="attr">#[error(<span class="string">"Protocol: {0}"</span>)]
-    </span>Protocol(<span class="attr">#[from] </span>protocol::Error),
+    <span class="attr">#[snafu(display(<span class="string">"server returned unexpected response for mapping request"</span>))]
+    </span>UnexpectedServerResponse {},
+    <span class="attr">#[snafu(display(<span class="string">"received 0 port from server as external port"</span>))]
+    </span>ZeroExternalPort {},
+    <span class="attr">#[snafu(transparent)]
+    </span>Io { source: std::io::Error },
+    <span class="attr">#[snafu(transparent)]
+    </span>Protocol { source: protocol::Error },
 }
 
 <span class="kw">impl </span><span class="kw">super</span>::mapping::PortMapped <span class="kw">for </span>Mapping {
@@ -297,12 +309,12 @@
                 external_port,
                 lifetime_seconds,
             } <span class="kw">if </span>private_port == Into::&lt;u16&gt;::into(local_port) =&gt; (external_port, lifetime_seconds),
-            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(Error::UnexpectedServerResponse),
+            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(UnexpectedServerResponseSnafu.build()),
         };
 
         <span class="kw">let </span>external_port = external_port
             .try_into()
-            .map_err(|<span class="kw">_</span>| Error::ZeroExternalPort)<span class="question-mark">?</span>;
+            .map_err(|<span class="kw">_</span>| ZeroExternalPortSnafu.build())<span class="question-mark">?</span>;
 
         <span class="comment">// now send the second request to get the external address
         </span><span class="kw">let </span>req = Request::ExternalAddress;
@@ -322,7 +334,7 @@
                 epoch_time: <span class="kw">_</span>,
                 public_ip,
             } =&gt; public_ip,
-            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(Error::UnexpectedServerResponse),
+            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(UnexpectedServerResponseSnafu.build()),
         };
 
         <span class="prelude-val">Ok</span>(Mapping {
