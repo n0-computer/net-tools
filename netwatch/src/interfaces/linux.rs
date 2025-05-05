@@ -9,9 +9,6 @@ use tokio::{
 
 use super::DefaultRouteDetails;
 
-#[cfg(not(target_os = "android"))]
-type NetlinkError = netlink_proto::Error<RouteNetlinkMessage>;
-
 #[common_fields({
     backtrace: Option<Backtrace>,
 })]
@@ -38,7 +35,9 @@ pub enum Error {
     Netlink { source: NetlinkError },
     #[cfg(not(target_os = "android"))]
     #[snafu(display("unexpected netlink message"))]
-    UnexpectedNetlinkMessage {},
+    UnexpectedNetlinkMessage {
+        source: netlink_proto::Error<netlink_packet_route::RouteNetlinkMessage>,
+    },
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink error message: {source:?}"))]
     NetlinkErrorMessage {
@@ -136,6 +135,7 @@ mod linux {
         AddressFamily, RouteNetlinkMessage,
     };
     use netlink_sys::protocols::NETLINK_ROUTE;
+    use snafu::IntoError;
     use tracing::{info_span, Instrument};
 
     use super::*;
@@ -189,7 +189,7 @@ mod linux {
                 response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))),
             ),
             Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
-                Error::from(e),
+                NetlinkSnafu.into_error(e),
             ))),
         }
     }
@@ -257,7 +257,7 @@ mod linux {
                 response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))),
             ),
             Err(e) => Either::Right(n0_future::stream::once::<Result<LinkMessage, Error>>(Err(
-                Error::from(e),
+                NetlinkSnafu.into_error(e),
             ))),
         }
     }
