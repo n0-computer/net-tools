@@ -271,7 +271,7 @@ mod linux {
     async fn iface_by_index(handle: &Handle, index: u32) -> Result<String, Error> {
         let message = create_link_get_message(index);
         let mut links = get_link(handle.clone(), message);
-        let msg = links.try_next().await.context(NoResponseSnafu)?;
+        let msg = links.try_next().await?.context(NoResponseSnafu)?;
 
         for nla in msg.attributes {
             if let LinkAttribute::IfName(name) = nla {
