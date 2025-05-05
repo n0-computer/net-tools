@@ -282,6 +282,20 @@ mod linux {
         }
         Err(InterfaceNotFoundSnafu.build())
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        #[tokio::test]
+        #[cfg(not(target_os = "android"))]
+        async fn test_default_route_netlink() {
+            let route = linux::default_route().await.unwrap();
+            // assert!(route.is_some());
+            if let Some(route) = route {
+                assert!(!route.interface_name.is_empty());
+            }
+        }
+    }
 }
 
 /// Parses the output of the android `/system/bin/ip` command for the default route.
@@ -320,15 +334,5 @@ mod tests {
         let stdout = "default via 10.0.2.2. dev radio0 table 1016 proto static mtu 1500";
         let iface = parse_android_ip_route(stdout).unwrap();
         assert_eq!(iface, "radio0");
-    }
-
-    #[tokio::test]
-    #[cfg(not(target_os = "android"))]
-    async fn test_default_route_netlink() {
-        let route = default_route_netlink().await.unwrap();
-        // assert!(route.is_some());
-        if let Some(route) = route {
-            assert!(!route.interface_name.is_empty());
-        }
     }
 }
