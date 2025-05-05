@@ -302,28 +302,7 @@
 <a href="#301" id="301">301</a>
 <a href="#302" id="302">302</a>
 <a href="#303" id="303">303</a>
-<a href="#304" id="304">304</a>
-<a href="#305" id="305">305</a>
-<a href="#306" id="306">306</a>
-<a href="#307" id="307">307</a>
-<a href="#308" id="308">308</a>
-<a href="#309" id="309">309</a>
-<a href="#310" id="310">310</a>
-<a href="#311" id="311">311</a>
-<a href="#312" id="312">312</a>
-<a href="#313" id="313">313</a>
-<a href="#314" id="314">314</a>
-<a href="#315" id="315">315</a>
-<a href="#316" id="316">316</a>
-<a href="#317" id="317">317</a>
-<a href="#318" id="318">318</a>
-<a href="#319" id="319">319</a>
-<a href="#320" id="320">320</a>
-<a href="#321" id="321">321</a>
-<a href="#322" id="322">322</a>
-<a href="#323" id="323">323</a>
-<a href="#324" id="324">324</a>
-<a href="#325" id="325">325</a></pre></div><pre class="rust"><code><span class="doccomment">//! A PCP response encoding and decoding.
+<a href="#304" id="304">304</a></pre></div><pre class="rust"><code><span class="doccomment">//! A PCP response encoding and decoding.
 
 </span><span class="kw">use </span>derive_more::Display;
 <span class="kw">use </span>nested_enum_utils::common_fields;
@@ -451,11 +430,8 @@
 #[non_exhaustive]
 #[common_fields({
     backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
 })]
-<span class="attr">#[derive(Debug, Snafu)]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
+#[derive(Debug, Snafu)]
 </span><span class="kw">pub enum </span>DecodeError {
     <span class="doccomment">/// Request is too short or is otherwise malformed.
     </span><span class="attr">#[snafu(display(<span class="string">"Response is malformed"</span>))]
@@ -477,25 +453,7 @@
     </span>InvalidOpcodeData {},
 }
 
-<span class="kw">impl </span>PartialEq <span class="kw">for </span>DecodeError {
-    <span class="attr">#[allow(clippy::match_like_matches_macro)]
-    </span><span class="kw">fn </span>eq(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; bool {
-        <span class="kw">match </span>(<span class="self">self</span>, other) {
-            (DecodeError::Malformed { .. }, DecodeError::Malformed { .. }) =&gt; <span class="bool-val">true</span>,
-            (DecodeError::NotAResponse { .. }, DecodeError::NotAResponse { .. }) =&gt; <span class="bool-val">true</span>,
-            (DecodeError::InvalidOpcode { .. }, DecodeError::InvalidOpcode { .. }) =&gt; <span class="bool-val">true</span>,
-            (DecodeError::InvalidVersion { .. }, DecodeError::InvalidVersion { .. }) =&gt; <span class="bool-val">true</span>,
-            (DecodeError::InvalidResultCode { .. }, DecodeError::InvalidResultCode { .. }) =&gt; <span class="bool-val">true</span>,
-            (DecodeError::InvalidOpcodeData { .. }, DecodeError::InvalidOpcodeData { .. }) =&gt; <span class="bool-val">true</span>,
-            <span class="kw">_ </span>=&gt; <span class="bool-val">false</span>,
-        }
-    }
-}
-
-<span class="kw">impl </span>Eq <span class="kw">for </span>DecodeError {}
-
-<span class="attr">#[derive(Debug, Snafu, PartialEq, Eq)]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
+<span class="attr">#[derive(Debug, Snafu)]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(transparent)]
     </span>DecodeError { source: DecodeError },
@@ -624,7 +582,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::Announce, <span class="kw-2">&amp;mut </span>gen);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 
     <span class="attr">#[test]
@@ -645,7 +603,7 @@
 
         <span class="kw">let </span>response = Response::random(Opcode::Map, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = response.encode();
-        <span class="macro">assert_eq!</span>(<span class="prelude-val">Ok</span>(response), Response::decode(<span class="kw-2">&amp;</span>encoded));
+        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }
 }
 </code></pre></div></section></main></body></html>

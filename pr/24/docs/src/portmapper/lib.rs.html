@@ -733,10 +733,7 @@
 <a href="#732" id="732">732</a>
 <a href="#733" id="733">733</a>
 <a href="#734" id="734">734</a>
-<a href="#735" id="735">735</a>
-<a href="#736" id="736">736</a>
-<a href="#737" id="737">737</a>
-<a href="#738" id="738">738</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
+<a href="#735" id="735">735</a></pre></div><pre class="rust"><code><span class="doccomment">//! Port mapping client and service.
 
 </span><span class="kw">use </span>std::{
     net::{Ipv4Addr, SocketAddrV4},
@@ -747,9 +744,8 @@
 <span class="kw">use </span>current_mapping::CurrentMapping;
 <span class="kw">use </span>futures_lite::StreamExt;
 <span class="kw">use </span>iroh_metrics::inc;
-<span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>netwatch::interfaces::HomeRouter;
-<span class="kw">use </span>snafu::{Backtrace, Snafu};
+<span class="kw">use </span>snafu::Snafu;
 <span class="kw">use </span>tokio::sync::{mpsc, oneshot, watch};
 <span class="kw">use </span>tokio_util::task::AbortOnDropHandle;
 <span class="kw">use </span>tracing::{debug, info_span, trace, Instrument};
@@ -806,24 +802,22 @@
     }
 }
 
-<span class="attr">#[common_fields({
-    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
-})]
-<span class="attr">#[allow(missing_docs)]
+<span class="comment">// Cannot have backtrace due to Clone bound
+// #[nested_enum_utils::common_fields({
+//     backtrace: Option&lt;snafu::Backtrace&gt;,
+// })]
+</span><span class="attr">#[allow(missing_docs)]
 #[derive(Debug, Clone, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
 </span><span class="kw">pub enum </span>ProbeError {
     <span class="attr">#[snafu(display(<span class="string">"Mapping channel is full"</span>))]
-    </span>ChannelFull {},
+    </span>ChannelFull,
     <span class="attr">#[snafu(display(<span class="string">"Mapping channel is closed"</span>))]
-    </span>ChannelClosed {},
+    </span>ChannelClosed,
     <span class="attr">#[snafu(display(<span class="string">"No gateway found for probe"</span>))]
-    </span>NoGateway {},
+    </span>NoGateway,
     <span class="attr">#[snafu(display(<span class="string">"gateway found is ipv6, ignoring"</span>))]
-    </span>Ipv6Gateway {},
+    </span>Ipv6Gateway,
     <span class="attr">#[snafu(display(<span class="string">"Probe task stopped. is_panic: {is_panic}, is_cancelled: {is_cancelled}"</span>))]
     </span>Join { is_panic: bool, is_cancelled: bool },
 }

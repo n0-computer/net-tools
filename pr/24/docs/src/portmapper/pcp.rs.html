@@ -242,10 +242,7 @@
 <a href="#241" id="241">241</a>
 <a href="#242" id="242">242</a>
 <a href="#243" id="243">243</a>
-<a href="#244" id="244">244</a>
-<a href="#245" id="245">245</a>
-<a href="#246" id="246">246</a>
-<a href="#247" id="247">247</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a PCP server.
+<a href="#244" id="244">244</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a PCP server.
 
 </span><span class="kw">use </span>std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
@@ -285,13 +282,10 @@
 
 <span class="attr">#[common_fields({
     backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
 })]
-<span class="attr">#[allow(missing_docs)]
+#[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"received nonce does not match sent request"</span>))]
     </span>NonceMissmatch {},

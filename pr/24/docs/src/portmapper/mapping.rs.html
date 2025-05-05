@@ -113,10 +113,7 @@
 <a href="#112" id="112">112</a>
 <a href="#113" id="113">113</a>
 <a href="#114" id="114">114</a>
-<a href="#115" id="115">115</a>
-<a href="#116" id="116">116</a>
-<a href="#117" id="117">117</a>
-<a href="#118" id="118">118</a></pre></div><pre class="rust"><code><span class="doccomment">//! A port mapping created with one of the supported protocols.
+<a href="#115" id="115">115</a></pre></div><pre class="rust"><code><span class="doccomment">//! A port mapping created with one of the supported protocols.
 
 </span><span class="kw">use </span>std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
@@ -145,13 +142,10 @@
 <span class="doccomment">/// Mapping error.
 </span><span class="attr">#[common_fields({
     backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
 })]
-<span class="attr">#[allow(missing_docs)]
+#[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"PCP mapping failed"</span>))]
     </span>Pcp { source: pcp::Error },

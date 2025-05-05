@@ -190,10 +190,7 @@
 <a href="#189" id="189">189</a>
 <a href="#190" id="190">190</a>
 <a href="#191" id="191">191</a>
-<a href="#192" id="192">192</a>
-<a href="#193" id="193">193</a>
-<a href="#194" id="194">194</a>
-<a href="#195" id="195">195</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#192" id="192">192</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
     time::Duration,
@@ -234,13 +231,10 @@
 
 <span class="attr">#[common_fields({
     backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
 })]
-<span class="attr">#[allow(missing_docs)]
+#[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"Zero external port"</span>))]
     </span>ZeroExternalPort {},

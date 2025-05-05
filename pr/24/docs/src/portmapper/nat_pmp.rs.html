@@ -209,15 +209,11 @@
 <a href="#208" id="208">208</a>
 <a href="#209" id="209">209</a>
 <a href="#210" id="210">210</a>
-<a href="#211" id="211">211</a>
-<a href="#212" id="212">212</a>
-<a href="#213" id="213">213</a>
-<a href="#214" id="214">214</a>
-<a href="#215" id="215">215</a>
-<a href="#216" id="216">216</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a NAT-PMP server.
+<a href="#211" id="211">211</a></pre></div><pre class="rust"><code><span class="doccomment">//! Definitions and utilities to interact with a NAT-PMP server.
 
 </span><span class="kw">use </span>std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
+<span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>netwatch::UdpSocket;
 <span class="kw">use </span>snafu::{Backtrace, Snafu};
 <span class="kw">use </span>tracing::{debug, trace};
@@ -248,23 +244,17 @@
     </span>lifetime_seconds: u32,
 }
 
-<span class="attr">#[allow(missing_docs)]
+<span class="attr">#[common_fields({
+    backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;
+})]
+#[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(<span class="kw">pub</span>(<span class="kw">crate</span>)))]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"server returned unexpected response for mapping request"</span>))]
-    </span>UnexpectedServerResponse {
-        backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-        <span class="attr">#[snafu(implicit)]
-        </span>span_trace: n0_snafu::SpanTrace,
-    },
+    </span>UnexpectedServerResponse {},
     <span class="attr">#[snafu(display(<span class="string">"received 0 port from server as external port"</span>))]
-    </span>ZeroExternalPort {
-        backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-        <span class="attr">#[snafu(implicit)]
-        </span>span_trace: n0_snafu::SpanTrace,
-    },
+    </span>ZeroExternalPort {},
     <span class="attr">#[snafu(transparent)]
     </span>Io { source: std::io::Error },
     <span class="attr">#[snafu(transparent)]

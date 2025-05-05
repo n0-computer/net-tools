@@ -129,9 +129,7 @@
 <a href="#128" id="128">128</a>
 <a href="#129" id="129">129</a>
 <a href="#130" id="130">130</a>
-<a href="#131" id="131">131</a>
-<a href="#132" id="132">132</a>
-<a href="#133" id="133">133</a></pre></div><pre class="rust"><code><span class="doccomment">//! Monitoring of networking interfaces and route changes.
+<a href="#131" id="131">131</a></pre></div><pre class="rust"><code><span class="doccomment">//! Monitoring of networking interfaces and route changes.
 
 </span><span class="kw">use </span>n0_future::{
     boxed::BoxFuture,
@@ -172,14 +170,12 @@
 
 <span class="attr">#[common_fields({
     backtrace: <span class="prelude-ty">Option</span>&lt;Backtrace&gt;,
-    <span class="attr">#[snafu(implicit)]
-    </span>span_trace: n0_snafu::SpanTrace,
 })]
-<span class="attr">#[derive(Debug, Snafu)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"channel closed"</span>))]
-    </span>ChannelClosed {},
+    </span>ChannelClosed,
     <span class="attr">#[snafu(display(<span class="string">"actor error"</span>))]
     </span>Actor { source: actor::Error },
 }
