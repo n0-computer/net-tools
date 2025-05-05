@@ -39,13 +39,10 @@ pub struct Mapping {
 
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Zero external port"))]
     ZeroExternalPort {},

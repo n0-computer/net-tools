@@ -126,11 +126,8 @@ pub struct Response {
 #[non_exhaustive]
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
 pub enum DecodeError {
     /// Request is too short or is otherwise malformed.
     #[snafu(display("Response is malformed"))]
@@ -152,25 +149,7 @@ pub enum DecodeError {
     InvalidOpcodeData {},
 }
 
-impl PartialEq for DecodeError {
-    #[allow(clippy::match_like_matches_macro)]
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (DecodeError::Malformed { .. }, DecodeError::Malformed { .. }) => true,
-            (DecodeError::NotAResponse { .. }, DecodeError::NotAResponse { .. }) => true,
-            (DecodeError::InvalidOpcode { .. }, DecodeError::InvalidOpcode { .. }) => true,
-            (DecodeError::InvalidVersion { .. }, DecodeError::InvalidVersion { .. }) => true,
-            (DecodeError::InvalidResultCode { .. }, DecodeError::InvalidResultCode { .. }) => true,
-            (DecodeError::InvalidOpcodeData { .. }, DecodeError::InvalidOpcodeData { .. }) => true,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for DecodeError {}
-
-#[derive(Debug, Snafu, PartialEq, Eq)]
-#[snafu(visibility(pub(crate)))]
+#[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(transparent)]
     DecodeError { source: DecodeError },
@@ -299,7 +278,7 @@ mod tests {
 
         let response = Response::random(Opcode::Announce, &mut gen);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 
     #[test]
@@ -320,6 +299,6 @@ mod tests {
 
         let response = Response::random(Opcode::Map, &mut rng);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 }

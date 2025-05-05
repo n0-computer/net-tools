@@ -2,6 +2,7 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
+use nested_enum_utils::common_fields;
 use netwatch::UdpSocket;
 use snafu::{Backtrace, Snafu};
 use tracing::{debug, trace};
@@ -32,23 +33,17 @@ pub struct Mapping {
     lifetime_seconds: u32,
 }
 
+#[common_fields({
+    backtrace: Option<Backtrace>
+})]
 #[allow(missing_docs)]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("server returned unexpected response for mapping request"))]
-    UnexpectedServerResponse {
-        backtrace: Option<Backtrace>,
-        #[snafu(implicit)]
-        span_trace: n0_snafu::SpanTrace,
-    },
+    UnexpectedServerResponse {},
     #[snafu(display("received 0 port from server as external port"))]
-    ZeroExternalPort {
-        backtrace: Option<Backtrace>,
-        #[snafu(implicit)]
-        span_trace: n0_snafu::SpanTrace,
-    },
+    ZeroExternalPort {},
     #[snafu(transparent)]
     Io { source: std::io::Error },
     #[snafu(transparent)]

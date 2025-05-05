@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 
 use nested_enum_utils::common_fields;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use snafu::Snafu;
+use snafu::{Backtrace, Snafu};
 
 use super::{MapProtocol, Opcode, Version};
 
@@ -55,44 +55,41 @@ pub enum ResultCode {
 /// Errors that can occur when decoding a [`Response`] from a server.
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu, PartialEq, Eq)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(pub(crate)))]
 pub enum Error {
     /// Request is too short or is otherwise malformed.
     #[snafu(display("Response is malformed"))]
-    Malformed,
+    Malformed {},
     /// The [`Response::RESPONSE_INDICATOR`] is not present.
     #[snafu(display("Packet does not appear to be a response"))]
-    NotAResponse,
+    NotAResponse {},
     /// The received opcode is not recognized.
     #[snafu(display("Invalid Opcode received"))]
-    InvalidOpcode,
+    InvalidOpcode {},
     /// The received version is not recognized.
     #[snafu(display("Invalid version received"))]
-    InvalidVersion,
+    InvalidVersion {},
     /// The received result code is not recognized.
     #[snafu(display("Invalid result code received"))]
-    InvalidResultCode,
+    InvalidResultCode {},
     /// Received an error code indicating the server does not support the sent version.
     #[snafu(display("Server does not support the version"))]
-    UnsupportedVersion,
+    UnsupportedVersion {},
     /// Received an error code indicating the operation is supported but not authorized.
     #[snafu(display("Operation is supported but not authorized"))]
-    NotAuthorizedOrRefused,
+    NotAuthorizedOrRefused {},
     /// Received an error code indicating the server experienced a network failure
     #[snafu(display("Server experienced a network failure"))]
-    NetworkFailure,
+    NetworkFailure {},
     /// Received an error code indicating the server cannot create more mappings at this time.
     #[snafu(display("Server is out of resources"))]
-    OutOfResources,
+    OutOfResources {},
     /// Received an error code indicating the Opcode is not supported by the server.
     #[snafu(display("Server does not support this opcode"))]
-    UnsupportedOpcode,
+    UnsupportedOpcode {},
 }
 
 impl Response {
@@ -283,7 +280,7 @@ mod tests {
 
         let response = Response::random(Opcode::DetermineExternalAddress, &mut gen);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 
     #[test]
@@ -292,6 +289,6 @@ mod tests {
 
         let response = Response::random(Opcode::MapUdp, &mut rng);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 }

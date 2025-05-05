@@ -9,9 +9,8 @@ use std::{
 use current_mapping::CurrentMapping;
 use futures_lite::StreamExt;
 use iroh_metrics::inc;
-use nested_enum_utils::common_fields;
 use netwatch::interfaces::HomeRouter;
-use snafu::{Backtrace, Snafu};
+use snafu::Snafu;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 use tracing::{debug, info_span, trace, Instrument};
@@ -68,24 +67,22 @@ impl ProbeOutput {
     }
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
-})]
+// Cannot have backtrace due to Clone bound
+// #[nested_enum_utils::common_fields({
+//     backtrace: Option<snafu::Backtrace>,
+// })]
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Snafu)]
 #[non_exhaustive]
-#[snafu(visibility(pub(crate)))]
 pub enum ProbeError {
     #[snafu(display("Mapping channel is full"))]
-    ChannelFull {},
+    ChannelFull,
     #[snafu(display("Mapping channel is closed"))]
-    ChannelClosed {},
+    ChannelClosed,
     #[snafu(display("No gateway found for probe"))]
-    NoGateway {},
+    NoGateway,
     #[snafu(display("gateway found is ipv6, ignoring"))]
-    Ipv6Gateway {},
+    Ipv6Gateway,
     #[snafu(display("Probe task stopped. is_panic: {is_panic}, is_cancelled: {is_cancelled}"))]
     Join { is_panic: bool, is_cancelled: bool },
 }
