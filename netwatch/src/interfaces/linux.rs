@@ -212,7 +212,7 @@ mod linux {
         let msg = create_route_message(family);
         let mut routes = get_route(handle.clone(), msg);
 
-        while let Some(route) = routes.try_next().await.context(NetlinkSnafu)? {
+        while let Some(route) = routes.try_next().await? {
             let route_attrs = route.attributes;
 
             if !route_attrs
@@ -271,11 +271,7 @@ mod linux {
     async fn iface_by_index(handle: &Handle, index: u32) -> Result<String, Error> {
         let message = create_link_get_message(index);
         let mut links = get_link(handle.clone(), message);
-        let msg = links
-            .try_next()
-            .await
-            .context(NetlinkSnafu)?
-            .context(NoResponseSnafu)?;
+        let msg = links.try_next().await.context(NoResponseSnafu)?;
 
         for nla in msg.attributes {
             if let LinkAttribute::IfName(name) = nla {
