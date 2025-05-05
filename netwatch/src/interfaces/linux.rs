@@ -9,10 +9,14 @@ use tokio::{
 
 use super::DefaultRouteDetails;
 
+#[cfg(not(target_os = "android"))]
+type NetlinkError = netlink_proto::Error<RouteNetlinkMessage>;
+
 #[common_fields({
     backtrace: Option<Backtrace>,
 })]
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("IO"))]
@@ -36,7 +40,7 @@ pub enum Error {
     #[snafu(display("unexpected netlink message"))]
     UnexpectedNetlinkMessage {},
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("netlink error message: {0:?}"))]
+    #[snafu(display("netlink error message: {source:?}"))]
     NetlinkErrorMessage {
         source: netlink_packet_core::error::ErrorMessage,
     },
@@ -99,14 +103,15 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
 
 #[cfg(target_os = "android")]
 mod android {
+    use tokio::process::Command;
+
+    use super::*;
+
     /// Try find the default route by parsing the "ip route" command output.
     ///
     /// We use this on Android where /proc/net/route can be missing entries or have locked-down
     /// permissions.  See also comments in <https://github.com/tailscale/tailscale/pull/666>.
-
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
-        use tokio::process::Command;
-
         let output = Command::new("/system/bin/ip")
             .args(["route", "show", "table", "0"])
             .kill_on_drop(true)
@@ -123,7 +128,7 @@ mod android {
 
 #[cfg(not(target_os = "android"))]
 mod linux {
-    use n0_future::{Either, StreamExt, TryStream, TryStreamExt};
+    use n0_future::{Either, StreamExt, TryStream};
     use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
     use netlink_packet_route::{
         link::{LinkAttribute, LinkMessage},
@@ -136,7 +141,6 @@ mod linux {
     use super::*;
 
     type Handle = netlink_proto::ConnectionHandle<RouteNetlinkMessage>;
-    type NetlinkError = netlink_proto::Error<RouteNetlinkMessage>;
 
     macro_rules! try_rtnl {
         ($msg: expr, $message_type:path) => {{
