@@ -11,7 +11,6 @@ use n0_future::StreamExt;
 use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};
-use rtnetlink::new_connection;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{trace, warn};
@@ -63,7 +62,12 @@ macro_rules! get_nla {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let (mut conn, mut _handle, mut messages) = new_connection().context(IoSnafu)?;
+        use netlink_sys::protocols::NETLINK_ROUTE;
+
+        let (mut conn, _handle, mut messages) = netlink_proto::new_connection::<
+            netlink_packet_route::RouteNetlinkMessage,
+        >(NETLINK_ROUTE)
+        .context(IoSnafu)?;
 
         // Specify flags to listen on.
         let groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
