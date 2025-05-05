@@ -39,9 +39,9 @@ pub enum Error {
     #[snafu(display("unexpected netlink message"))]
     UnexpectedNetlinkMessage {},
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("netlink error message: {source:?}"))]
+    #[snafu(display("netlink error message: {message:?}"))]
     NetlinkErrorMessage {
-        source: netlink_packet_core::error::ErrorMessage,
+        message: netlink_packet_core::error::ErrorMessage,
     },
 }
 
@@ -150,7 +150,9 @@ mod linux {
             let (_header, payload) = $msg.into_parts();
             match payload {
                 NetlinkPayload::InnerMessage($message_type(msg)) => msg,
-                NetlinkPayload::Error(err) => return Err(NetlinkErrorMessageSnafu.into_error(err)),
+                NetlinkPayload::Error(err) => {
+                    return Err(NetlinkErrorMessageSnafu { message: err }.build())
+                }
                 _ => return Err(UnexpectedNetlinkMessageSnafu.build()),
             }
         }};
