@@ -1,7 +1,9 @@
 //! A PCP response encoding and decoding.
 
 use derive_more::Display;
+use nested_enum_utils::common_fields;
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
+use snafu::{Backtrace, Snafu};
 
 use super::{opcode_data::OpcodeData, Opcode, Version};
 
@@ -18,9 +20,7 @@ pub enum SuccessCode {
 ///
 /// Refer to [RFC 6887 Result Codes](https://datatracker.ietf.org/doc/html/rfc6887#section-7.4)
 // NOTE: docs for each variant are largely adapted from the RFC's description of each code.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Display, thiserror::Error,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Display)]
 #[repr(u8)]
 pub enum ErrorCode {
     /// The version number at the start of the PCP Request header is not recognized by the PCP
@@ -72,6 +72,8 @@ pub enum ErrorCode {
     ExcessiveRemotePeers = 13,
 }
 
+impl std::error::Error for ErrorCode {}
+
 /// Result code of a PCP response.
 #[derive(Debug)]
 pub enum ResultCode {
@@ -120,32 +122,39 @@ pub struct Response {
 }
 
 /// Errors that can occur when decoding a [`Response`] from a server.
-#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+#[allow(missing_docs)]
+#[non_exhaustive]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+})]
+#[derive(Debug, Snafu)]
 pub enum DecodeError {
     /// Request is too short or is otherwise malformed.
-    #[display("Response is malformed")]
-    Malformed,
+    #[snafu(display("Response is malformed"))]
+    Malformed {},
     /// The [`Response::RESPONSE_INDICATOR`] is not present.
-    #[display("Packet does not appear to be a response")]
-    NotAResponse,
+    #[snafu(display("Packet does not appear to be a response"))]
+    NotAResponse {},
     /// The received opcode is not recognized.
-    #[display("Invalid Opcode received")]
-    InvalidOpcode,
+    #[snafu(display("Invalid Opcode received"))]
+    InvalidOpcode {},
     /// The received version is not recognized.
-    #[display("Invalid version received")]
-    InvalidVersion,
+    #[snafu(display("Invalid version received"))]
+    InvalidVersion {},
     /// The received result code is not recognized.
-    #[display("Invalid result code received")]
-    InvalidResultCode,
+    #[snafu(display("Invalid result code received"))]
+    InvalidResultCode {},
     /// The received opcode data could not be decoded.
-    #[display("Invalid opcode data received")]
-    InvalidOpcodeData,
+    #[snafu(display("Invalid opcode data received"))]
+    InvalidOpcodeData {},
 }
 
-#[derive(Debug, derive_more::Display, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Snafu)]
 pub enum Error {
-    DecodeError(DecodeError),
-    ErrorCode(ErrorCode),
+    #[snafu(transparent)]
+    DecodeError { source: DecodeError },
+    #[snafu(transparent)]
+    ErrorCode { source: ErrorCode },
 }
 
 impl Response {
@@ -168,31 +177,31 @@ impl Response {
 
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
-        if buf.len() < Self::MIN_SIZE || buf.len() > Self::MAX_SIZE {
-            return Err(Error::DecodeError(DecodeError::Malformed));
-        }
+        snafu::ensure!(
+            Self::MIN_SIZE <= buf.len() && buf.len() <= Self::MAX_SIZE,
+            MalformedSnafu
+        );
 
-        let _version: Version = buf[0]
-            .try_into()
-            .map_err(|_| Error::DecodeError(DecodeError::InvalidVersion))?;
+        let _version: Version = buf[0].try_into().map_err(|_| InvalidVersionSnafu.build())?;
 
         let opcode = buf[1];
-        if opcode & Self::RESPONSE_INDICATOR != Self::RESPONSE_INDICATOR {
-            return Err(Error::DecodeError(DecodeError::NotAResponse));
-        }
+        snafu::ensure!(
+            opcode & Self::RESPONSE_INDICATOR == Self::RESPONSE_INDICATOR,
+            NotAResponseSnafu
+        );
         let opcode: Opcode = (opcode & !Self::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|_| Error::DecodeError(DecodeError::InvalidOpcode))?;
+            .map_err(|_| InvalidOpcodeSnafu.build())?;
 
         // buf[2] reserved
 
         // return early if the result code is an error
         let result_code: ResultCode = buf[3]
             .try_into()
-            .map_err(|_| Error::DecodeError(DecodeError::InvalidResultCode))?;
+            .map_err(|_| InvalidResultCodeSnafu.build())?;
         match result_code {
             ResultCode::Success => {}
-            ResultCode::Error(error_code) => return Err(Error::ErrorCode(error_code)),
+            ResultCode::Error(error_code) => return Err(error_code.into()),
         }
 
         let lifetime_bytes = buf[4..8].try_into().expect("slice has the right len");
@@ -203,8 +212,8 @@ impl Response {
 
         // buf[12..24] reserved
 
-        let data = OpcodeData::decode(opcode, &buf[24..])
-            .map_err(|_| Error::DecodeError(DecodeError::InvalidOpcodeData))?;
+        let data =
+            OpcodeData::decode(opcode, &buf[24..]).map_err(|_| InvalidOpcodeDataSnafu.build())?;
 
         Ok(Response {
             lifetime_seconds,
@@ -269,7 +278,7 @@ mod tests {
 
         let response = Response::random(Opcode::Announce, &mut gen);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 
     #[test]
@@ -290,6 +299,6 @@ mod tests {
 
         let response = Response::random(Opcode::Map, &mut rng);
         let encoded = response.encode();
-        assert_eq!(Ok(response), Response::decode(&encoded));
+        assert_eq!(response, Response::decode(&encoded).unwrap());
     }
 }

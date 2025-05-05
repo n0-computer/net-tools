@@ -2,6 +2,9 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, ResultExt, Snafu};
+
 use super::{nat_pmp, pcp, upnp};
 
 pub(super) trait PortMapped: std::fmt::Debug + Unpin {
@@ -22,15 +25,19 @@ pub enum Mapping {
 }
 
 /// Mapping error.
-#[derive(Debug, thiserror::Error)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+})]
+#[allow(missing_docs)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("PCP mapping failed: {0}")]
-    Pcp(#[from] pcp::Error),
-    #[error("NAT-PMP mapping failed: {0}")]
-    NatPmp(#[from] nat_pmp::Error),
-    #[error("UPnP mapping failed: {0}")]
-    Upnp(#[from] upnp::Error),
+    #[snafu(display("PCP mapping failed"))]
+    Pcp { source: pcp::Error },
+    #[snafu(display("NAT-PMP mapping failed"))]
+    NatPmp { source: nat_pmp::Error },
+    #[snafu(display("UPnP mapping failed"))]
+    Upnp { source: upnp::Error },
 }
 
 impl Mapping {
@@ -44,7 +51,7 @@ impl Mapping {
         pcp::Mapping::new(local_ip, local_port, gateway, external_addr)
             .await
             .map(Self::Pcp)
-            .map_err(Into::into)
+            .context(PcpSnafu)
     }
 
     /// Create a new NAT-PMP mapping.
@@ -62,7 +69,7 @@ impl Mapping {
         )
         .await
         .map(Self::NatPmp)
-        .map_err(Into::into)
+        .context(NatPmpSnafu)
     }
 
     /// Create a new UPnP mapping.
@@ -75,15 +82,15 @@ impl Mapping {
         upnp::Mapping::new(local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
-            .map_err(Into::into)
+            .context(UpnpSnafu)
     }
 
     /// Release the mapping.
     pub(crate) async fn release(self) -> Result<(), Error> {
         match self {
-            Mapping::Upnp(m) => m.release().await?,
-            Mapping::Pcp(m) => m.release().await?,
-            Mapping::NatPmp(m) => m.release().await?,
+            Mapping::Upnp(m) => m.release().await.context(UpnpSnafu)?,
+            Mapping::Pcp(m) => m.release().await.context(PcpSnafu)?,
+            Mapping::NatPmp(m) => m.release().await.context(NatPmpSnafu)?,
         }
         Ok(())
     }

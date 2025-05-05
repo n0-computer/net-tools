@@ -12,6 +12,7 @@ use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::{address, route, RouteNetlinkMessage};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use rtnetlink::new_connection;
+use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{trace, warn};
 
@@ -31,10 +32,14 @@ impl Drop for RouteMonitor {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("IO {0}")]
-    Io(#[from] std::io::Error),
+    #[snafu(display("IO"))]
+    Io {
+        source: std::io::Error,
+        backtrace: Option<Backtrace>,
+    },
 }
 
 const fn nl_mgrp(group: u32) -> u32 {
@@ -58,7 +63,7 @@ macro_rules! get_nla {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let (mut conn, mut _handle, mut messages) = new_connection()?;
+        let (mut conn, mut _handle, mut messages) = new_connection().context(IoSnafu)?;
 
         // Specify flags to listen on.
         let groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
@@ -69,7 +74,10 @@ impl RouteMonitor {
             | nl_mgrp(RTNLGRP_IPV6_RULE);
 
         let addr = SocketAddr::new(0, groups);
-        conn.socket_mut().socket_mut().bind(&addr)?;
+        conn.socket_mut()
+            .socket_mut()
+            .bind(&addr)
+            .context(IoSnafu)?;
 
         let conn_handle = tokio::task::spawn(conn);
 

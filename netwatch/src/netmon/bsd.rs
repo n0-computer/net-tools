@@ -1,5 +1,6 @@
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{RTAX_DST, RTAX_IFP};
+use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{io::AsyncReadExt, sync::mpsc};
 use tokio_util::task::AbortOnDropHandle;
 use tracing::{trace, warn};
@@ -14,10 +15,14 @@ pub(super) struct RouteMonitor {
     _handle: AbortOnDropHandle<()>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("IO {0}")]
-    Io(#[from] std::io::Error),
+    #[snafu(display("IO"))]
+    Io {
+        source: std::io::Error,
+        backtrace: Option<Backtrace>,
+    },
 }
 
 fn create_socket() -> std::io::Result<tokio::net::UnixStream> {
@@ -33,7 +38,7 @@ fn create_socket() -> std::io::Result<tokio::net::UnixStream> {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let mut socket = create_socket()?;
+        let mut socket = create_socket().context(IoSnafu)?;
         let handle = tokio::task::spawn(async move {
             trace!("AF_ROUTE monitor started");
 

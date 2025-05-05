@@ -4,6 +4,8 @@ use n0_future::{
     boxed::BoxFuture,
     task::{self, AbortOnDropHandle},
 };
+use nested_enum_utils::common_fields;
+use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::{mpsc, oneshot};
 
 mod actor;
@@ -35,30 +37,34 @@ pub struct Monitor {
     actor_tx: mpsc::Sender<ActorMessage>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[common_fields({
+    backtrace: Option<Backtrace>,
+})]
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("channel closed")]
-    ChannelClosed,
-    #[error("actor {0}")]
-    Actor(#[from] actor::Error),
+    #[snafu(display("channel closed"))]
+    ChannelClosed {},
+    #[snafu(display("actor error"))]
+    Actor { source: actor::Error },
 }
 
 impl<T> From<mpsc::error::SendError<T>> for Error {
     fn from(_value: mpsc::error::SendError<T>) -> Self {
-        Self::ChannelClosed
+        ChannelClosedSnafu.build()
     }
 }
 
 impl From<oneshot::error::RecvError> for Error {
     fn from(_value: oneshot::error::RecvError) -> Self {
-        Self::ChannelClosed
+        ChannelClosedSnafu.build()
     }
 }
 
 impl Monitor {
     /// Create a new monitor.
     pub async fn new() -> Result<Self, Error> {
-        let actor = Actor::new().await?;
+        let actor = Actor::new().await.context(ActorSnafu)?;
         let actor_tx = actor.subscribe();
 
         let handle = task::spawn(async move {
