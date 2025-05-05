@@ -246,7 +246,7 @@
 </span><span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">use </span>n0_future::TryStreamExt;
 <span class="kw">use </span>nested_enum_utils::common_fields;
-<span class="kw">use </span>snafu::{Backtrace, ResultExt, Snafu};
+<span class="kw">use </span>snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 <span class="kw">use </span>tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
@@ -264,16 +264,16 @@
     </span>Io { source: std::io::Error },
     <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
     #[snafu(display(<span class="string">"no netlink response"</span>))]
-    </span>NoResponse,
+    </span>NoResponse {},
     <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
     #[snafu(display(<span class="string">"interface not found"</span>))]
-    </span>InterfaceNotFound,
+    </span>InterfaceNotFound {},
     <span class="attr">#[snafu(display(<span class="string">"iface field is missing"</span>))]
-    </span>MissingIfaceField,
+    </span>MissingIfaceField {},
     <span class="attr">#[snafu(display(<span class="string">"destination field is missing"</span>))]
-    </span>MissingDestinationField,
+    </span>MissingDestinationField {},
     <span class="attr">#[snafu(display(<span class="string">"mask field is missing"</span>))]
-    </span>MissingMaskField,
+    </span>MissingMaskField {},
     <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
     #[snafu(display(<span class="string">"netlink"</span>))]
     </span>Netlink { source: rtnetlink::Error },
@@ -319,9 +319,9 @@
             <span class="kw">continue</span>;
         }
         <span class="kw">let </span><span class="kw-2">mut </span>fields = line.split_ascii_whitespace();
-        <span class="kw">let </span>iface = fields.next().ok_or(Error::MissingIfaceField)<span class="question-mark">?</span>;
-        <span class="kw">let </span>destination = fields.next().ok_or(Error::MissingDestinationField)<span class="question-mark">?</span>;
-        <span class="kw">let </span>mask = fields.nth(<span class="number">5</span>).ok_or(Error::MissingMaskField)<span class="question-mark">?</span>;
+        <span class="kw">let </span>iface = fields.next().context(MissingIfaceFieldSnafu)<span class="question-mark">?</span>;
+        <span class="kw">let </span>destination = fields.next().context(MissingDestinationFieldSnafu)<span class="question-mark">?</span>;
+        <span class="kw">let </span>mask = fields.nth(<span class="number">5</span>).context(MissingMaskFieldSnafu)<span class="question-mark">?</span>;
         <span class="comment">// if iface.starts_with("tailscale") || iface.starts_with("wg") {
         //     continue;
         // }
@@ -451,7 +451,7 @@
             <span class="kw">return </span><span class="prelude-val">Ok</span>(name);
         }
     }
-    <span class="prelude-val">Err</span>(Error::InterfaceNotFound)
+    <span class="prelude-val">Err</span>(InterfaceNotFoundSnafu.build())
 }
 
 <span class="attr">#[cfg(test)]

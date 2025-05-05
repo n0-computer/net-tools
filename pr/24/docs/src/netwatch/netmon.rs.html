@@ -175,7 +175,7 @@
 #[non_exhaustive]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[snafu(display(<span class="string">"channel closed"</span>))]
-    </span>ChannelClosed,
+    </span>ChannelClosed {},
     <span class="attr">#[snafu(display(<span class="string">"actor error"</span>))]
     </span>Actor { source: actor::Error },
 }
