@@ -1,11 +1,11 @@
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroU16,
+    sync::Arc,
     time::Duration,
 };
 
 use igd_next::{aio as aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
-use iroh_metrics::inc;
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tracing::debug;
@@ -163,8 +163,8 @@ impl Mapping {
 }
 
 /// Searches for UPnP gateways.
-pub async fn probe_available() -> Option<Gateway> {
-    inc!(Metrics, upnp_probes);
+pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
+    metrics.upnp_probes.inc();
 
     // Wrap in manual timeout, because igd_next doesn't respect the set timeout
     let res = tokio::time::timeout(
@@ -179,12 +179,12 @@ pub async fn probe_available() -> Option<Gateway> {
     match res {
         Ok(Ok(gateway)) => Some(gateway),
         Err(e) => {
-            inc!(Metrics, upnp_probes_failed);
+            metrics.upnp_probes_failed.inc();
             debug!("upnp probe timed out: {e}");
             None
         }
         Ok(Err(e)) => {
-            inc!(Metrics, upnp_probes_failed);
+            metrics.upnp_probes_failed.inc();
             debug!("upnp probe failed: {e}");
             None
         }

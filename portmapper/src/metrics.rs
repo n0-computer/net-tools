@@ -1,68 +1,41 @@
-use iroh_metrics::{
-    core::{Counter, Metric},
-    struct_iterable::Iterable,
-};
+use iroh_metrics::{Counter, MetricsGroup};
+use serde::{Deserialize, Serialize};
 
 /// Enum of metrics for the module
-#[allow(missing_docs)]
-#[derive(Debug, Clone, Iterable)]
+#[derive(Debug, Default, MetricsGroup, Serialize, Deserialize)]
+#[metrics(name = "portmap")]
 pub struct Metrics {
     /*
      * General port mapping metrics
      */
+    /// Number of probing tasks started.
     pub probes_started: Counter,
+    /// Number of updates to the local port.
     pub local_port_updates: Counter,
+    /// Number of mapping tasks started.
     pub mapping_attempts: Counter,
+    /// Number of failed mapping tasks.
     pub mapping_failures: Counter,
+    /// Number of times the external address obtained via port mapping was updated.
     pub external_address_updated: Counter,
 
     /*
      * UPnP metrics
      */
+    /// Number of UPnP probes executed.
     pub upnp_probes: Counter,
+    /// Number of failed Upnp probes.
     pub upnp_probes_failed: Counter,
+    /// Number of UPnP probes that found it available.
     pub upnp_available: Counter,
+    /// Number of UPnP probes that resulted in a gateway different to the previous one,
     pub upnp_gateway_updated: Counter,
 
     /*
      * PCP metrics
      */
+    /// Number of PCP probes executed.
     pub pcp_probes: Counter,
+    /// Number of PCP probes that found it available.
     pub pcp_available: Counter,
-}
-
-impl Default for Metrics {
-    fn default() -> Self {
-        Self {
-            probes_started: Counter::new("Number of probing tasks started."),
-            local_port_updates: Counter::new("Number of updates to the local port."),
-            mapping_attempts: Counter::new("Number of mapping tasks started."),
-            mapping_failures: Counter::new("Number of failed mapping tasks"),
-            external_address_updated: Counter::new(
-                "Number of times the external address obtained via port mapping was updated.",
-            ),
-
-            /*
-             * UPnP metrics
-             */
-            upnp_probes: Counter::new("Number of UPnP probes executed."),
-            upnp_probes_failed: Counter::new("Number of failed Upnp probes"),
-            upnp_available: Counter::new("Number of UPnP probes that found it available."),
-            upnp_gateway_updated: Counter::new(
-                "Number of UPnP probes that resulted in a gateway different to the previous one.",
-            ),
-
-            /*
-             * PCP metrics
-             */
-            pcp_probes: Counter::new("Number of PCP probes executed."),
-            pcp_available: Counter::new("Number of PCP probes that found it available."),
-        }
-    }
-}
-
-impl Metric for Metrics {
-    fn name() -> &'static str {
-        "portmap"
-    }
 }
