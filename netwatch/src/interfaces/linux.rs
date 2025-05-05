@@ -3,7 +3,7 @@
 #[cfg(not(target_os = "android"))]
 use n0_future::TryStreamExt;
 use nested_enum_utils::common_fields;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
@@ -76,9 +76,9 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
             continue;
         }
         let mut fields = line.split_ascii_whitespace();
-        let iface = fields.next().ok_or(Error::MissingIfaceField)?;
-        let destination = fields.next().ok_or(Error::MissingDestinationField)?;
-        let mask = fields.nth(5).ok_or(Error::MissingMaskField)?;
+        let iface = fields.next().context(MissingIfaceFieldSnafu)?;
+        let destination = fields.next().context(MissingDestinationFieldSnafu)?;
+        let mask = fields.nth(5).context(MissingMaskFieldSnafu)?;
         // if iface.starts_with("tailscale") || iface.starts_with("wg") {
         //     continue;
         // }
@@ -208,7 +208,7 @@ async fn iface_by_index(handle: &rtnetlink::Handle, index: u32) -> Result<String
             return Ok(name);
         }
     }
-    Err(Error::InterfaceNotFound)
+    Err(InterfaceNotFoundSnafu.build())
 }
 
 #[cfg(test)]
