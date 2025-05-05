@@ -32,12 +32,12 @@ pub enum Error {
     MissingMaskField {},
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink"))]
-    Netlink { source: NetlinkError },
-    #[cfg(not(target_os = "android"))]
-    #[snafu(display("unexpected netlink message"))]
-    UnexpectedNetlinkMessage {
+    Netlink {
         source: netlink_proto::Error<netlink_packet_route::RouteNetlinkMessage>,
     },
+    #[cfg(not(target_os = "android"))]
+    #[snafu(display("unexpected netlink message"))]
+    UnexpectedNetlinkMessage {},
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink error message: {source:?}"))]
     NetlinkErrorMessage {
