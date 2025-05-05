@@ -55,7 +55,7 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
     let res = android::default_route().await;
 
     #[cfg(not(target_os = "android"))]
-    let res = linux::default_route().await;
+    let res = sane::default_route().await;
 
     res.ok().flatten()
 }
@@ -126,7 +126,7 @@ mod android {
 }
 
 #[cfg(not(target_os = "android"))]
-mod linux {
+mod sane {
     use n0_future::{Either, StreamExt, TryStream};
     use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
     use netlink_packet_route::{
@@ -286,10 +286,10 @@ mod linux {
     #[cfg(test)]
     mod tests {
         use super::*;
+
         #[tokio::test]
-        #[cfg(not(target_os = "android"))]
         async fn test_default_route_netlink() {
-            let route = linux::default_route().await.unwrap();
+            let route = default_route().await.unwrap();
             // assert!(route.is_some());
             if let Some(route) = route {
                 assert!(!route.interface_name.is_empty());
