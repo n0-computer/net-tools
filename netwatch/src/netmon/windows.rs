@@ -22,8 +22,6 @@ pub(super) struct RouteMonitor {
 
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]

@@ -39,14 +39,12 @@ pub struct Monitor {
 
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("channel closed"))]
-    ChannelClosed {},
+    ChannelClosed,
     #[snafu(display("actor error"))]
     Actor { source: actor::Error },
 }

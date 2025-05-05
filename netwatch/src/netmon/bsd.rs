@@ -22,8 +22,6 @@ pub enum Error {
     Io {
         source: std::io::Error,
         backtrace: Option<Backtrace>,
-        #[snafu(implicit)]
-        span_trace: n0_snafu::SpanTrace,
     },
 }
 

@@ -601,20 +601,18 @@ type RIBType = i32;
 
 #[common_fields({
     backtrace: Option<Backtrace>,
-    #[snafu(implicit)]
-    span_trace: n0_snafu::SpanTrace,
 })]
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum RouteError {
     #[snafu(display("message mismatch"))]
-    MessageMismatch {},
+    MessageMismatch,
     #[snafu(display("message too short"))]
-    MessageTooShort {},
+    MessageTooShort,
     #[snafu(display("invalid message"))]
-    InvalidMessage {},
+    InvalidMessage,
     #[snafu(display("invalid address"))]
-    InvalidAddress {},
+    InvalidAddress,
     #[snafu(display("invalid rib type {rib_type}"))]
     InvalidRibType { rib_type: RIBType },
     #[snafu(display("io error calling '{name}'"))]
