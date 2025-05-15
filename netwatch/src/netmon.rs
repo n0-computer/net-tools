@@ -94,7 +94,6 @@ impl Monitor {
 
 #[cfg(test)]
 mod tests {
-    use n0_future::StreamExt;
     use n0_watcher::Watcher as _;
 
     use super::*;
@@ -104,19 +103,7 @@ mod tests {
         let mon = Monitor::new().await.unwrap();
         let sub = mon.subscribe();
 
-        let mut current = sub.get().unwrap();
+        let current = sub.get().unwrap();
         println!("current state: {}", current);
-        let mut stream = sub.stream();
-
-        for _ in 0..10 {
-            let state = stream.next().await.unwrap();
-            println!(
-                "CHANGE DETECTED: major?: {}\n{}\n",
-                state.is_major_change(&current),
-                state
-            );
-
-            current = state;
-        }
     }
 }

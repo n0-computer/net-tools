@@ -179,12 +179,6 @@ pub struct State {
     ///
     /// When set, its value is the map key into `interface` and `interface_ips`.
     pub default_route_interface: Option<String>,
-
-    /// The HTTP proxy to use, if any.
-    pub http_proxy: Option<String>,
-
-    /// The URL to the Proxy Autoconfig URL, if applicable.
-    pub pac: Option<String>,
 }
 
 impl fmt::Display for State {
@@ -245,8 +239,6 @@ impl State {
             have_v6,
             is_expensive: false,
             default_route_interface,
-            http_proxy: None,
-            pac: None,
         }
     }
 
@@ -262,8 +254,6 @@ impl State {
             have_v4: true,
             is_expensive: false,
             default_route_interface: Some(ifname),
-            http_proxy: None,
-            pac: None,
         }
     }
 
@@ -282,8 +272,6 @@ impl State {
             || self.have_v4 != old.have_v4
             || self.is_expensive != old.is_expensive
             || self.default_route_interface != old.default_route_interface
-            || self.http_proxy != old.http_proxy
-            || self.pac != old.pac
         {
             return true;
         }
