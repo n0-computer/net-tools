@@ -460,19 +460,7 @@
 <a href="#459" id="459">459</a>
 <a href="#460" id="460">460</a>
 <a href="#461" id="461">461</a>
-<a href="#462" id="462">462</a>
-<a href="#463" id="463">463</a>
-<a href="#464" id="464">464</a>
-<a href="#465" id="465">465</a>
-<a href="#466" id="466">466</a>
-<a href="#467" id="467">467</a>
-<a href="#468" id="468">468</a>
-<a href="#469" id="469">469</a>
-<a href="#470" id="470">470</a>
-<a href="#471" id="471">471</a>
-<a href="#472" id="472">472</a>
-<a href="#473" id="473">473</a>
-<a href="#474" id="474">474</a></pre></div><pre class="rust"><code><span class="doccomment">//! Contains helpers for looking up system network interfaces.
+<a href="#462" id="462">462</a></pre></div><pre class="rust"><code><span class="doccomment">//! Contains helpers for looking up system network interfaces.
 
 </span><span class="kw">use </span>std::{collections::HashMap, fmt, net::IpAddr};
 
@@ -653,12 +641,6 @@
     ///
     /// When set, its value is the map key into `interface` and `interface_ips`.
     </span><span class="kw">pub </span>default_route_interface: <span class="prelude-ty">Option</span>&lt;String&gt;,
-
-    <span class="doccomment">/// The HTTP proxy to use, if any.
-    </span><span class="kw">pub </span>http_proxy: <span class="prelude-ty">Option</span>&lt;String&gt;,
-
-    <span class="doccomment">/// The URL to the Proxy Autoconfig URL, if applicable.
-    </span><span class="kw">pub </span>pac: <span class="prelude-ty">Option</span>&lt;String&gt;,
 }
 
 <span class="kw">impl </span>fmt::Display <span class="kw">for </span>State {
@@ -719,8 +701,6 @@
             have_v6,
             is_expensive: <span class="bool-val">false</span>,
             default_route_interface,
-            http_proxy: <span class="prelude-val">None</span>,
-            pac: <span class="prelude-val">None</span>,
         }
     }
 
@@ -736,8 +716,6 @@
             have_v4: <span class="bool-val">true</span>,
             is_expensive: <span class="bool-val">false</span>,
             default_route_interface: <span class="prelude-val">Some</span>(ifname),
-            http_proxy: <span class="prelude-val">None</span>,
-            pac: <span class="prelude-val">None</span>,
         }
     }
 
@@ -756,8 +734,6 @@
             || <span class="self">self</span>.have_v4 != old.have_v4
             || <span class="self">self</span>.is_expensive != old.is_expensive
             || <span class="self">self</span>.default_route_interface != old.default_route_interface
-            || <span class="self">self</span>.http_proxy != old.http_proxy
-            || <span class="self">self</span>.pac != old.pac
         {
             <span class="kw">return </span><span class="bool-val">true</span>;
         }
