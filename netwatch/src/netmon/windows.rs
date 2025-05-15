@@ -56,7 +56,7 @@ impl RouteMonitor {
     }
 }
 
-pub(super) fn is_interesting_interface(_name: &str) -> bool {
+pub(crate) fn is_interesting_interface(_name: &str) -> bool {
     true
 }
 

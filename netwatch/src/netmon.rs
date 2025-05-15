@@ -1,9 +1,7 @@
 //! Monitoring of networking interfaces and route changes.
 
-use n0_future::{
-    boxed::BoxFuture,
-    task::{self, AbortOnDropHandle},
-};
+use n0_future::task::{self, AbortOnDropHandle};
+use n0_watcher::Watchable;
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::{mpsc, oneshot};
@@ -26,8 +24,10 @@ mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
 
-pub use self::actor::CallbackToken;
+#[cfg(not(wasm_browser))]
+pub(crate) use self::actor::is_interesting_interface;
 use self::actor::{Actor, ActorMessage};
+pub use crate::interfaces::State;
 
 /// Monitors networking interface and route changes.
 #[derive(Debug)]
@@ -35,6 +35,7 @@ pub struct Monitor {
     /// Task handle for the monitor task.
     _handle: AbortOnDropHandle<()>,
     actor_tx: mpsc::Sender<ActorMessage>,
+    interface_state: Watchable<State>,
 }
 
 #[common_fields({
@@ -66,6 +67,7 @@ impl Monitor {
     pub async fn new() -> Result<Self, Error> {
         let actor = Actor::new().await.context(ActorSnafu)?;
         let actor_tx = actor.subscribe();
+        let interface_state = actor.state().clone();
 
         let handle = task::spawn(async move {
             actor.run().await;
@@ -74,30 +76,13 @@ impl Monitor {
         Ok(Monitor {
             _handle: AbortOnDropHandle::new(handle),
             actor_tx,
+            interface_state,
         })
     }
 
     /// Subscribe to network changes.
-    pub async fn subscribe<F>(&self, callback: F) -> Result<CallbackToken, Error>
-    where
-        F: Fn(bool) -> BoxFuture<()> + 'static + Sync + Send,
-    {
-        let (s, r) = oneshot::channel();
-        self.actor_tx
-            .send(ActorMessage::Subscribe(Box::new(callback), s))
-            .await?;
-        let token = r.await?;
-        Ok(token)
-    }
-
-    /// Unsubscribe a callback from network changes, using the provided token.
-    pub async fn unsubscribe(&self, token: CallbackToken) -> Result<(), Error> {
-        let (s, r) = oneshot::channel();
-        self.actor_tx
-            .send(ActorMessage::Unsubscribe(token, s))
-            .await?;
-        r.await?;
-        Ok(())
+    pub fn subscribe(&self) -> n0_watcher::Direct<State> {
+        self.interface_state.watch()
     }
 
     /// Potential change detected outside
@@ -109,23 +94,29 @@ impl Monitor {
 
 #[cfg(test)]
 mod tests {
-    use n0_future::future::FutureExt;
+    use n0_future::StreamExt;
+    use n0_watcher::Watcher as _;
 
     use super::*;
 
     #[tokio::test]
     async fn test_smoke_monitor() {
         let mon = Monitor::new().await.unwrap();
-        let _token = mon
-            .subscribe(|is_major| {
-                async move {
-                    println!("CHANGE DETECTED: {}", is_major);
-                }
-                .boxed()
-            })
-            .await
-            .unwrap();
+        let sub = mon.subscribe();
 
-        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        let mut current = sub.get().unwrap();
+        println!("current state: {}", current);
+        let mut stream = sub.stream();
+
+        for _ in 0..10 {
+            let state = stream.next().await.unwrap();
+            println!(
+                "CHANGE DETECTED: major?: {}\n{}\n",
+                state.is_major_change(&current),
+                state
+            );
+
+            current = state;
+        }
     }
 }
