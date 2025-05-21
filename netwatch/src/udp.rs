@@ -321,7 +321,7 @@ impl UdpSocket {
                     panic!("lock poisoned: {:?}", e);
                 }
                 Err(TryLockError::WouldBlock) => {
-                    return Err(io::Error::new(io::ErrorKind::WouldBlock, ""));
+                    return Err(io::Error::new(io::ErrorKind::WouldBlock, "locked"));
                 }
             };
             let (socket, state) = guard.try_get_connected()?;
@@ -336,6 +336,50 @@ impl UdpSocket {
                         continue;
                     }
                 },
+            }
+        }
+    }
+
+    /// poll send a quinn based `Transmit`.
+    pub fn poll_send_quinn(
+        &self,
+        cx: &mut Context,
+        transmit: &Transmit<'_>,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            if let Err(err) = self.maybe_rebind() {
+                return Poll::Ready(Err(err));
+            }
+
+            let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let (socket, state) = guard.try_get_connected()?;
+
+            match socket.poll_send_ready(cx) {
+                Poll::Pending => {
+                    self.send_waker.register(cx.waker());
+                    return Poll::Pending;
+                }
+                Poll::Ready(Ok(())) => {
+                    let res =
+                        socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
+                    if let Err(err) = res {
+                        if err.kind() == io::ErrorKind::WouldBlock {
+                            continue;
+                        }
+
+                        if let Some(err) = self.handle_write_error(err) {
+                            return Poll::Ready(Err(err));
+                        }
+                        continue;
+                    }
+                    return Poll::Ready(res);
+                }
+                Poll::Ready(Err(err)) => {
+                    if let Some(err) = self.handle_write_error(err) {
+                        return Poll::Ready(Err(err));
+                    }
+                    continue;
+                }
             }
         }
     }
