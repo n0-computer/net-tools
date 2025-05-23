@@ -1,15 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
-
-use n0_future::{
-    boxed::BoxFuture,
-    task,
-    time::{self, Duration, Instant},
-};
+use n0_future::time::{self, Duration, Instant};
+use n0_watcher::Watchable;
 #[cfg(not(wasm_browser))]
-use os::is_interesting_interface;
+pub(crate) use os::is_interesting_interface;
 pub(super) use os::Error;
 use os::RouteMonitor;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
 #[cfg(target_os = "android")]
@@ -29,8 +24,6 @@ use super::wasm_browser as os;
 #[cfg(target_os = "windows")]
 use super::windows as os;
 use crate::interfaces::State;
-#[cfg(not(wasm_browser))]
-use crate::{interfaces::IpNet, ip::is_link_local};
 
 /// The message sent by the OS specific monitors.
 #[derive(Debug, Copy, Clone)]
@@ -52,7 +45,7 @@ const ACTOR_CHAN_CAPACITY: usize = 16;
 
 pub(super) struct Actor {
     /// Latest known interface state.
-    interface_state: State,
+    interface_state: Watchable<State>,
     /// Latest observed wall time.
     wall_time: Instant,
     /// OS specific monitor.
@@ -61,21 +54,9 @@ pub(super) struct Actor {
     mon_receiver: mpsc::Receiver<NetworkMessage>,
     actor_receiver: mpsc::Receiver<ActorMessage>,
     actor_sender: mpsc::Sender<ActorMessage>,
-    /// Callback registry.
-    callbacks: HashMap<CallbackToken, Arc<Callback>>,
-    callback_token: u64,
 }
 
-/// Token to remove a callback
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct CallbackToken(u64);
-
-/// Callbacks that get notified about changes.
-pub(super) type Callback = Box<dyn Fn(bool) -> BoxFuture<()> + Sync + Send + 'static>;
-
 pub(super) enum ActorMessage {
-    Subscribe(Callback, oneshot::Sender<CallbackToken>),
-    Unsubscribe(CallbackToken, oneshot::Sender<()>),
     NetworkChange,
 }
 
@@ -89,15 +70,17 @@ impl Actor {
         let (actor_sender, actor_receiver) = mpsc::channel(ACTOR_CHAN_CAPACITY);
 
         Ok(Actor {
-            interface_state,
+            interface_state: Watchable::new(interface_state),
             wall_time,
             route_monitor,
             mon_receiver,
             actor_receiver,
             actor_sender,
-            callbacks: Default::default(),
-            callback_token: 0,
         })
+    }
+
+    pub(super) fn state(&self) -> &Watchable<State> {
+        &self.interface_state
     }
 
     pub(super) fn subscribe(&self) -> mpsc::Sender<ActorMessage> {
@@ -143,15 +126,6 @@ impl Actor {
                 }
                 msg = self.actor_receiver.recv() => {
                     match msg {
-                        Some(ActorMessage::Subscribe(callback, s)) => {
-                            let token = self.next_callback_token();
-                            self.callbacks.insert(token, Arc::new(callback));
-                            s.send(token).ok();
-                        }
-                        Some(ActorMessage::Unsubscribe(token, s)) => {
-                            self.callbacks.remove(&token);
-                            s.send(()).ok();
-                        }
                         Some(ActorMessage::NetworkChange) => {
                             trace!("external network activity detected");
                             last_event.replace(false);
@@ -167,17 +141,11 @@ impl Actor {
         }
     }
 
-    fn next_callback_token(&mut self) -> CallbackToken {
-        let token = CallbackToken(self.callback_token);
-        self.callback_token += 1;
-        token
-    }
-
     async fn handle_potential_change(&mut self, time_jumped: bool) {
         trace!("potential change");
 
         let new_state = State::new().await;
-        let old_state = &self.interface_state;
+        let old_state = &self.interface_state.get();
 
         // No major changes, continue on
         if !time_jumped && old_state == &new_state {
@@ -185,19 +153,7 @@ impl Actor {
             return;
         }
 
-        let is_major = is_major_change(old_state, &new_state) || time_jumped;
-
-        if is_major {
-            self.interface_state = new_state;
-        }
-
-        debug!("triggering {} callbacks", self.callbacks.len());
-        for cb in self.callbacks.values() {
-            let cb = cb.clone();
-            task::spawn(async move {
-                cb(is_major).await;
-            });
-        }
+        self.interface_state.set(new_state).ok();
     }
 
     /// Reports whether wall time jumped more than 150%
@@ -213,62 +169,4 @@ impl Actor {
         self.wall_time = now;
         jumped
     }
-}
-
-#[cfg(wasm_browser)]
-fn is_major_change(s1: &State, s2: &State) -> bool {
-    // All changes are major.
-    // In the browser, there only are changes from online to offline
-    s1 != s2
-}
-
-#[cfg(not(wasm_browser))]
-fn is_major_change(s1: &State, s2: &State) -> bool {
-    if s1.have_v6 != s2.have_v6
-        || s1.have_v4 != s2.have_v4
-        || s1.is_expensive != s2.is_expensive
-        || s1.default_route_interface != s2.default_route_interface
-        || s1.http_proxy != s2.http_proxy
-        || s1.pac != s2.pac
-    {
-        return true;
-    }
-
-    for (iname, i) in &s1.interfaces {
-        if !is_interesting_interface(i.name()) {
-            continue;
-        }
-        let Some(i2) = s2.interfaces.get(iname) else {
-            return true;
-        };
-        if i != i2 || !prefixes_major_equal(i.addrs(), i2.addrs()) {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Checks whether `a` and `b` are equal after ignoring uninteresting
-/// things, like link-local, loopback and multicast addresses.
-#[cfg(not(wasm_browser))]
-fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = IpNet>) -> bool {
-    fn is_interesting(p: &IpNet) -> bool {
-        let a = p.addr();
-        if is_link_local(a) || a.is_loopback() || a.is_multicast() {
-            return false;
-        }
-        true
-    }
-
-    let a = a.filter(is_interesting);
-    let b = b.filter(is_interesting);
-
-    for (a, b) in a.zip(b) {
-        if a != b {
-            return false;
-        }
-    }
-
-    true
 }

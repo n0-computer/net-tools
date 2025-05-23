@@ -29,10 +29,14 @@ use self::bsd::default_route;
 use self::linux::default_route;
 #[cfg(target_os = "windows")]
 use self::windows::default_route;
+#[cfg(not(wasm_browser))]
+use crate::ip::is_link_local;
 use crate::ip::{is_private_v6, is_up};
+#[cfg(not(wasm_browser))]
+use crate::netmon::is_interesting_interface;
 
 /// Represents a network interface.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Interface {
     iface: netdev::interface::Interface,
 }
@@ -61,12 +65,12 @@ impl Eq for Interface {}
 
 impl Interface {
     /// Is this interface up?
-    pub(crate) fn is_up(&self) -> bool {
+    pub fn is_up(&self) -> bool {
         is_up(&self.iface)
     }
 
     /// The name of the interface.
-    pub(crate) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.iface.name
     }
 
@@ -153,7 +157,7 @@ impl IpNet {
 
 /// Intended to store the state of the machine's network interfaces, routing table, and
 /// other network configuration. For now it's pretty basic.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct State {
     /// Maps from an interface name interface.
     pub interfaces: HashMap<String, Interface>,
@@ -165,22 +169,16 @@ pub struct State {
     /// Whether the machine has some non-localhost, non-link-local IPv4 address.
     pub have_v4: bool,
 
-    //// Whether the current network interface is considered "expensive", which currently means LTE/etc
+    /// Whether the current network interface is considered "expensive", which currently means LTE/etc
     /// instead of Wifi. This field is not populated by `get_state`.
-    pub(crate) is_expensive: bool,
+    pub is_expensive: bool,
 
     /// The interface name for the machine's default route.
     ///
     /// It is not yet populated on all OSes.
     ///
     /// When set, its value is the map key into `interface` and `interface_ips`.
-    pub(crate) default_route_interface: Option<String>,
-
-    /// The HTTP proxy to use, if any.
-    pub(crate) http_proxy: Option<String>,
-
-    /// The URL to the Proxy Autoconfig URL, if applicable.
-    pub(crate) pac: Option<String>,
+    pub default_route_interface: Option<String>,
 }
 
 impl fmt::Display for State {
@@ -241,8 +239,6 @@ impl State {
             have_v6,
             is_expensive: false,
             default_route_interface,
-            http_proxy: None,
-            pac: None,
         }
     }
 
@@ -258,9 +254,41 @@ impl State {
             have_v4: true,
             is_expensive: false,
             default_route_interface: Some(ifname),
-            http_proxy: None,
-            pac: None,
         }
+    }
+
+    /// Is this a major change compared to the `old` one?.
+    #[cfg(wasm_browser)]
+    pub fn is_major_change(&self, old: &State) -> bool {
+        // All changes are major.
+        // In the browser, there only are changes from online to offline
+        self != old
+    }
+
+    /// Is this a major change compared to the `old` one?.
+    #[cfg(not(wasm_browser))]
+    pub fn is_major_change(&self, old: &State) -> bool {
+        if self.have_v6 != old.have_v6
+            || self.have_v4 != old.have_v4
+            || self.is_expensive != old.is_expensive
+            || self.default_route_interface != old.default_route_interface
+        {
+            return true;
+        }
+
+        for (iname, i) in &old.interfaces {
+            if !is_interesting_interface(i.name()) {
+                continue;
+            }
+            let Some(i2) = self.interfaces.get(iname) else {
+                return true;
+            };
+            if i != i2 || !prefixes_major_equal(i.addrs(), i2.addrs()) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -371,6 +399,30 @@ impl HomeRouter {
             .chain(gateway.ipv6.iter().cloned().map(IpAddr::V6))
             .next()
     }
+}
+
+/// Checks whether `a` and `b` are equal after ignoring uninteresting
+/// things, like link-local, loopback and multicast addresses.
+#[cfg(not(wasm_browser))]
+fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = IpNet>) -> bool {
+    fn is_interesting(p: &IpNet) -> bool {
+        let a = p.addr();
+        if is_link_local(a) || a.is_loopback() || a.is_multicast() {
+            return false;
+        }
+        true
+    }
+
+    let a = a.filter(is_interesting);
+    let b = b.filter(is_interesting);
+
+    for (a, b) in a.zip(b) {
+        if a != b {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

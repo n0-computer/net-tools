@@ -5,7 +5,7 @@ use js_sys::{JsString, Reflect};
 pub const BROWSER_INTERFACE: &str = "browserif";
 
 /// Represents a network interface.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Interface {
     is_up: bool,
 }
@@ -45,7 +45,7 @@ impl Interface {
 
 /// Intended to store the state of the machine's network interfaces, routing table, and
 /// other network configuration. For now it's pretty basic.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct State {
     /// Maps from an interface name interface.
     pub interfaces: HashMap<String, Interface>,

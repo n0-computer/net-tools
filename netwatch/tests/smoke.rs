@@ -5,7 +5,7 @@
 //! the browser online/offline.
 //!
 //! However, this gives us a minimum guarantee that the Wasm build doesn't break fully.
-use n0_future::FutureExt;
+use n0_watcher::Watcher;
 use netwatch::netmon;
 use testresult::TestResult;
 #[cfg(not(wasm_browser))]
@@ -30,20 +30,12 @@ async fn smoke_test() -> TestResult {
     // globalThis.navigator.onLine or globalThis.addEventListener("online"/"offline", ...) APIs,
     // so this is more of a test to see if we gracefully handle these situations & if our
     // .wasm files are without "env" imports.
-    tracing::info!("subscribing to netmon callback");
-    let token = monitor
-        .subscribe(|is_major| {
-            async move {
-                tracing::info!(is_major, "network change");
-            }
-            .boxed()
-        })
-        .await?;
-    tracing::info!("successfully subscribed to netmon callback");
+    tracing::info!("subscribing to netmon");
+    let sub = monitor.interface_state();
 
-    tracing::info!("unsubscribing");
-    monitor.unsubscribe(token).await?;
-    tracing::info!("unsubscribed");
+    let current = sub.get()?;
+    tracing::info!(?current, "network change");
+    tracing::info!("successfully subscribed to netmon");
 
     tracing::info!("dropping netmon::Monitor");
     drop(monitor);

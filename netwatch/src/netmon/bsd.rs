@@ -120,7 +120,7 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
     }
 }
 
-pub(super) fn is_interesting_interface(name: &str) -> bool {
+pub(crate) fn is_interesting_interface(name: &str) -> bool {
     let base_name = name.trim_end_matches("0123456789");
     if base_name == "llw" || base_name == "awdl" || base_name == "ipsec" {
         return false;
