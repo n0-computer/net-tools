@@ -902,13 +902,7 @@
 <a href="#901" id="901">901</a>
 <a href="#902" id="902">902</a>
 <a href="#903" id="903">903</a>
-<a href="#904" id="904">904</a>
-<a href="#905" id="905">905</a>
-<a href="#906" id="906">906</a>
-<a href="#907" id="907">907</a>
-<a href="#908" id="908">908</a>
-<a href="#909" id="909">909</a>
-<a href="#910" id="910">910</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
+<a href="#904" id="904">904</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::{
     future::Future,
     io,
     net::SocketAddr,
@@ -1612,15 +1606,12 @@
 
         <span class="kw">let </span>local_addr = socket.local_addr()<span class="question-mark">?</span>;
         <span class="kw">if </span>addr.port() != <span class="number">0 </span>&amp;&amp; local_addr.port() != addr.port() {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(io::Error::new(
-                io::ErrorKind::Other,
-                <span class="macro">format!</span>(
-                    <span class="string">"wrong port bound: {:?}: wanted: {} got {}"</span>,
-                    network,
-                    addr.port(),
-                    local_addr.port(),
-                ),
-            ));
+            <span class="kw">return </span><span class="prelude-val">Err</span>(io::Error::other(<span class="macro">format!</span>(
+                <span class="string">"wrong port bound: {:?}: wanted: {} got {}"</span>,
+                network,
+                addr.port(),
+                local_addr.port(),
+            )));
         }
 
         <span class="prelude-val">Ok</span>(<span class="self">Self</span>::Connected {
@@ -1641,10 +1632,7 @@
                 (<span class="kw-2">*</span>addr, s)
             }
             <span class="self">Self</span>::Closed { .. } =&gt; {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(io::Error::new(
-                    io::ErrorKind::Other,
-                    <span class="string">"socket is closed and cannot be rebound"</span>,
-                ));
+                <span class="kw">return </span><span class="prelude-val">Err</span>(io::Error::other(<span class="string">"socket is closed and cannot be rebound"</span>));
             }
         };
         <span class="macro">debug!</span>(<span class="string">"rebinding {}"</span>, addr);
