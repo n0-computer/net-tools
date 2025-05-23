@@ -31,7 +31,7 @@ use self::linux::default_route;
 use self::windows::default_route;
 #[cfg(not(wasm_browser))]
 use crate::ip::is_link_local;
-use crate::ip::{is_private_v6, is_up};
+use crate::ip::{is_private_v6, is_up, LocalAddresses};
 #[cfg(not(wasm_browser))]
 use crate::netmon::is_interesting_interface;
 
@@ -161,6 +161,8 @@ impl IpNet {
 pub struct State {
     /// Maps from an interface name interface.
     pub interfaces: HashMap<String, Interface>,
+    /// List of machine's local IP addresses.
+    pub local_addresses: LocalAddresses,
 
     /// Whether this machine has an IPv6 Global or Unique Local Address
     /// which might provide connectivity.
@@ -212,6 +214,8 @@ impl State {
         let mut have_v4 = false;
 
         let ifaces = netdev::interface::get_interfaces();
+        let local_addresses = LocalAddresses::from_raw_interfaces(&ifaces);
+
         for iface in ifaces {
             let ni = Interface { iface };
             let if_up = ni.is_up();
@@ -235,6 +239,7 @@ impl State {
 
         State {
             interfaces,
+            local_addresses,
             have_v4,
             have_v6,
             is_expensive: false,
@@ -250,6 +255,7 @@ impl State {
         let ifname = fake.iface.name.clone();
         Self {
             interfaces: [(ifname.clone(), fake)].into_iter().collect(),
+            local_addresses: LocalAddresses::from_raw_interfaces(&[]),
             have_v6: true,
             have_v4: true,
             is_expensive: false,
