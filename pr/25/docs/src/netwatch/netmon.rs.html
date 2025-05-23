@@ -190,7 +190,7 @@
     }
 
     <span class="doccomment">/// Subscribe to network changes.
-    </span><span class="kw">pub fn </span>subscribe(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; n0_watcher::Direct&lt;State&gt; {
+    </span><span class="kw">pub fn </span>interface_state(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; n0_watcher::Direct&lt;State&gt; {
         <span class="self">self</span>.interface_state.watch()
     }
 
@@ -210,7 +210,7 @@
     <span class="attr">#[tokio::test]
     </span><span class="kw">async fn </span>test_smoke_monitor() {
         <span class="kw">let </span>mon = Monitor::new().<span class="kw">await</span>.unwrap();
-        <span class="kw">let </span>sub = mon.subscribe();
+        <span class="kw">let </span>sub = mon.interface_state();
 
         <span class="kw">let </span>current = sub.get().unwrap();
         <span class="macro">println!</span>(<span class="string">"current state: {}"</span>, current);
