@@ -31,7 +31,7 @@ async fn smoke_test() -> TestResult {
     // so this is more of a test to see if we gracefully handle these situations & if our
     // .wasm files are without "env" imports.
     tracing::info!("subscribing to netmon");
-    let sub = monitor.subscribe();
+    let sub = monitor.interface_state();
 
     let current = sub.get()?;
     tracing::info!(?current, "network change");

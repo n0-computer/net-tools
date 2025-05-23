@@ -81,7 +81,7 @@ impl Monitor {
     }
 
     /// Subscribe to network changes.
-    pub fn subscribe(&self) -> n0_watcher::Direct<State> {
+    pub fn interface_state(&self) -> n0_watcher::Direct<State> {
         self.interface_state.watch()
     }
 
@@ -101,7 +101,7 @@ mod tests {
     #[tokio::test]
     async fn test_smoke_monitor() {
         let mon = Monitor::new().await.unwrap();
-        let sub = mon.subscribe();
+        let sub = mon.interface_state();
 
         let current = sub.get().unwrap();
         println!("current state: {}", current);
