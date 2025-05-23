@@ -702,15 +702,12 @@ impl SocketState {
 
         let local_addr = socket.local_addr()?;
         if addr.port() != 0 && local_addr.port() != addr.port() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "wrong port bound: {:?}: wanted: {} got {}",
-                    network,
-                    addr.port(),
-                    local_addr.port(),
-                ),
-            ));
+            return Err(io::Error::other(format!(
+                "wrong port bound: {:?}: wanted: {} got {}",
+                network,
+                addr.port(),
+                local_addr.port(),
+            )));
         }
 
         Ok(Self::Connected {
@@ -731,10 +728,7 @@ impl SocketState {
                 (*addr, s)
             }
             Self::Closed { .. } => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "socket is closed and cannot be rebound",
-                ));
+                return Err(io::Error::other("socket is closed and cannot be rebound"));
             }
         };
         debug!("rebinding {}", addr);
