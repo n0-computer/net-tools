@@ -33,7 +33,10 @@ impl LocalAddresses {
     /// addresses because we know of environments where these are used with NAT to provide connectivity.
     pub fn new() -> Self {
         let ifaces = netdev::interface::get_interfaces();
+        Self::from_raw_interfaces(&ifaces)
+    }
 
+    pub(crate) fn from_raw_interfaces(ifaces: &[netdev::Interface]) -> Self {
         let mut loopback = Vec::new();
         let mut regular4 = Vec::new();
         let mut regular6 = Vec::new();
@@ -41,11 +44,11 @@ impl LocalAddresses {
         let mut ula6 = Vec::new();
 
         for iface in ifaces {
-            if !is_up(&iface) {
+            if !is_up(iface) {
                 // Skip down interfaces
                 continue;
             }
-            let ifc_is_loopback = is_loopback(&iface);
+            let ifc_is_loopback = is_loopback(iface);
             let addrs = iface
                 .ipv4
                 .iter()
