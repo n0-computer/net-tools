@@ -258,15 +258,6 @@ impl State {
     }
 
     /// Is this a major change compared to the `old` one?.
-    #[cfg(wasm_browser)]
-    pub fn is_major_change(&self, old: &State) -> bool {
-        // All changes are major.
-        // In the browser, there only are changes from online to offline
-        self != old
-    }
-
-    /// Is this a major change compared to the `old` one?.
-    #[cfg(not(wasm_browser))]
     pub fn is_major_change(&self, old: &State) -> bool {
         if self.have_v6 != old.have_v6
             || self.have_v4 != old.have_v4
