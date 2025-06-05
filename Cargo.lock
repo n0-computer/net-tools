@@ -1222,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "netwatch"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "atomic-waker",
  "bytes",
