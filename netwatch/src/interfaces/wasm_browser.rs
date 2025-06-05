@@ -115,4 +115,11 @@ impl State {
             pac: None,
         }
     }
+
+    /// Is this a major change compared to the `old` one?.
+    pub fn is_major_change(&self, old: &State) -> bool {
+        // All changes are major.
+        // In the browser, there only are changes from online to offline
+        self != old
+    }
 }

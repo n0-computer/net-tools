@@ -3,7 +3,7 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::{atomic::AtomicBool, RwLock, RwLockReadGuard, TryLockError},
+    sync::{atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, TryLockError},
     task::{Context, Poll},
 };
 
@@ -321,7 +321,7 @@ impl UdpSocket {
                     panic!("lock poisoned: {:?}", e);
                 }
                 Err(TryLockError::WouldBlock) => {
-                    return Err(io::Error::new(io::ErrorKind::WouldBlock, ""));
+                    return Err(io::Error::new(io::ErrorKind::WouldBlock, "locked"));
                 }
             };
             let (socket, state) = guard.try_get_connected()?;
@@ -336,6 +336,50 @@ impl UdpSocket {
                         continue;
                     }
                 },
+            }
+        }
+    }
+
+    /// poll send a quinn based `Transmit`.
+    pub fn poll_send_quinn(
+        &self,
+        cx: &mut Context,
+        transmit: &Transmit<'_>,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            if let Err(err) = self.maybe_rebind() {
+                return Poll::Ready(Err(err));
+            }
+
+            let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let (socket, state) = guard.try_get_connected()?;
+
+            match socket.poll_send_ready(cx) {
+                Poll::Pending => {
+                    self.send_waker.register(cx.waker());
+                    return Poll::Pending;
+                }
+                Poll::Ready(Ok(())) => {
+                    let res =
+                        socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
+                    if let Err(err) = res {
+                        if err.kind() == io::ErrorKind::WouldBlock {
+                            continue;
+                        }
+
+                        if let Some(err) = self.handle_write_error(err) {
+                            return Poll::Ready(Err(err));
+                        }
+                        continue;
+                    }
+                    return Poll::Ready(res);
+                }
+                Poll::Ready(Err(err)) => {
+                    if let Some(err) = self.handle_write_error(err) {
+                        return Poll::Ready(Err(err));
+                    }
+                    continue;
+                }
             }
         }
     }
@@ -399,6 +443,11 @@ impl UdpSocket {
                 }
             }
         }
+    }
+
+    /// Creates a [`UdpSender`] sender.
+    pub fn create_sender(self: Arc<Self>) -> UdpSender {
+        UdpSender::new(self.clone())
     }
 
     /// Whether transmitted datagrams might get fragmented by the IP layer
@@ -801,6 +850,151 @@ impl Drop for UdpSocket {
                     // Calls libc::close, which can block
                     drop(std_sock);
                 });
+            }
+        }
+    }
+}
+
+pin_project_lite::pin_project! {
+    pub struct UdpSender {
+        socket: Arc<UdpSocket>,
+        #[pin]
+        fut: Option<Pin<Box<dyn Future<Output = io::Result<()>> + Send + Sync + 'static>>>,
+    }
+}
+
+impl std::fmt::Debug for UdpSender {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("UdpSender")
+    }
+}
+
+impl UdpSender {
+    fn new(socket: Arc<UdpSocket>) -> Self {
+        Self { socket, fut: None }
+    }
+
+    /// Async sending
+    pub fn send<'a, 'b>(&self, transmit: &'a quinn_udp::Transmit<'b>) -> SendFutQuinn<'a, 'b> {
+        SendFutQuinn {
+            socket: self.socket.clone(),
+            transmit,
+        }
+    }
+
+    /// Poll send
+    pub fn poll_send(
+        self: Pin<&mut Self>,
+        transmit: &quinn_udp::Transmit,
+        cx: &mut Context,
+    ) -> Poll<io::Result<()>> {
+        let mut this = self.project();
+        loop {
+            if let Err(err) = this.socket.maybe_rebind() {
+                return Poll::Ready(Err(err));
+            }
+
+            let guard =
+                n0_future::ready!(this.socket.poll_read_socket(&this.socket.send_waker, cx));
+
+            if this.fut.is_none() {
+                let socket = this.socket.clone();
+                this.fut.set(Some(Box::pin(async move {
+                    n0_future::future::poll_fn(|cx| socket.poll_writable(cx)).await
+                })));
+            }
+            // We're forced to `unwrap` here because `Fut` may be `!Unpin`, which means we can't safely
+            // obtain an `&mut Fut` after storing it in `this.fut` when `this` is already behind `Pin`,
+            // and if we didn't store it then we wouldn't be able to keep it alive between
+            // `poll_writable` calls.
+            let result = n0_future::ready!(this.fut.as_mut().as_pin_mut().unwrap().poll(cx));
+
+            // Polling an arbitrary `Future` after it becomes ready is a logic error, so arrange for
+            // a new `Future` to be created on the next call.
+            this.fut.set(None);
+
+            // If .writable() fails, propagate the error
+            result?;
+
+            let (socket, state) = guard.try_get_connected()?;
+            let result = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
+
+            match result {
+                // We thought the socket was writable, but it wasn't, then retry so that either another
+                // `writable().await` call determines that the socket is indeed not writable and
+                // registers us for a wakeup, or the send succeeds if this really was just a
+                // transient failure.
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                // In all other cases, either propagate the error or we're Ok
+                _ => return Poll::Ready(result),
+            }
+        }
+    }
+
+    /// Best effort sending
+    pub fn try_send(&self, transmit: &quinn_udp::Transmit) -> io::Result<()> {
+        self.socket.maybe_rebind()?;
+
+        match self.socket.socket.try_read() {
+            Ok(guard) => {
+                let (socket, state) = guard.try_get_connected()?;
+                socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit))
+            }
+            Err(TryLockError::Poisoned(e)) => panic!("socket lock poisoned: {e}"),
+            Err(TryLockError::WouldBlock) => {
+                Err(io::Error::new(io::ErrorKind::WouldBlock, "locked"))
+            }
+        }
+    }
+}
+
+/// Send future quinn
+#[derive(Debug)]
+pub struct SendFutQuinn<'a, 'b> {
+    socket: Arc<UdpSocket>,
+    transmit: &'a quinn_udp::Transmit<'b>,
+}
+
+impl Future for SendFutQuinn<'_, '_> {
+    type Output = io::Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        loop {
+            if let Err(err) = self.socket.maybe_rebind() {
+                return Poll::Ready(Err(err));
+            }
+
+            let guard =
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+            let (socket, state) = guard.try_get_connected()?;
+
+            match socket.poll_send_ready(cx) {
+                Poll::Pending => {
+                    self.socket.send_waker.register(cx.waker());
+                    return Poll::Pending;
+                }
+                Poll::Ready(Ok(())) => {
+                    let res = socket.try_io(Interest::WRITABLE, || {
+                        state.send(socket.into(), self.transmit)
+                    });
+
+                    if let Err(err) = res {
+                        if err.kind() == io::ErrorKind::WouldBlock {
+                            continue;
+                        }
+                        if let Some(err) = self.socket.handle_write_error(err) {
+                            return Poll::Ready(Err(err));
+                        }
+                        continue;
+                    }
+                    return Poll::Ready(res);
+                }
+                Poll::Ready(Err(err)) => {
+                    if let Some(err) = self.socket.handle_write_error(err) {
+                        return Poll::Ready(Err(err));
+                    }
+                    continue;
+                }
             }
         }
     }

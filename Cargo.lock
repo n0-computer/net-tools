@@ -1103,13 +1103,13 @@ dependencies = [
 
 [[package]]
 name = "n0-watcher"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "813443be5d70d9ed05ad04577f0db9fa1d655336911d2ac271b63eb2da363ea1"
+checksum = "f216d4ebc5fcf9548244803cbb93f488a2ae160feba3706cd17040d69cf7a368"
 dependencies = [
  "derive_more",
  "n0-future",
- "thiserror 2.0.12",
+ "snafu",
 ]
 
 [[package]]
@@ -1239,6 +1239,7 @@ dependencies = [
  "netlink-packet-route 0.23.0",
  "netlink-proto",
  "netlink-sys",
+ "pin-project-lite",
  "serde",
  "snafu",
  "socket2",
@@ -1724,18 +1725,18 @@ checksum = "8917285742e9f3e1683f0a9c4e6b57960b7314d0b08d30d1ecd426713ee2eee9"
 
 [[package]]
 name = "snafu"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "223891c85e2a29c3fe8fb900c1fae5e69c2e42415e3177752e8718475efa5019"
+checksum = "320b01e011bf8d5d7a4a4a4be966d9160968935849c83b918827f6a435e7f627"
 dependencies = [
  "snafu-derive",
 ]
 
 [[package]]
 name = "snafu-derive"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03c3c6b7927ffe7ecaa769ee0e3994da3b8cafc8f444578982c83ecb161af917"
+checksum = "1961e2ef424c1424204d3a5d6975f934f56b6d50ff5732382d84ebf460e147f7"
 dependencies = [
  "heck",
  "proc-macro2",

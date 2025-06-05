@@ -10,4 +10,4 @@ mod udp;
 
 pub use self::ip_family::IpFamily;
 #[cfg(not(wasm_browser))]
-pub use self::udp::UdpSocket;
+pub use self::udp::{UdpSender, UdpSocket};
