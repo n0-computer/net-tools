@@ -251,8 +251,7 @@
 <a href="#250" id="250">250</a>
 <a href="#251" id="251">251</a>
 <a href="#252" id="252">252</a>
-<a href="#253" id="253">253</a>
-<a href="#254" id="254">254</a></pre></div><pre class="rust"><code><span class="doccomment">//! Holds the current mapping value and ensures that any change is reported accordingly.
+<a href="#253" id="253">253</a></pre></div><pre class="rust"><code><span class="doccomment">//! Holds the current mapping value and ensures that any change is reported accordingly.
 
 </span><span class="kw">use </span>std::{
     future::Future,
@@ -429,7 +428,7 @@
         <span class="kw-2">mut </span><span class="self">self</span>: Pin&lt;<span class="kw-2">&amp;mut </span><span class="self">Self</span>&gt;,
         cx: <span class="kw-2">&amp;mut </span>std::task::Context&lt;<span class="lifetime">'_</span>&gt;,
     ) -&gt; Poll&lt;<span class="prelude-ty">Option</span>&lt;<span class="self">Self</span>::Item&gt;&gt; {
-        <span class="self">self</span>.as_mut().poll(cx).map(<span class="prelude-val">Some</span>)
+        (<span class="kw-2">*</span><span class="self">self</span>.as_mut()).poll(cx).map(<span class="prelude-val">Some</span>)
     }
 }
 
@@ -456,8 +455,7 @@
     <span class="attr">#[tokio::test]
     #[ntest::timeout(<span class="number">2500</span>)]
     </span><span class="kw">async fn </span>report_renew_expire_report() {
-        <span class="kw">const </span>TEST_PORT: NonZeroU16 = <span class="comment">// SAFETY: it's clearly non zero
-            </span><span class="kw">unsafe </span>{ NonZeroU16::new_unchecked(<span class="number">9586</span>) };
+        <span class="kw">const </span>TEST_PORT: NonZeroU16 = NonZeroU16::new(<span class="number">9586</span>).unwrap();
         <span class="kw">const </span>TEST_IP: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
         <span class="kw">let </span>(<span class="kw-2">mut </span>c, <span class="kw-2">mut </span>watcher) = CurrentMapping::&lt;M&gt;::new(Default::default());
         <span class="kw">let </span>now = std::time::Instant::now();
