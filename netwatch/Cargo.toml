@@ -10,7 +10,7 @@ keywords = ["networking", "interfaces"]
 edition = "2021"
 
 # Sadly this also needs to be updated in .github/workflows/ci.yml
-rust-version = "1.81"
+rust-version = "1.85"
 
 [lints]
 workspace = true

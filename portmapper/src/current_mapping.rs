@@ -175,7 +175,7 @@ impl<M: Mapping> futures_lite::Stream for CurrentMapping<M> {
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        self.as_mut().poll(cx).map(Some)
+        (*self.as_mut()).poll(cx).map(Some)
     }
 }
 
@@ -202,8 +202,7 @@ mod tests {
     #[tokio::test]
     #[ntest::timeout(2500)]
     async fn report_renew_expire_report() {
-        const TEST_PORT: NonZeroU16 = // SAFETY: it's clearly non zero
-            unsafe { NonZeroU16::new_unchecked(9586) };
+        const TEST_PORT: NonZeroU16 = NonZeroU16::new(9586).unwrap();
         const TEST_IP: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
         let (mut c, mut watcher) = CurrentMapping::<M>::new(Default::default());
         let now = std::time::Instant::now();
