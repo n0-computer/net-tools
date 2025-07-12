@@ -112,6 +112,9 @@ impl Interface {
                 }),
                 dns_servers: vec![],
                 default: false,
+                ipv6_scope_ids: vec![],
+                stats: None,
+                mtu: None,
             },
         }
     }
