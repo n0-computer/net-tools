@@ -1416,7 +1416,7 @@
             <span class="kw">let </span>guard = <span class="kw">match </span><span class="self">self</span>.socket.try_read() {
                 <span class="prelude-val">Ok</span>(guard) =&gt; guard,
                 <span class="prelude-val">Err</span>(TryLockError::Poisoned(e)) =&gt; {
-                    <span class="macro">panic!</span>(<span class="string">"lock poisoned: {:?}"</span>, e);
+                    <span class="macro">panic!</span>(<span class="string">"lock poisoned: {e:?}"</span>);
                 }
                 <span class="prelude-val">Err</span>(TryLockError::WouldBlock) =&gt; {
                     <span class="kw">return </span><span class="prelude-val">Err</span>(io::Error::new(io::ErrorKind::WouldBlock, <span class="string">"locked"</span>));
@@ -2111,7 +2111,7 @@
             <span class="kw">let </span>socket = UdpSocket::bind_local(IpFamily::V4, <span class="number">0</span>)<span class="question-mark">?</span>;
             <span class="kw">let </span>addr = socket.local_addr()<span class="question-mark">?</span>;
             s_b.send(addr).<span class="kw">await</span><span class="question-mark">?</span>;
-            <span class="macro">println!</span>(<span class="string">"socket bound to {:?}"</span>, addr);
+            <span class="macro">println!</span>(<span class="string">"socket bound to {addr:?}"</span>);
 
             <span class="kw">let </span><span class="kw-2">mut </span>buffer = [<span class="number">0u8</span>; <span class="number">16</span>];
             <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">100 </span>{
@@ -2124,7 +2124,7 @@
                         socket.send_to(<span class="kw-2">&amp;</span>buffer[..count], addr).<span class="kw">await</span><span class="question-mark">?</span>;
                     }
                     <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="macro">eprintln!</span>(<span class="string">"error reading: {:?}"</span>, err);
+                        <span class="macro">eprintln!</span>(<span class="string">"error reading: {err:?}"</span>);
                     }
                 }
             }
@@ -2139,7 +2139,7 @@
 
         <span class="kw">let </span><span class="kw-2">mut </span>buffer = [<span class="number">0u8</span>; <span class="number">16</span>];
         <span class="kw">for </span>i <span class="kw">in </span><span class="number">0u8</span>..<span class="number">100 </span>{
-            <span class="macro">println!</span>(<span class="string">"round one - {}"</span>, i);
+            <span class="macro">println!</span>(<span class="string">"round one - {i}"</span>);
             socket.send_to(<span class="kw-2">&amp;</span>[i][..], addr).<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="kw">let </span>(count, from) = socket.recv_from(<span class="kw-2">&amp;mut </span>buffer).<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="macro">assert_eq!</span>(addr, from);
@@ -2165,11 +2165,11 @@
     </span><span class="kw">async fn </span>test_udp_mark_broken() -&gt; TestResult {
         <span class="kw">let </span>socket_a = UdpSocket::bind_local(IpFamily::V4, <span class="number">0</span>)<span class="question-mark">?</span>;
         <span class="kw">let </span>addr_a = socket_a.local_addr()<span class="question-mark">?</span>;
-        <span class="macro">println!</span>(<span class="string">"socket bound to {:?}"</span>, addr_a);
+        <span class="macro">println!</span>(<span class="string">"socket bound to {addr_a:?}"</span>);
 
         <span class="kw">let </span>socket_b = UdpSocket::bind_local(IpFamily::V4, <span class="number">0</span>)<span class="question-mark">?</span>;
         <span class="kw">let </span>addr_b = socket_b.local_addr()<span class="question-mark">?</span>;
-        <span class="macro">println!</span>(<span class="string">"socket bound to {:?}"</span>, addr_b);
+        <span class="macro">println!</span>(<span class="string">"socket bound to {addr_b:?}"</span>);
 
         <span class="kw">let </span>handle = tokio::task::spawn(<span class="kw">async move </span>{
             <span class="kw">let </span><span class="kw-2">mut </span>buffer = [<span class="number">0u8</span>; <span class="number">16</span>];
@@ -2179,7 +2179,7 @@
                         <span class="macro">println!</span>(<span class="string">"got {:?} from {:?}"</span>, <span class="kw-2">&amp;</span>buffer[..count], addr);
                     }
                     <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="macro">eprintln!</span>(<span class="string">"error recv: {:?}"</span>, err);
+                        <span class="macro">eprintln!</span>(<span class="string">"error recv: {err:?}"</span>);
                     }
                 }
             }

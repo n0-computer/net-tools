@@ -898,13 +898,13 @@
         <span class="kw">let </span>default_route = DefaultRouteDetails::new()
             .<span class="kw">await
             </span>.expect(<span class="string">"missing default route"</span>);
-        <span class="macro">println!</span>(<span class="string">"default_route: {:#?}"</span>, default_route);
+        <span class="macro">println!</span>(<span class="string">"default_route: {default_route:#?}"</span>);
     }
 
     <span class="attr">#[tokio::test]
     </span><span class="kw">async fn </span>test_likely_home_router() {
         <span class="kw">let </span>home_router = HomeRouter::new().expect(<span class="string">"missing home router"</span>);
-        <span class="macro">println!</span>(<span class="string">"home router: {:#?}"</span>, home_router);
+        <span class="macro">println!</span>(<span class="string">"home router: {home_router:#?}"</span>);
     }
 
     <span class="attr">#[test]
