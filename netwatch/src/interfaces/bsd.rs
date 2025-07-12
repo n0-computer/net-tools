@@ -1109,10 +1109,10 @@ mod tests {
         ];
 
         for (i, tt) in parse_addrs_little_endian_tests.into_iter().enumerate() {
-            let addrs = parse_addrs(tt.attrs, tt.parse_fn, &tt.b)
-                .unwrap_or_else(|_| panic!("failed {}", i));
+            let addrs =
+                parse_addrs(tt.attrs, tt.parse_fn, &tt.b).unwrap_or_else(|_| panic!("failed {i}"));
 
-            assert_eq!(addrs, tt.addrs, "{}", i);
+            assert_eq!(addrs, tt.addrs, "{i}");
         }
     }
 }
