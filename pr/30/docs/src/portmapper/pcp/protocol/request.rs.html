@@ -264,10 +264,10 @@
     <span class="attr">#[cfg(test)]
     </span><span class="kw">fn </span>random&lt;R: rand::Rng&gt;(opcode: <span class="kw">super</span>::Opcode, rng: <span class="kw-2">&amp;mut </span>R) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>opcode_data = OpcodeData::random(opcode, rng);
-        <span class="kw">let </span>addr_octets: [u8; <span class="number">16</span>] = rng.gen();
+        <span class="kw">let </span>addr_octets: [u8; <span class="number">16</span>] = rng.random();
         Request {
             version: Version::Pcp,
-            lifetime_seconds: rng.gen(),
+            lifetime_seconds: rng.random(),
             client_addr: Ipv6Addr::from(addr_octets),
             opcode_data,
         }
@@ -304,18 +304,18 @@
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_encode_decode_addr_request() {
-        <span class="kw">let </span><span class="kw-2">mut </span>gen = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
 
-        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::<span class="kw">super</span>::Opcode::Announce, <span class="kw-2">&amp;mut </span>gen);
+        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::<span class="kw">super</span>::Opcode::Announce, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = request.encode();
         <span class="macro">assert_eq!</span>(request, Request::decode(<span class="kw-2">&amp;</span>encoded));
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_encode_decode_map_request() {
-        <span class="kw">let </span><span class="kw-2">mut </span>gen = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
 
-        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::<span class="kw">super</span>::Opcode::Map, <span class="kw-2">&amp;mut </span>gen);
+        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::<span class="kw">super</span>::Opcode::Map, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = request.encode();
         <span class="macro">assert_eq!</span>(request, Request::decode(<span class="kw-2">&amp;</span>encoded));
     }

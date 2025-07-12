@@ -479,18 +479,18 @@
     </span><span class="kw">fn </span>random&lt;R: rand::Rng&gt;(opcode: Opcode, rng: <span class="kw-2">&amp;mut </span>R) -&gt; <span class="self">Self </span>{
         <span class="kw">match </span>opcode {
             Opcode::DetermineExternalAddress =&gt; {
-                <span class="kw">let </span>octets: [u8; <span class="number">4</span>] = rng.gen();
+                <span class="kw">let </span>octets: [u8; <span class="number">4</span>] = rng.random();
                 Response::PublicAddress {
-                    epoch_time: rng.gen(),
+                    epoch_time: rng.random(),
                     public_ip: octets.into(),
                 }
             }
             Opcode::MapUdp =&gt; Response::PortMap {
                 proto: MapProtocol::Udp,
-                epoch_time: rng.gen(),
-                private_port: rng.gen(),
-                external_port: rng.gen(),
-                lifetime_seconds: rng.gen(),
+                epoch_time: rng.random(),
+                private_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
             },
         }
     }
@@ -570,9 +570,9 @@
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_decode_external_addr_response() {
-        <span class="kw">let </span><span class="kw-2">mut </span>gen = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
 
-        <span class="kw">let </span>response = Response::random(Opcode::DetermineExternalAddress, <span class="kw-2">&amp;mut </span>gen);
+        <span class="kw">let </span>response = Response::random(Opcode::DetermineExternalAddress, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = response.encode();
         <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
     }

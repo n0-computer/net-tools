@@ -194,9 +194,9 @@
             Opcode::DetermineExternalAddress =&gt; Request::ExternalAddress,
             Opcode::MapUdp =&gt; Request::Mapping {
                 proto: MapProtocol::Udp,
-                local_port: rng.gen(),
-                external_port: rng.gen(),
-                lifetime_seconds: rng.gen(),
+                local_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
             },
         }
     }
@@ -240,18 +240,18 @@
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_encode_decode_addr_request() {
-        <span class="kw">let </span><span class="kw-2">mut </span>gen = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
 
-        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::Opcode::DetermineExternalAddress, <span class="kw-2">&amp;mut </span>gen);
+        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::Opcode::DetermineExternalAddress, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = request.encode();
         <span class="macro">assert_eq!</span>(request, Request::decode(<span class="kw-2">&amp;</span>encoded));
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_encode_decode_map_request() {
-        <span class="kw">let </span><span class="kw-2">mut </span>gen = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
 
-        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::Opcode::MapUdp, <span class="kw-2">&amp;mut </span>gen);
+        <span class="kw">let </span>request = Request::random(<span class="kw">super</span>::Opcode::MapUdp, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>encoded = request.encode();
         <span class="macro">assert_eq!</span>(request, Request::decode(<span class="kw-2">&amp;</span>encoded));
     }
