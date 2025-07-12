@@ -88,7 +88,7 @@ impl Mapping {
             .context(IoSnafu)?;
 
         let mut nonce = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
 
         let (requested_address, requested_port) = match preferred_external_address {
             Some((ip, port)) => (Some(ip), Some(port.into())),

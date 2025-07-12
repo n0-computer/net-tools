@@ -65,9 +65,9 @@ impl Request {
             Opcode::DetermineExternalAddress => Request::ExternalAddress,
             Opcode::MapUdp => Request::Mapping {
                 proto: MapProtocol::Udp,
-                local_port: rng.gen(),
-                external_port: rng.gen(),
-                lifetime_seconds: rng.gen(),
+                local_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
             },
         }
     }
@@ -111,18 +111,18 @@ mod tests {
 
     #[test]
     fn test_encode_decode_addr_request() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let request = Request::random(super::Opcode::DetermineExternalAddress, &mut gen);
+        let request = Request::random(super::Opcode::DetermineExternalAddress, &mut rng);
         let encoded = request.encode();
         assert_eq!(request, Request::decode(&encoded));
     }
 
     #[test]
     fn test_encode_decode_map_request() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let request = Request::random(super::Opcode::MapUdp, &mut gen);
+        let request = Request::random(super::Opcode::MapUdp, &mut rng);
         let encoded = request.encode();
         assert_eq!(request, Request::decode(&encoded));
     }

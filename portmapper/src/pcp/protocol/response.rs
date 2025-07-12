@@ -226,8 +226,8 @@ impl Response {
     fn random<R: rand::Rng>(opcode: Opcode, rng: &mut R) -> Self {
         let data = OpcodeData::random(opcode, rng);
         Self {
-            lifetime_seconds: rng.gen(),
-            epoch_time: rng.gen(),
+            lifetime_seconds: rng.random(),
+            epoch_time: rng.random(),
             data,
         }
     }
@@ -274,9 +274,9 @@ mod tests {
 
     #[test]
     fn test_decode_external_addr_response() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let response = Response::random(Opcode::Announce, &mut gen);
+        let response = Response::random(Opcode::Announce, &mut rng);
         let encoded = response.encode();
         assert_eq!(response, Response::decode(&encoded).unwrap());
     }

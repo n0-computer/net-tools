@@ -103,10 +103,10 @@ impl Request {
     #[cfg(test)]
     fn random<R: rand::Rng>(opcode: super::Opcode, rng: &mut R) -> Self {
         let opcode_data = OpcodeData::random(opcode, rng);
-        let addr_octets: [u8; 16] = rng.gen();
+        let addr_octets: [u8; 16] = rng.random();
         Request {
             version: Version::Pcp,
-            lifetime_seconds: rng.gen(),
+            lifetime_seconds: rng.random(),
             client_addr: Ipv6Addr::from(addr_octets),
             opcode_data,
         }
@@ -143,18 +143,18 @@ mod tests {
 
     #[test]
     fn test_encode_decode_addr_request() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let request = Request::random(super::super::Opcode::Announce, &mut gen);
+        let request = Request::random(super::super::Opcode::Announce, &mut rng);
         let encoded = request.encode();
         assert_eq!(request, Request::decode(&encoded));
     }
 
     #[test]
     fn test_encode_decode_map_request() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let request = Request::random(super::super::Opcode::Map, &mut gen);
+        let request = Request::random(super::super::Opcode::Map, &mut rng);
         let encoded = request.encode();
         assert_eq!(request, Request::decode(&encoded));
     }

@@ -185,18 +185,18 @@ impl Response {
     fn random<R: rand::Rng>(opcode: Opcode, rng: &mut R) -> Self {
         match opcode {
             Opcode::DetermineExternalAddress => {
-                let octets: [u8; 4] = rng.gen();
+                let octets: [u8; 4] = rng.random();
                 Response::PublicAddress {
-                    epoch_time: rng.gen(),
+                    epoch_time: rng.random(),
                     public_ip: octets.into(),
                 }
             }
             Opcode::MapUdp => Response::PortMap {
                 proto: MapProtocol::Udp,
-                epoch_time: rng.gen(),
-                private_port: rng.gen(),
-                external_port: rng.gen(),
-                lifetime_seconds: rng.gen(),
+                epoch_time: rng.random(),
+                private_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
             },
         }
     }
@@ -276,9 +276,9 @@ mod tests {
 
     #[test]
     fn test_decode_external_addr_response() {
-        let mut gen = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-        let response = Response::random(Opcode::DetermineExternalAddress, &mut gen);
+        let response = Response::random(Opcode::DetermineExternalAddress, &mut rng);
         let encoded = response.encode();
         assert_eq!(response, Response::decode(&encoded).unwrap());
     }
