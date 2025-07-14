@@ -309,7 +309,7 @@
 <span class="kw">use </span>num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 <span class="kw">use </span>snafu::{Backtrace, Snafu};
 
-<span class="kw">use super</span>::{opcode_data::OpcodeData, Opcode, Version};
+<span class="kw">use super</span>::{Opcode, Version, opcode_data::OpcodeData};
 
 <span class="doccomment">/// ResultCode in a [`Response`] when it's successful.
 </span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]

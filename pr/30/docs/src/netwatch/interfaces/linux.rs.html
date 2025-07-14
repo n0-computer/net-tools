@@ -466,15 +466,15 @@
 <span class="attr">#[cfg(not(target_os = <span class="string">"android"</span>))]
 </span><span class="kw">mod </span>sane {
     <span class="kw">use </span>n0_future::{Either, StreamExt, TryStream};
-    <span class="kw">use </span>netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
+    <span class="kw">use </span>netlink_packet_core::{NLM_F_DUMP, NLM_F_REQUEST, NetlinkMessage};
     <span class="kw">use </span>netlink_packet_route::{
+        AddressFamily, RouteNetlinkMessage,
         link::{LinkAttribute, LinkMessage},
         route::{RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope, RouteType},
-        AddressFamily, RouteNetlinkMessage,
     };
     <span class="kw">use </span>netlink_sys::protocols::NETLINK_ROUTE;
     <span class="kw">use </span>snafu::IntoError;
-    <span class="kw">use </span>tracing::{info_span, Instrument};
+    <span class="kw">use </span>tracing::{Instrument, info_span};
 
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
 
@@ -489,7 +489,7 @@
             <span class="kw">match </span>payload {
                 NetlinkPayload::InnerMessage(<span class="macro-nonterminal">$message_type</span>(msg)) =&gt; msg,
                 NetlinkPayload::Error(err) =&gt; {
-                    <span class="kw">return </span><span class="prelude-val">Err</span>(NetlinkErrorMessageSnafu { message: err }.build())
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(NetlinkErrorMessageSnafu { message: err }.build());
                 }
                 <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(UnexpectedNetlinkMessageSnafu.build()),
             }

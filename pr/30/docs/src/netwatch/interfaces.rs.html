@@ -493,7 +493,7 @@
 </span><span class="kw">use </span><span class="self">self</span>::windows::default_route;
 <span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">use </span><span class="kw">crate</span>::ip::is_link_local;
-<span class="kw">use </span><span class="kw">crate</span>::ip::{is_private_v6, is_up, LocalAddresses};
+<span class="kw">use </span><span class="kw">crate</span>::ip::{LocalAddresses, is_private_v6, is_up};
 <span class="attr">#[cfg(not(wasm_browser))]
 </span><span class="kw">use </span><span class="kw">crate</span>::netmon::is_interesting_interface;
 
@@ -552,7 +552,7 @@
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>fake() -&gt; <span class="self">Self </span>{
         <span class="kw">use </span>std::net::Ipv4Addr;
 
-        <span class="kw">use </span>netdev::{interface::InterfaceType, mac::MacAddr, NetworkDevice};
+        <span class="kw">use </span>netdev::{NetworkDevice, interface::InterfaceType, mac::MacAddr};
 
         <span class="self">Self </span>{
             iface: netdev::Interface {

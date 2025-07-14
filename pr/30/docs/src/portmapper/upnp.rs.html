@@ -197,7 +197,7 @@
     time::Duration,
 };
 
-<span class="kw">use </span>igd_next::{aio <span class="kw">as </span>aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
+<span class="kw">use </span>igd_next::{AddAnyPortError, GetExternalIpError, RemovePortError, SearchError, aio <span class="kw">as </span>aigd};
 <span class="kw">use </span>nested_enum_utils::common_fields;
 <span class="kw">use </span>snafu::{Backtrace, ResultExt, Snafu};
 <span class="kw">use </span>tracing::debug;
