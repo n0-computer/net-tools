@@ -31,7 +31,7 @@ use self::linux::default_route;
 use self::windows::default_route;
 #[cfg(not(wasm_browser))]
 use crate::ip::is_link_local;
-use crate::ip::{is_private_v6, is_up, LocalAddresses};
+use crate::ip::{LocalAddresses, is_private_v6, is_up};
 #[cfg(not(wasm_browser))]
 use crate::netmon::is_interesting_interface;
 
@@ -90,7 +90,7 @@ impl Interface {
     pub(crate) fn fake() -> Self {
         use std::net::Ipv4Addr;
 
-        use netdev::{interface::InterfaceType, mac::MacAddr, NetworkDevice};
+        use netdev::{NetworkDevice, interface::InterfaceType, mac::MacAddr};
 
         Self {
             iface: netdev::Interface {
@@ -112,6 +112,9 @@ impl Interface {
                 }),
                 dns_servers: vec![],
                 default: false,
+                ipv6_scope_ids: vec![],
+                stats: None,
+                mtu: None,
             },
         }
     }
@@ -433,13 +436,13 @@ mod tests {
         let default_route = DefaultRouteDetails::new()
             .await
             .expect("missing default route");
-        println!("default_route: {:#?}", default_route);
+        println!("default_route: {default_route:#?}");
     }
 
     #[tokio::test]
     async fn test_likely_home_router() {
         let home_router = HomeRouter::new().expect("missing home router");
-        println!("home router: {:#?}", home_router);
+        println!("home router: {home_router:#?}");
     }
 
     #[test]

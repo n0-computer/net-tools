@@ -136,7 +136,7 @@ impl CallbackHandler {
         trace!("unregistering unicast callback");
         if self
             .unicast_callbacks
-            .remove(&(handle.0 .0 as isize))
+            .remove(&(handle.0.0 as isize))
             .is_some()
         {
             unsafe {
@@ -180,7 +180,7 @@ impl CallbackHandler {
         trace!("unregistering route callback");
         if self
             .route_callbacks
-            .remove(&(handle.0 .0 as isize))
+            .remove(&(handle.0.0 as isize))
             .is_some()
         {
             unsafe {
@@ -204,7 +204,7 @@ unsafe extern "system" fn unicast_change_callback(
         return;
     }
     let callercontext = callercontext as *const UnicastCallback;
-    let cb = &*callercontext;
+    let cb = unsafe { &*callercontext };
     cb();
 }
 
@@ -218,6 +218,6 @@ unsafe extern "system" fn route_change_callback(
         return;
     }
     let callercontext = callercontext as *const RouteCallback;
-    let cb = &*callercontext;
+    let cb = unsafe { &*callercontext };
     cb();
 }

@@ -7,10 +7,10 @@ license = "MIT OR Apache-2.0"
 authors = ["n0 team"]
 repository = "https://github.com/n0-computer/net-tools"
 keywords = ["networking", "interfaces"]
-edition = "2021"
+edition = "2024"
 
 # Sadly this also needs to be updated in .github/workflows/ci.yml
-rust-version = "1.81"
+rust-version = "1.85"
 
 [lints]
 workspace = true
@@ -37,8 +37,8 @@ tracing = "0.1"
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 quinn-udp = { package = "iroh-quinn-udp", version = "0.5.5" }
 libc = "0.2.139"
-netdev = "0.31.0"
-socket2 = "0.5.3"
+netdev = "0.36.0"
+socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = [
     "io-util",
     "macros",
@@ -53,24 +53,24 @@ tokio = { version = "1", features = [
 ] }
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-netlink-packet-route = "0.23.0"
+netlink-packet-route = "0.24.0"
 netlink-packet-core = "0.7.0"
 netlink-proto = "0.11.5"
 netlink-sys = "0.8.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
-derive_more = { version = "1.0.0", features = ["display"] }
+derive_more = { version = "2.0.1", features = ["display"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-wmi = "0.14"
-windows = { version = "0.59", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
+wmi = "0.17"
+windows = { version = "0.61.3", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 windows-result = "0.3"
 serde = { version = "1", features = ["derive"] }
-derive_more = { version = "1.0.0", features = ["debug"] }
+derive_more = { version = "2.0.1", features = ["debug"] }
 
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-derive_more = { version = "1.0.0", features = ["display"] }
+derive_more = { version = "2.0.1", features = ["display"] }
 js-sys = "0.3"
 web-sys = { version = "0.3.70", features = ["EventListener", "EventTarget"] }
 

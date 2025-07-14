@@ -47,9 +47,7 @@ pub enum Error {
     NonceMissmatch {},
     #[snafu(display("received mapping is not for UDP"))]
     ProtocolMissmatch {},
-    #[snafu(display(
-        "received mapping is for a local port that does not match the requested one"
-    ))]
+    #[snafu(display("received mapping is for a local port that does not match the requested one"))]
     PortMissmatch {},
     #[snafu(display("received 0 external port for mapping"))]
     ZeroExternalPort {},
@@ -88,7 +86,7 @@ impl Mapping {
             .context(IoSnafu)?;
 
         let mut nonce = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
 
         let (requested_address, requested_port) = match preferred_external_address {
             Some((ip, port)) => (Some(ip), Some(port.into())),

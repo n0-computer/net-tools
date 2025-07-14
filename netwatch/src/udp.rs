@@ -3,7 +3,7 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::{atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, TryLockError},
+    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
     task::{Context, Poll},
 };
 
@@ -318,7 +318,7 @@ impl UdpSocket {
             let guard = match self.socket.try_read() {
                 Ok(guard) => guard,
                 Err(TryLockError::Poisoned(e)) => {
-                    panic!("lock poisoned: {:?}", e);
+                    panic!("lock poisoned: {e:?}");
                 }
                 Err(TryLockError::WouldBlock) => {
                     return Err(io::Error::new(io::ErrorKind::WouldBlock, "locked"));
@@ -1013,7 +1013,7 @@ mod tests {
             let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
             let addr = socket.local_addr()?;
             s_b.send(addr).await?;
-            println!("socket bound to {:?}", addr);
+            println!("socket bound to {addr:?}");
 
             let mut buffer = [0u8; 16];
             for i in 0..100 {
@@ -1026,7 +1026,7 @@ mod tests {
                         socket.send_to(&buffer[..count], addr).await?;
                     }
                     Err(err) => {
-                        eprintln!("error reading: {:?}", err);
+                        eprintln!("error reading: {err:?}");
                     }
                 }
             }
@@ -1041,7 +1041,7 @@ mod tests {
 
         let mut buffer = [0u8; 16];
         for i in 0u8..100 {
-            println!("round one - {}", i);
+            println!("round one - {i}");
             socket.send_to(&[i][..], addr).await?;
             let (count, from) = socket.recv_from(&mut buffer).await?;
             assert_eq!(addr, from);
@@ -1067,11 +1067,11 @@ mod tests {
     async fn test_udp_mark_broken() -> TestResult {
         let socket_a = UdpSocket::bind_local(IpFamily::V4, 0)?;
         let addr_a = socket_a.local_addr()?;
-        println!("socket bound to {:?}", addr_a);
+        println!("socket bound to {addr_a:?}");
 
         let socket_b = UdpSocket::bind_local(IpFamily::V4, 0)?;
         let addr_b = socket_b.local_addr()?;
-        println!("socket bound to {:?}", addr_b);
+        println!("socket bound to {addr_b:?}");
 
         let handle = tokio::task::spawn(async move {
             let mut buffer = [0u8; 16];
@@ -1081,7 +1081,7 @@ mod tests {
                         println!("got {:?} from {:?}", &buffer[..count], addr);
                     }
                     Err(err) => {
-                        eprintln!("error recv: {:?}", err);
+                        eprintln!("error recv: {err:?}");
                     }
                 }
             }

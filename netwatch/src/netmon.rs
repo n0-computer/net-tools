@@ -104,6 +104,6 @@ mod tests {
         let sub = mon.interface_state();
 
         let current = sub.get().unwrap();
-        println!("current state: {}", current);
+        println!("current state: {current}");
     }
 }

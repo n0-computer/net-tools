@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use igd_next::{aio as aigd, AddAnyPortError, GetExternalIpError, RemovePortError, SearchError};
+use igd_next::{AddAnyPortError, GetExternalIpError, RemovePortError, SearchError, aio as aigd};
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tracing::debug;

@@ -128,15 +128,15 @@ mod android {
 #[cfg(not(target_os = "android"))]
 mod sane {
     use n0_future::{Either, StreamExt, TryStream};
-    use netlink_packet_core::{NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
+    use netlink_packet_core::{NLM_F_DUMP, NLM_F_REQUEST, NetlinkMessage};
     use netlink_packet_route::{
+        AddressFamily, RouteNetlinkMessage,
         link::{LinkAttribute, LinkMessage},
         route::{RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope, RouteType},
-        AddressFamily, RouteNetlinkMessage,
     };
     use netlink_sys::protocols::NETLINK_ROUTE;
     use snafu::IntoError;
-    use tracing::{info_span, Instrument};
+    use tracing::{Instrument, info_span};
 
     use super::*;
 
@@ -151,7 +151,7 @@ mod sane {
             match payload {
                 NetlinkPayload::InnerMessage($message_type(msg)) => msg,
                 NetlinkPayload::Error(err) => {
-                    return Err(NetlinkErrorMessageSnafu { message: err }.build())
+                    return Err(NetlinkErrorMessageSnafu { message: err }.build());
                 }
                 _ => return Err(UnexpectedNetlinkMessageSnafu.build()),
             }

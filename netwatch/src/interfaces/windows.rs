@@ -4,7 +4,7 @@ use nested_enum_utils::common_fields;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use tracing::warn;
-use wmi::{query::FilterValue, COMLibrary, WMIConnection};
+use wmi::{COMLibrary, FilterValue, WMIConnection};
 
 use super::DefaultRouteDetails;
 

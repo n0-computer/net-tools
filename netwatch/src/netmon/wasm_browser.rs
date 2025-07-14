@@ -1,6 +1,6 @@
 use js_sys::{
-    wasm_bindgen::{prelude::Closure, JsCast},
     Function,
+    wasm_bindgen::{JsCast, prelude::Closure},
 };
 use n0_future::task;
 use tokio::sync::mpsc;
