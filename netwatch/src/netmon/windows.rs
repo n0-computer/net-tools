@@ -204,7 +204,7 @@ unsafe extern "system" fn unicast_change_callback(
         return;
     }
     let callercontext = callercontext as *const UnicastCallback;
-    let cb = &*callercontext;
+    let cb = unsafe { &*callercontext };
     cb();
 }
 
@@ -218,6 +218,6 @@ unsafe extern "system" fn route_change_callback(
         return;
     }
     let callercontext = callercontext as *const RouteCallback;
-    let cb = &*callercontext;
+    let cb = unsafe { &*callercontext };
     cb();
 }
