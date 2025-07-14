@@ -9,7 +9,7 @@ use libc::{
 };
 use n0_future::StreamExt;
 use netlink_packet_core::NetlinkPayload;
-use netlink_packet_route::{address, route, RouteNetlinkMessage};
+use netlink_packet_route::{RouteNetlinkMessage, address, route};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -45,11 +45,7 @@ const fn nl_mgrp(group: u32) -> u32 {
     if group > 31 {
         panic!("use netlink_sys::Socket::add_membership() for this group");
     }
-    if group == 0 {
-        0
-    } else {
-        1 << (group - 1)
-    }
+    if group == 0 { 0 } else { 1 << (group - 1) }
 }
 macro_rules! get_nla {
     ($msg:expr, $nla:path) => {

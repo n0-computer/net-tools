@@ -3,7 +3,7 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::{atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, TryLockError},
+    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
     task::{Context, Poll},
 };
 

@@ -47,9 +47,7 @@ pub enum Error {
     NonceMissmatch {},
     #[snafu(display("received mapping is not for UDP"))]
     ProtocolMissmatch {},
-    #[snafu(display(
-        "received mapping is for a local port that does not match the requested one"
-    ))]
+    #[snafu(display("received mapping is for a local port that does not match the requested one"))]
     PortMissmatch {},
     #[snafu(display("received 0 external port for mapping"))]
     ZeroExternalPort {},

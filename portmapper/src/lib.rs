@@ -13,7 +13,7 @@ use netwatch::interfaces::HomeRouter;
 use snafu::Snafu;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
-use tracing::{debug, info_span, trace, Instrument};
+use tracing::{Instrument, debug, info_span, trace};
 
 mod current_mapping;
 mod mapping;

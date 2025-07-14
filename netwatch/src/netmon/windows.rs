@@ -136,7 +136,7 @@ impl CallbackHandler {
         trace!("unregistering unicast callback");
         if self
             .unicast_callbacks
-            .remove(&(handle.0 .0 as isize))
+            .remove(&(handle.0.0 as isize))
             .is_some()
         {
             unsafe {
@@ -180,7 +180,7 @@ impl CallbackHandler {
         trace!("unregistering route callback");
         if self
             .route_callbacks
-            .remove(&(handle.0 .0 as isize))
+            .remove(&(handle.0.0 as isize))
             .is_some()
         {
             unsafe {

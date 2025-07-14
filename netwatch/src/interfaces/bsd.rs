@@ -8,10 +8,10 @@ use std::{
     sync::LazyLock,
 };
 
-use libc::{c_int, uintptr_t, AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET};
+use libc::{AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET, c_int, uintptr_t};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{
-    NET_RT_DUMP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTA_IFP, RTF_GATEWAY,
+    NET_RT_DUMP, RTA_IFP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTF_GATEWAY,
 };
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, IntoError, OptionExt, Snafu};

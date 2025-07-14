@@ -5,7 +5,7 @@ use nested_enum_utils::common_fields;
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 use snafu::{Backtrace, Snafu};
 
-use super::{opcode_data::OpcodeData, Opcode, Version};
+use super::{Opcode, Version, opcode_data::OpcodeData};
 
 /// ResultCode in a [`Response`] when it's successful.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]

@@ -31,7 +31,7 @@ use self::linux::default_route;
 use self::windows::default_route;
 #[cfg(not(wasm_browser))]
 use crate::ip::is_link_local;
-use crate::ip::{is_private_v6, is_up, LocalAddresses};
+use crate::ip::{LocalAddresses, is_private_v6, is_up};
 #[cfg(not(wasm_browser))]
 use crate::netmon::is_interesting_interface;
 
@@ -90,7 +90,7 @@ impl Interface {
     pub(crate) fn fake() -> Self {
         use std::net::Ipv4Addr;
 
-        use netdev::{interface::InterfaceType, mac::MacAddr, NetworkDevice};
+        use netdev::{NetworkDevice, interface::InterfaceType, mac::MacAddr};
 
         Self {
             iface: netdev::Interface {
