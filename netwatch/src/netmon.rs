@@ -101,9 +101,9 @@ mod tests {
     #[tokio::test]
     async fn test_smoke_monitor() {
         let mon = Monitor::new().await.unwrap();
-        let sub = mon.interface_state();
+        let mut sub = mon.interface_state();
 
-        let current = sub.get().unwrap();
+        let current = sub.get();
         println!("current state: {current}");
     }
 }
