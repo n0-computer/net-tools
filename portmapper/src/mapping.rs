@@ -45,12 +45,13 @@ pub enum Error {
 impl Mapping {
     /// Create a new PCP mapping.
     pub(crate) async fn new_pcp(
+        protocol: Protocol,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         external_addr: Option<(Ipv4Addr, NonZeroU16)>,
     ) -> Result<Self, Error> {
-        pcp::Mapping::new(local_ip, local_port, gateway, external_addr)
+        pcp::Mapping::new(protocol, local_ip, local_port, gateway, external_addr)
             .await
             .map(Self::Pcp)
             .context(PcpSnafu)

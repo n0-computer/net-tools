@@ -654,7 +654,7 @@ impl Service {
             //    nat_pmp
             self.mapping_task = if pcp {
                 // try pcp if available first
-                let task = mapping::Mapping::new_pcp(local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_pcp(protocol, local_ip, local_port, gateway, external_addr);
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pcp")),
                 )))
@@ -681,7 +681,7 @@ impl Service {
             } else if !recently_probed && self.config.enable_pcp {
                 // if no service is available and the default fallback (upnp) is disabled, try pcp
                 // first
-                let task = mapping::Mapping::new_pcp(local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_pcp(protocol, local_ip, local_port, gateway, external_addr);
 
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pcp")),
