@@ -143,19 +143,7 @@ impl Response {
             ResultCode::UnsupportedOpcode => Err(UnsupportedOpcodeSnafu.build()),
         }?;
 
-        let response = match opcode {
-            Opcode::DetermineExternalAddress => {
-                let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
-                let epoch_time = u32::from_be_bytes(epoch_bytes);
-                let ip_bytes: [u8; 4] = buf[8..12].try_into().expect("slice has the right len");
-                Response::PublicAddress {
-                    epoch_time,
-                    public_ip: ip_bytes.into(),
-                }
-            }
-            Opcode::MapUdp => {
-                let proto = MapProtocol::Udp;
-
+        fn decode_map(buf: &[u8], proto: MapProtocol) -> Response {
                 let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
                 let epoch_time = u32::from_be_bytes(epoch_bytes);
 
@@ -175,6 +163,23 @@ impl Response {
                     external_port,
                     lifetime_seconds,
                 }
+        }
+
+        let response = match opcode {
+            Opcode::DetermineExternalAddress => {
+                let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
+                let epoch_time = u32::from_be_bytes(epoch_bytes);
+                let ip_bytes: [u8; 4] = buf[8..12].try_into().expect("slice has the right len");
+                Response::PublicAddress {
+                    epoch_time,
+                    public_ip: ip_bytes.into(),
+                }
+            }
+            Opcode::MapUdp => {
+                decode_map(buf, MapProtocol::Udp)
+            }
+            Opcode::MapTcp => {
+                decode_map(buf, MapProtocol::Tcp)
             }
         };
 
@@ -193,6 +198,13 @@ impl Response {
             }
             Opcode::MapUdp => Response::PortMap {
                 proto: MapProtocol::Udp,
+                epoch_time: rng.random(),
+                private_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
+            },
+            Opcode::MapTcp => Response::PortMap {
+                proto: MapProtocol::Tcp,
                 epoch_time: rng.random(),
                 private_port: rng.random(),
                 external_port: rng.random(),

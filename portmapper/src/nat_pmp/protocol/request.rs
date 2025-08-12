@@ -23,12 +23,13 @@ pub enum Request {
 }
 
 /// Protocol for which a port mapping is requested.
-// NOTE: spec defines TCP as well, which we don't need.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 pub enum MapProtocol {
     /// UDP mapping.
     Udp = 1,
+    /// TCP mapping.
+    Tcp = 2,
 }
 
 impl Request {
@@ -47,6 +48,7 @@ impl Request {
             } => {
                 let opcode = match proto {
                     MapProtocol::Udp => Opcode::MapUdp,
+                    MapProtocol::Tcp => Opcode::MapTcp,
                 };
                 let mut buf = vec![Version::NatPmp.into(), opcode.into()];
                 buf.push(0); // reserved
@@ -69,35 +71,48 @@ impl Request {
                 external_port: rng.random(),
                 lifetime_seconds: rng.random(),
             },
+            Opcode::MapTcp => Request::Mapping {
+                proto: MapProtocol::Tcp,
+                local_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
+            }
         }
     }
 
     #[cfg(test)]
     #[track_caller]
     fn decode(buf: &[u8]) -> Self {
+        fn decode_map(buf: &[u8], proto: MapProtocol) -> Request {
+            // buf[2] reserved
+            // buf[3] reserved
+
+            let local_port_bytes = buf[4..6].try_into().expect("slice has the right size");
+            let local_port = u16::from_be_bytes(local_port_bytes);
+
+            let external_port_bytes = buf[6..8].try_into().expect("slice has the right size");
+            let external_port = u16::from_be_bytes(external_port_bytes);
+
+            let lifetime_bytes: [u8; 4] = buf[8..12].try_into().unwrap();
+            let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
+            Request::Mapping {
+                proto,
+                local_port,
+                external_port,
+                lifetime_seconds,
+            }
+        }
+
         let _version: Version = buf[0].try_into().unwrap();
         let opcode: super::Opcode = buf[1].try_into().unwrap();
         // check if this is a mapping request, or an external address request
         match opcode {
             Opcode::DetermineExternalAddress => Request::ExternalAddress,
             Opcode::MapUdp => {
-                // buf[2] reserved
-                // buf[3] reserved
-
-                let local_port_bytes = buf[4..6].try_into().expect("slice has the right size");
-                let local_port = u16::from_be_bytes(local_port_bytes);
-
-                let external_port_bytes = buf[6..8].try_into().expect("slice has the right size");
-                let external_port = u16::from_be_bytes(external_port_bytes);
-
-                let lifetime_bytes: [u8; 4] = buf[8..12].try_into().unwrap();
-                let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
-                Request::Mapping {
-                    proto: MapProtocol::Udp,
-                    local_port,
-                    external_port,
-                    lifetime_seconds,
-                }
+                decode_map(buf, MapProtocol::Udp)
+            }
+            Opcode::MapTcp => {
+                decode_map(buf, MapProtocol::Tcp)
             }
         }
     }
