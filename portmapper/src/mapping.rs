@@ -5,6 +5,8 @@ use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, ResultExt, Snafu};
 
+use crate::Protocol;
+
 use super::{nat_pmp, pcp, upnp};
 
 pub(super) trait PortMapped: std::fmt::Debug + Unpin {
@@ -56,12 +58,14 @@ impl Mapping {
 
     /// Create a new NAT-PMP mapping.
     pub(crate) async fn new_nat_pmp(
+        protocol: Protocol,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
         external_addr: Option<(Ipv4Addr, NonZeroU16)>,
     ) -> Result<Self, Error> {
         nat_pmp::Mapping::new(
+            protocol,
             local_ip,
             local_port,
             gateway,

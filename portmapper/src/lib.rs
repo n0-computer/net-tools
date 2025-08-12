@@ -108,6 +108,15 @@ enum Message {
     },
 }
 
+/// Configuration for UDP or TCP network protocol.
+#[derive(Debug, Clone, Copy)]
+pub enum Protocol {
+    /// UDP protocol.
+    Udp,
+    /// TCP protocol.
+    Tcp,
+}
+
 /// Configures which port mapping protocols are enabled in the [`Service`].
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -117,15 +126,18 @@ pub struct Config {
     pub enable_pcp: bool,
     /// Whether PMP is enabled.
     pub enable_nat_pmp: bool,
+    /// Whether to use UDP or TCP.
+    pub protocol: Protocol,
 }
 
 impl Default for Config {
-    /// By default all port mapping protocols are enabled.
+    /// By default all port mapping protocols are enabled for UDP.
     fn default() -> Self {
         Config {
             enable_upnp: true,
             enable_pcp: true,
             enable_nat_pmp: true,
+            protocol: Protocol::Udp,
         }
     }
 }
@@ -281,6 +293,7 @@ impl Probe {
             enable_upnp,
             enable_pcp,
             enable_nat_pmp,
+            protocol: _,
         } = config;
         let mut upnp_probing_task = util::MaybeFuture {
             inner: (enable_upnp && !upnp).then(|| {
@@ -633,6 +646,7 @@ impl Service {
             debug!("getting a port mapping for {local_ip}:{local_port} -> {external_addr:?}");
             let recently_probed =
                 self.full_probe.last_probe + UNAVAILABILITY_TRUST_DURATION > Instant::now();
+            let protocol = self.config.protocol;
             // strategy:
             // 1. check the available services and prefer pcp, then nat_pmp then upnp since it's
             //    the most unreliable, but possibly the most deployed one
@@ -647,7 +661,7 @@ impl Service {
             } else if nat_pmp {
                 // next nat_pmp if available
                 let task =
-                    mapping::Mapping::new_nat_pmp(local_ip, local_port, gateway, external_addr);
+                    mapping::Mapping::new_nat_pmp(protocol, local_ip, local_port, gateway, external_addr);
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pmp")),
                 )))
@@ -675,7 +689,7 @@ impl Service {
             } else if !recently_probed && self.config.enable_nat_pmp {
                 // finally try nat_pmp if enabled
                 let task =
-                    mapping::Mapping::new_nat_pmp(local_ip, local_port, gateway, external_addr);
+                    mapping::Mapping::new_nat_pmp(protocol, local_ip, local_port, gateway, external_addr);
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pmp")),
                 )))
