@@ -673,7 +673,7 @@ impl Service {
                     .last_upnp_gateway_addr
                     .as_ref()
                     .map(|(gateway, _last_seen)| gateway.clone());
-                let task = mapping::Mapping::new_upnp(local_ip, local_port, gateway, external_port);
+                let task = mapping::Mapping::new_upnp(protocol, local_ip, local_port, gateway, external_port);
 
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("upnp")),

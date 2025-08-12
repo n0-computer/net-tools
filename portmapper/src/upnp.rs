@@ -14,7 +14,7 @@ use super::Metrics;
 
 pub type Gateway = aigd::Gateway<aigd::tokio::Tokio>;
 
-use crate::defaults::UPNP_SEARCH_TIMEOUT as SEARCH_TIMEOUT;
+use crate::{defaults::UPNP_SEARCH_TIMEOUT as SEARCH_TIMEOUT, Protocol};
 
 /// Seconds we ask the router to maintain the port mapping. 0 means infinite.
 const PORT_MAPPING_LEASE_DURATION_SECONDS: u32 = 0;
@@ -28,6 +28,8 @@ const PORT_MAPPING_DESCRIPTION: &str = "iroh-portmap";
 
 #[derive(derive_more::Debug, Clone)]
 pub struct Mapping {
+    /// Protocol for this mapping.
+    protocol: igd_next::PortMappingProtocol,
     /// The internet Gateway device (router) used to create this mapping.
     #[debug("{}", gateway)]
     gateway: Gateway,
@@ -62,6 +64,7 @@ pub enum Error {
 
 impl Mapping {
     pub(crate) async fn new(
+        protocol: Protocol,
         local_addr: Ipv4Addr,
         port: NonZeroU16,
         gateway: Option<Gateway>,
@@ -97,12 +100,17 @@ impl Mapping {
             return Err(NotIpv4Snafu.build());
         };
 
+        let protocol = match protocol {
+            Protocol::Udp => igd_next::PortMappingProtocol::UDP,
+            Protocol::Tcp => igd_next::PortMappingProtocol::TCP,
+        };
+
         // if we are trying to get a specific external port, try this first. If this fails, default
         // to try to get any port
         if let Some(external_port) = preferred_port {
             if gateway
                 .add_port(
-                    igd_next::PortMappingProtocol::UDP,
+                    protocol,
                     external_port.into(),
                     local_addr.into(),
                     PORT_MAPPING_LEASE_DURATION_SECONDS,
@@ -112,6 +120,7 @@ impl Mapping {
                 .is_ok()
             {
                 return Ok(Mapping {
+                    protocol,
                     gateway,
                     external_ip,
                     external_port,
@@ -121,7 +130,7 @@ impl Mapping {
 
         let external_port = gateway
             .add_any_port(
-                igd_next::PortMappingProtocol::UDP,
+                protocol,
                 local_addr.into(),
                 PORT_MAPPING_LEASE_DURATION_SECONDS,
                 PORT_MAPPING_DESCRIPTION,
@@ -132,6 +141,7 @@ impl Mapping {
             .map_err(|_| ZeroExternalPortSnafu.build())?;
 
         Ok(Mapping {
+            protocol,
             gateway,
             external_ip,
             external_port,
@@ -147,10 +157,11 @@ impl Mapping {
         let Mapping {
             gateway,
             external_port,
+            protocol,
             ..
         } = self;
         gateway
-            .remove_port(igd_next::PortMappingProtocol::UDP, external_port.into())
+            .remove_port(protocol, external_port.into())
             .await
             .context(RemovePortSnafu)?;
         Ok(())

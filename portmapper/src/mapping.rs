@@ -79,12 +79,13 @@ impl Mapping {
 
     /// Create a new UPnP mapping.
     pub(crate) async fn new_upnp(
+        protocol: Protocol,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Option<upnp::Gateway>,
         external_port: Option<NonZeroU16>,
     ) -> Result<Self, Error> {
-        upnp::Mapping::new(local_ip, local_port, gateway, external_port)
+        upnp::Mapping::new(protocol, local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
             .context(UpnpSnafu)
