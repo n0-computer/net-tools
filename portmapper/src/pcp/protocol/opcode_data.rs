@@ -37,6 +37,7 @@ pub struct MapData {
 #[repr(u8)]
 pub enum MapProtocol {
     Udp = 17,
+    Tcp = 6,
 }
 
 /// Generic error returned when decoding [`OpcodeData`] fails.

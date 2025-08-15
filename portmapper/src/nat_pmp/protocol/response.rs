@@ -143,6 +143,28 @@ impl Response {
             ResultCode::UnsupportedOpcode => Err(UnsupportedOpcodeSnafu.build()),
         }?;
 
+        fn decode_map(buf: &[u8], proto: MapProtocol) -> Response {
+            let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
+            let epoch_time = u32::from_be_bytes(epoch_bytes);
+
+            let private_port_bytes = buf[8..10].try_into().expect("slice has the right len");
+            let private_port = u16::from_be_bytes(private_port_bytes);
+
+            let external_port_bytes = buf[10..12].try_into().expect("slice has the right len");
+            let external_port = u16::from_be_bytes(external_port_bytes);
+
+            let lifetime_bytes = buf[12..16].try_into().expect("slice has the right len");
+            let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
+
+            Response::PortMap {
+                proto,
+                epoch_time,
+                private_port,
+                external_port,
+                lifetime_seconds,
+            }
+        }
+
         let response = match opcode {
             Opcode::DetermineExternalAddress => {
                 let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
@@ -153,29 +175,8 @@ impl Response {
                     public_ip: ip_bytes.into(),
                 }
             }
-            Opcode::MapUdp => {
-                let proto = MapProtocol::Udp;
-
-                let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
-                let epoch_time = u32::from_be_bytes(epoch_bytes);
-
-                let private_port_bytes = buf[8..10].try_into().expect("slice has the right len");
-                let private_port = u16::from_be_bytes(private_port_bytes);
-
-                let external_port_bytes = buf[10..12].try_into().expect("slice has the right len");
-                let external_port = u16::from_be_bytes(external_port_bytes);
-
-                let lifetime_bytes = buf[12..16].try_into().expect("slice has the right len");
-                let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
-
-                Response::PortMap {
-                    proto,
-                    epoch_time,
-                    private_port,
-                    external_port,
-                    lifetime_seconds,
-                }
-            }
+            Opcode::MapUdp => decode_map(buf, MapProtocol::Udp),
+            Opcode::MapTcp => decode_map(buf, MapProtocol::Tcp),
         };
 
         Ok(response)
@@ -193,6 +194,13 @@ impl Response {
             }
             Opcode::MapUdp => Response::PortMap {
                 proto: MapProtocol::Udp,
+                epoch_time: rng.random(),
+                private_port: rng.random(),
+                external_port: rng.random(),
+                lifetime_seconds: rng.random(),
+            },
+            Opcode::MapTcp => Response::PortMap {
+                proto: MapProtocol::Tcp,
                 epoch_time: rng.random(),
                 private_port: rng.random(),
                 external_port: rng.random(),
