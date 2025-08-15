@@ -76,7 +76,7 @@ impl Request {
                 local_port: rng.random(),
                 external_port: rng.random(),
                 lifetime_seconds: rng.random(),
-            }
+            },
         }
     }
 
@@ -108,12 +108,8 @@ impl Request {
         // check if this is a mapping request, or an external address request
         match opcode {
             Opcode::DetermineExternalAddress => Request::ExternalAddress,
-            Opcode::MapUdp => {
-                decode_map(buf, MapProtocol::Udp)
-            }
-            Opcode::MapTcp => {
-                decode_map(buf, MapProtocol::Tcp)
-            }
+            Opcode::MapUdp => decode_map(buf, MapProtocol::Udp),
+            Opcode::MapTcp => decode_map(buf, MapProtocol::Tcp),
         }
     }
 }

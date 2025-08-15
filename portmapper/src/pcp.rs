@@ -8,7 +8,7 @@ use rand::RngCore;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tracing::{debug, trace};
 
-use crate::{defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT, Protocol};
+use crate::{Protocol, defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT};
 
 mod protocol;
 

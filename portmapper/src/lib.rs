@@ -654,14 +654,25 @@ impl Service {
             //    nat_pmp
             self.mapping_task = if pcp {
                 // try pcp if available first
-                let task = mapping::Mapping::new_pcp(protocol, local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_pcp(
+                    protocol,
+                    local_ip,
+                    local_port,
+                    gateway,
+                    external_addr,
+                );
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pcp")),
                 )))
             } else if nat_pmp {
                 // next nat_pmp if available
-                let task =
-                    mapping::Mapping::new_nat_pmp(protocol, local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_nat_pmp(
+                    protocol,
+                    local_ip,
+                    local_port,
+                    gateway,
+                    external_addr,
+                );
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pmp")),
                 )))
@@ -673,7 +684,13 @@ impl Service {
                     .last_upnp_gateway_addr
                     .as_ref()
                     .map(|(gateway, _last_seen)| gateway.clone());
-                let task = mapping::Mapping::new_upnp(protocol, local_ip, local_port, gateway, external_port);
+                let task = mapping::Mapping::new_upnp(
+                    protocol,
+                    local_ip,
+                    local_port,
+                    gateway,
+                    external_port,
+                );
 
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("upnp")),
@@ -681,15 +698,26 @@ impl Service {
             } else if !recently_probed && self.config.enable_pcp {
                 // if no service is available and the default fallback (upnp) is disabled, try pcp
                 // first
-                let task = mapping::Mapping::new_pcp(protocol, local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_pcp(
+                    protocol,
+                    local_ip,
+                    local_port,
+                    gateway,
+                    external_addr,
+                );
 
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pcp")),
                 )))
             } else if !recently_probed && self.config.enable_nat_pmp {
                 // finally try nat_pmp if enabled
-                let task =
-                    mapping::Mapping::new_nat_pmp(protocol, local_ip, local_port, gateway, external_addr);
+                let task = mapping::Mapping::new_nat_pmp(
+                    protocol,
+                    local_ip,
+                    local_port,
+                    gateway,
+                    external_addr,
+                );
                 Some(AbortOnDropHandle::new(tokio::spawn(
                     task.instrument(info_span!("pmp")),
                 )))

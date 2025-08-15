@@ -14,7 +14,7 @@ use super::Metrics;
 
 pub type Gateway = aigd::Gateway<aigd::tokio::Tokio>;
 
-use crate::{defaults::UPNP_SEARCH_TIMEOUT as SEARCH_TIMEOUT, Protocol};
+use crate::{Protocol, defaults::UPNP_SEARCH_TIMEOUT as SEARCH_TIMEOUT};
 
 /// Seconds we ask the router to maintain the port mapping. 0 means infinite.
 const PORT_MAPPING_LEASE_DURATION_SECONDS: u32 = 0;

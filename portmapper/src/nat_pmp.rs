@@ -8,7 +8,7 @@ use snafu::{Backtrace, Snafu};
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
-use crate::{defaults::NAT_PMP_RECV_TIMEOUT as RECV_TIMEOUT, Protocol};
+use crate::{Protocol, defaults::NAT_PMP_RECV_TIMEOUT as RECV_TIMEOUT};
 
 mod protocol;
 
