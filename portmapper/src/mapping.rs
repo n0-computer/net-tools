@@ -5,9 +5,8 @@ use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 use nested_enum_utils::common_fields;
 use snafu::{Backtrace, ResultExt, Snafu};
 
-use crate::Protocol;
-
 use super::{nat_pmp, pcp, upnp};
+use crate::Protocol;
 
 pub(super) trait PortMapped: std::fmt::Debug + Unpin {
     fn external(&self) -> (Ipv4Addr, NonZeroU16);

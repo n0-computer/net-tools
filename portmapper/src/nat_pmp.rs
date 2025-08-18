@@ -97,12 +97,14 @@ impl Mapping {
 
         let (external_port, lifetime_seconds) = match response {
             Response::PortMap {
-                proto: _,
+                proto: proto_rcvd,
                 epoch_time: _,
                 private_port,
                 external_port,
                 lifetime_seconds,
-            } if private_port == Into::<u16>::into(local_port) => (external_port, lifetime_seconds),
+            } if private_port == Into::<u16>::into(local_port) && proto == proto_rcvd => {
+                (external_port, lifetime_seconds)
+            }
             _ => return Err(UnexpectedServerResponseSnafu.build()),
         };
 

@@ -81,35 +81,37 @@ impl Request {
     }
 
     #[cfg(test)]
+    /// Decode a map request.
+    fn decode_map(buf: &[u8], proto: MapProtocol) -> Request {
+        // buf[2] reserved
+        // buf[3] reserved
+
+        let local_port_bytes = buf[4..6].try_into().expect("slice has the right size");
+        let local_port = u16::from_be_bytes(local_port_bytes);
+
+        let external_port_bytes = buf[6..8].try_into().expect("slice has the right size");
+        let external_port = u16::from_be_bytes(external_port_bytes);
+
+        let lifetime_bytes: [u8; 4] = buf[8..12].try_into().unwrap();
+        let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
+        Request::Mapping {
+            proto,
+            local_port,
+            external_port,
+            lifetime_seconds,
+        }
+    }
+
+    #[cfg(test)]
     #[track_caller]
     fn decode(buf: &[u8]) -> Self {
-        fn decode_map(buf: &[u8], proto: MapProtocol) -> Request {
-            // buf[2] reserved
-            // buf[3] reserved
-
-            let local_port_bytes = buf[4..6].try_into().expect("slice has the right size");
-            let local_port = u16::from_be_bytes(local_port_bytes);
-
-            let external_port_bytes = buf[6..8].try_into().expect("slice has the right size");
-            let external_port = u16::from_be_bytes(external_port_bytes);
-
-            let lifetime_bytes: [u8; 4] = buf[8..12].try_into().unwrap();
-            let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
-            Request::Mapping {
-                proto,
-                local_port,
-                external_port,
-                lifetime_seconds,
-            }
-        }
-
         let _version: Version = buf[0].try_into().unwrap();
         let opcode: super::Opcode = buf[1].try_into().unwrap();
         // check if this is a mapping request, or an external address request
         match opcode {
             Opcode::DetermineExternalAddress => Request::ExternalAddress,
-            Opcode::MapUdp => decode_map(buf, MapProtocol::Udp),
-            Opcode::MapTcp => decode_map(buf, MapProtocol::Tcp),
+            Opcode::MapUdp => Self::decode_map(buf, MapProtocol::Udp),
+            Opcode::MapTcp => Self::decode_map(buf, MapProtocol::Tcp),
         }
     }
 }

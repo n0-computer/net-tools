@@ -114,6 +114,29 @@ impl Response {
     /// Indicator ORd into the [`Opcode`] to indicate a response packet.
     pub const RESPONSE_INDICATOR: u8 = 1u8 << 7;
 
+    /// Decode a map response.
+    fn decode_map(buf: &[u8], proto: MapProtocol) -> Response {
+        let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
+        let epoch_time = u32::from_be_bytes(epoch_bytes);
+
+        let private_port_bytes = buf[8..10].try_into().expect("slice has the right len");
+        let private_port = u16::from_be_bytes(private_port_bytes);
+
+        let external_port_bytes = buf[10..12].try_into().expect("slice has the right len");
+        let external_port = u16::from_be_bytes(external_port_bytes);
+
+        let lifetime_bytes = buf[12..16].try_into().expect("slice has the right len");
+        let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
+
+        Response::PortMap {
+            proto,
+            epoch_time,
+            private_port,
+            external_port,
+            lifetime_seconds,
+        }
+    }
+
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
         if buf.len() < Self::MIN_SIZE || buf.len() > Self::MAX_SIZE {
@@ -143,28 +166,6 @@ impl Response {
             ResultCode::UnsupportedOpcode => Err(UnsupportedOpcodeSnafu.build()),
         }?;
 
-        fn decode_map(buf: &[u8], proto: MapProtocol) -> Response {
-            let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
-            let epoch_time = u32::from_be_bytes(epoch_bytes);
-
-            let private_port_bytes = buf[8..10].try_into().expect("slice has the right len");
-            let private_port = u16::from_be_bytes(private_port_bytes);
-
-            let external_port_bytes = buf[10..12].try_into().expect("slice has the right len");
-            let external_port = u16::from_be_bytes(external_port_bytes);
-
-            let lifetime_bytes = buf[12..16].try_into().expect("slice has the right len");
-            let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
-
-            Response::PortMap {
-                proto,
-                epoch_time,
-                private_port,
-                external_port,
-                lifetime_seconds,
-            }
-        }
-
         let response = match opcode {
             Opcode::DetermineExternalAddress => {
                 let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
@@ -175,8 +176,8 @@ impl Response {
                     public_ip: ip_bytes.into(),
                 }
             }
-            Opcode::MapUdp => decode_map(buf, MapProtocol::Udp),
-            Opcode::MapTcp => decode_map(buf, MapProtocol::Tcp),
+            Opcode::MapUdp => Self::decode_map(buf, MapProtocol::Udp),
+            Opcode::MapTcp => Self::decode_map(buf, MapProtocol::Tcp),
         };
 
         Ok(response)
