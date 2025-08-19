@@ -8,7 +8,7 @@ use rand::RngCore;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tracing::{debug, trace};
 
-use crate::defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT;
+use crate::{Protocol, defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT};
 
 mod protocol;
 
@@ -19,6 +19,8 @@ const MAPPING_REQUESTED_LIFETIME_SECONDS: u32 = 60 * 60;
 /// A mapping successfully registered with a PCP server.
 #[derive(Debug)]
 pub struct Mapping {
+    /// Protocol for this mapping.
+    protocol: protocol::MapProtocol,
     /// Local ip used to create this mapping.
     local_ip: Ipv4Addr,
     /// Local port used to create this mapping.
@@ -45,7 +47,7 @@ pub struct Mapping {
 pub enum Error {
     #[snafu(display("received nonce does not match sent request"))]
     NonceMissmatch {},
-    #[snafu(display("received mapping is not for UDP"))]
+    #[snafu(display("received mapping does not match the requested protocol"))]
     ProtocolMissmatch {},
     #[snafu(display("received mapping is for a local port that does not match the requested one"))]
     PortMissmatch {},
@@ -74,6 +76,7 @@ impl super::mapping::PortMapped for Mapping {
 impl Mapping {
     /// Attempt to registered a new mapping with the PCP server on the provided gateway.
     pub async fn new(
+        protocol: Protocol,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
@@ -93,8 +96,13 @@ impl Mapping {
             None => (None, None),
         };
 
+        let protocol = match protocol {
+            Protocol::Udp => protocol::MapProtocol::Udp,
+            Protocol::Tcp => protocol::MapProtocol::Tcp,
+        };
         let req = protocol::Request::mapping(
             nonce,
+            protocol,
             local_port.into(),
             local_ip,
             requested_port,
@@ -126,7 +134,7 @@ impl Mapping {
             protocol::OpcodeData::MapData(map_data) => {
                 let protocol::MapData {
                     nonce: received_nonce,
-                    protocol,
+                    protocol: received_protocol,
                     local_port: received_local_port,
                     external_port,
                     external_address,
@@ -136,7 +144,7 @@ impl Mapping {
                     return Err(NonceMissmatchSnafu.build());
                 }
 
-                if protocol != protocol::MapProtocol::Udp {
+                if received_protocol != protocol {
                     return Err(ProtocolMissmatchSnafu.build());
                 }
 
@@ -153,6 +161,7 @@ impl Mapping {
                     .ok_or(NotIpv4Snafu.build())?;
 
                 Ok(Mapping {
+                    protocol: received_protocol,
                     external_port,
                     external_address,
                     lifetime_seconds,
@@ -168,6 +177,7 @@ impl Mapping {
 
     pub async fn release(self) -> Result<(), Error> {
         let Mapping {
+            protocol,
             nonce,
             local_ip,
             local_port,
@@ -182,7 +192,7 @@ impl Mapping {
             .context(IoSnafu)?;
 
         let local_port = local_port.into();
-        let req = protocol::Request::mapping(nonce, local_port, local_ip, None, None, 0);
+        let req = protocol::Request::mapping(nonce, protocol, local_port, local_ip, None, None, 0);
 
         socket.send(&req.encode()).await.context(IoSnafu)?;
 

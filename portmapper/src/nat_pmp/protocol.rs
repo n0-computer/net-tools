@@ -32,4 +32,8 @@ pub enum Opcode {
     ///
     /// See [RFC 6886 Requesting a Mapping](https://datatracker.ietf.org/doc/html/rfc6886#section-3.3).
     MapUdp = 1,
+    /// Get a TCP Mapping.
+    ///
+    /// See [RFC 6886 Requesting a Mapping](https://datatracker.ietf.org/doc/html/rfc6886#section-3.3).
+    MapTcp = 2,
 }

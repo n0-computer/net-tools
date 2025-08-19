@@ -8,7 +8,7 @@ use snafu::{Backtrace, Snafu};
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
-use crate::defaults::NAT_PMP_RECV_TIMEOUT as RECV_TIMEOUT;
+use crate::{Protocol, defaults::NAT_PMP_RECV_TIMEOUT as RECV_TIMEOUT};
 
 mod protocol;
 
@@ -63,6 +63,7 @@ impl super::mapping::PortMapped for Mapping {
 impl Mapping {
     /// Attempt to register a new mapping with the NAT-PMP server on the provided gateway.
     pub async fn new(
+        protocol: Protocol,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Ipv4Addr,
@@ -72,8 +73,12 @@ impl Mapping {
         let socket = UdpSocket::bind_full((local_ip, 0))?;
         socket.connect((gateway, protocol::SERVER_PORT).into())?;
 
+        let proto = match protocol {
+            Protocol::Udp => MapProtocol::Udp,
+            Protocol::Tcp => MapProtocol::Tcp,
+        };
         let req = Request::Mapping {
-            proto: MapProtocol::Udp,
+            proto,
             local_port: local_port.into(),
             external_port: external_port.map(Into::into).unwrap_or_default(),
             lifetime_seconds: MAPPING_REQUESTED_LIFETIME_SECONDS,
@@ -92,12 +97,14 @@ impl Mapping {
 
         let (external_port, lifetime_seconds) = match response {
             Response::PortMap {
-                proto: MapProtocol::Udp,
+                proto: proto_rcvd,
                 epoch_time: _,
                 private_port,
                 external_port,
                 lifetime_seconds,
-            } if private_port == Into::<u16>::into(local_port) => (external_port, lifetime_seconds),
+            } if private_port == Into::<u16>::into(local_port) && proto == proto_rcvd => {
+                (external_port, lifetime_seconds)
+            }
             _ => return Err(UnexpectedServerResponseSnafu.build()),
         };
 

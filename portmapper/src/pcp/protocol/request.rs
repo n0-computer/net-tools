@@ -76,6 +76,7 @@ impl Request {
     /// Create a mapping request.
     pub fn mapping(
         nonce: [u8; 12],
+        protocol: MapProtocol,
         local_port: u16,
         local_ip: Ipv4Addr,
         preferred_external_port: Option<u16>,
@@ -88,7 +89,7 @@ impl Request {
             client_addr: local_ip.to_ipv6_mapped(),
             opcode_data: OpcodeData::MapData(MapData {
                 nonce,
-                protocol: MapProtocol::Udp,
+                protocol,
                 local_port,
                 // if the pcp client does not know the external port, or does not have a
                 // preference, it must use 0.
