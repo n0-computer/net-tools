@@ -115,7 +115,11 @@ impl Response {
     pub const RESPONSE_INDICATOR: u8 = 1u8 << 7;
 
     /// Decode a map response.
-    fn decode_map(buf: &[u8], proto: MapProtocol) -> Response {
+    fn decode_map(buf: &[u8], proto: MapProtocol) -> Result<Self, Error> {
+        if buf.len() != Self::MAX_SIZE {
+            return Err(MalformedSnafu.build());
+        }
+
         let epoch_bytes = buf[4..8].try_into().expect("slice has the right len");
         let epoch_time = u32::from_be_bytes(epoch_bytes);
 
@@ -128,13 +132,13 @@ impl Response {
         let lifetime_bytes = buf[12..16].try_into().expect("slice has the right len");
         let lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
 
-        Response::PortMap {
+        Ok(Response::PortMap {
             proto,
             epoch_time,
             private_port,
             external_port,
             lifetime_seconds,
-        }
+        })
     }
 
     /// Decode a response.
@@ -176,8 +180,8 @@ impl Response {
                     public_ip: ip_bytes.into(),
                 }
             }
-            Opcode::MapUdp => Self::decode_map(buf, MapProtocol::Udp),
-            Opcode::MapTcp => Self::decode_map(buf, MapProtocol::Tcp),
+            Opcode::MapUdp => Self::decode_map(buf, MapProtocol::Udp)?,
+            Opcode::MapTcp => Self::decode_map(buf, MapProtocol::Tcp)?,
         };
 
         Ok(response)
