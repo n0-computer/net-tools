@@ -115,6 +115,7 @@ impl Interface {
                 ipv6_scope_ids: vec![],
                 stats: None,
                 mtu: None,
+                oper_state: netdev::interface::OperState::Up,
             },
         }
     }
