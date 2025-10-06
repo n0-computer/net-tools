@@ -1010,14 +1010,14 @@ dependencies = [
 [[package]]
 name = "iroh-quinn-udp"
 version = "0.5.12"
-source = "git+https://github.com/n0-computer/quinn?branch=multipath-quinn-0.11.x#773fceabb27f1e56132198dd960d4bd1493e0ed0"
+source = "git+https://github.com/n0-computer/quinn?branch=multipath-quinn-0.11.x#3820a0ae48ce8362d8851295769a9184309830d6"
 dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
