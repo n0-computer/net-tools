@@ -983,13 +983,14 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
 name = "iroh-metrics"
-version = "0.35.0"
+version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8922c169f1b84d39d325c02ef1bbe1419d4de6e35f0403462b3c7e60cc19634"
+checksum = "23a18a7061baa0e8481bcb78a48b324fe15cdcbf5b6589b03364136a41dde969"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
  "postcard",
+ "ryu",
  "serde",
  "snafu",
  "tracing",
