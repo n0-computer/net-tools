@@ -38,7 +38,7 @@ use crate::netmon::is_interesting_interface;
 /// Represents a network interface.
 #[derive(Debug, Clone)]
 pub struct Interface {
-    iface: netdev::interface::Interface,
+    iface: netdev::Interface,
 }
 
 impl fmt::Display for Interface {
@@ -90,7 +90,10 @@ impl Interface {
     pub(crate) fn fake() -> Self {
         use std::net::Ipv4Addr;
 
-        use netdev::{NetworkDevice, interface::InterfaceType, mac::MacAddr};
+        use netdev::{
+            NetworkDevice,
+            prelude::{InterfaceType, MacAddr, OperState},
+        };
 
         Self {
             iface: netdev::Interface {
@@ -115,7 +118,7 @@ impl Interface {
                 ipv6_scope_ids: vec![],
                 stats: None,
                 mtu: None,
-                oper_state: netdev::interface::OperState::Up,
+                oper_state: OperState::Up,
             },
         }
     }
@@ -371,7 +374,7 @@ impl HomeRouter {
     /// This is used as the destination for UPnP, NAT-PMP, PCP, etc queries.
     pub fn new() -> Option<Self> {
         let gateway = Self::get_default_gateway()?;
-        let my_ip = netdev::interface::get_local_ipaddr();
+        let my_ip = netdev::net::ip::get_local_ipaddr();
 
         Some(HomeRouter { gateway, my_ip })
     }
