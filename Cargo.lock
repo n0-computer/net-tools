@@ -1315,7 +1315,7 @@ dependencies = [
  "n0-watcher",
  "nested_enum_utils",
  "netdev",
- "netlink-packet-core 0.7.0",
+ "netlink-packet-core 0.8.1",
  "netlink-packet-route 0.24.0",
  "netlink-proto",
  "netlink-sys",
