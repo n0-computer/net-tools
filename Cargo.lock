@@ -36,12 +36,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.100"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
-
-[[package]]
 name = "anymap2"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1206,23 +1200,12 @@ dependencies = [
  "dlopen2",
  "ipnet",
  "libc",
- "netlink-packet-core 0.8.1",
- "netlink-packet-route 0.25.1",
+ "netlink-packet-core",
+ "netlink-packet-route",
  "netlink-sys",
  "once_cell",
  "system-configuration",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "netlink-packet-core"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72724faf704479d67b388da142b186f916188505e7e0b26719019c525882eda4"
-dependencies = [
- "anyhow",
- "byteorder",
- "netlink-packet-utils",
 ]
 
 [[package]]
@@ -1236,21 +1219,6 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d83370a96813d7c977f8b63054f1162df6e5784f1c598d689236564fb5a6f2"
-dependencies = [
- "anyhow",
- "bitflags",
- "byteorder",
- "libc",
- "log",
- "netlink-packet-core 0.7.0",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-route"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ec2f5b6839be2a19d7fa5aab5bc444380f6311c2b693551cb80f45caaa7b5ef"
@@ -1258,31 +1226,19 @@ dependencies = [
  "bitflags",
  "libc",
  "log",
- "netlink-packet-core 0.8.1",
-]
-
-[[package]]
-name = "netlink-packet-utils"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ede8a08c71ad5a95cdd0e4e52facd37190977039a4704eb82a283f713747d34"
-dependencies = [
- "anyhow",
- "byteorder",
- "paste",
- "thiserror 1.0.69",
+ "netlink-packet-core",
 ]
 
 [[package]]
 name = "netlink-proto"
-version = "0.11.5"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72452e012c2f8d612410d89eea01e2d9b56205274abb35d53f60200b2ec41d60"
+checksum = "b65d130ee111430e47eed7896ea43ca693c387f097dd97376bffafbf25812128"
 dependencies = [
  "bytes",
  "futures",
  "log",
- "netlink-packet-core 0.7.0",
+ "netlink-packet-core",
  "netlink-sys",
  "thiserror 2.0.17",
 ]
@@ -1315,8 +1271,8 @@ dependencies = [
  "n0-watcher",
  "nested_enum_utils",
  "netdev",
- "netlink-packet-core 0.7.0",
- "netlink-packet-route 0.24.0",
+ "netlink-packet-core",
+ "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
  "pin-project-lite",
