@@ -1326,8 +1326,8 @@ dependencies = [
  "tracing-subscriber-wasm",
  "wasm-bindgen-test",
  "web-sys",
- "windows 0.61.3",
- "windows-result 0.3.4",
+ "windows 0.62.2",
+ "windows-result 0.4.1",
  "wmi",
 ]
 
