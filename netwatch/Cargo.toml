@@ -64,7 +64,7 @@ derive_more = { version = "2.0.1", features = ["display"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.17"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
-windows-result = "0.3"
+windows-result = "0.4"
 serde = { version = "1", features = ["derive"] }
 derive_more = { version = "2.0.1", features = ["debug"] }
 
