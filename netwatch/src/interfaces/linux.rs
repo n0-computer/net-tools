@@ -41,7 +41,7 @@ pub enum Error {
     #[cfg(not(target_os = "android"))]
     #[snafu(display("netlink error message: {message:?}"))]
     NetlinkErrorMessage {
-        message: netlink_packet_core::error::ErrorMessage,
+        message: netlink_packet_core::ErrorMessage,
     },
 }
 
