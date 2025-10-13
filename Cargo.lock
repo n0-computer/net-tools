@@ -1306,7 +1306,7 @@ dependencies = [
  "wasm-bindgen-test",
  "web-sys",
  "windows 0.61.3",
- "windows-result 0.3.4",
+ "windows-result 0.4.1",
  "wmi",
 ]
 
