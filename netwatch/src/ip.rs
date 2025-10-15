@@ -83,15 +83,8 @@ impl LocalAddresses {
             }
         }
 
-        if regular4.is_empty() && regular6.is_empty() {
-            // if we have no usable IP addresses then be willing to accept
-            // addresses we otherwise wouldn't, like:
-            //   + 169.254.x.x (AWS Lambda uses NAT with these)
-            //   + IPv6 ULA (Google Cloud Run uses these with address translation)
-            regular4 = linklocal4;
-            regular6 = ula6;
-        }
         let mut regular = regular4;
+        regular.extend(linklocal4);
         regular.extend(regular6);
 
         regular.sort();
