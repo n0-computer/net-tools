@@ -84,8 +84,7 @@ impl LocalAddresses {
         }
 
         let mut regular = regular4;
-        regular.extend(linklocal4);
-        regular.extend(regular6);
+        regular.extend(linklocal4.into_iter().chain(regular6));
 
         regular.sort();
         loopback.sort();
