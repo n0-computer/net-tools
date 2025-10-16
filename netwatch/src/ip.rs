@@ -29,8 +29,8 @@ impl Default for LocalAddresses {
 #[cfg(not(wasm_browser))]
 impl LocalAddresses {
     /// Returns the machine's IP addresses.
-    /// If there are no regular addresses it will return any IPv4 linklocal or IPv6 unique local
-    /// addresses because we know of environments where these are used with NAT to provide connectivity.
+    /// Regular includes all non-loopback IPv4 (including link-local).
+    /// IPv6 link-local and unique local are excluded from regular.
     pub fn new() -> Self {
         let ifaces = netdev::interface::get_interfaces();
         Self::from_raw_interfaces(&ifaces)
