@@ -956,14 +956,14 @@ dependencies = [
 [[package]]
 name = "iroh-quinn-udp"
 version = "0.5.12"
-source = "git+https://github.com/n0-computer/quinn?branch=main-iroh#bc99406e75d2b56db4de3c1bbe301203a625277f"
+source = "git+https://github.com/n0-computer/quinn?branch=Frando%2Fon_closed#b8594b8fe1c0f9b1f1b50f5fceb8d6e243c82cfa"
 dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
