@@ -961,7 +961,7 @@ dependencies = [
 [[package]]
 name = "iroh-quinn-udp"
 version = "0.5.12"
-source = "git+https://github.com/n0-computer/quinn?branch=multipath-quinn-0.11.x#a4597406bf649a8eb38a5f8a1861979b6cee2ef4"
+source = "git+https://github.com/n0-computer/quinn?branch=Frando%2Fon_closed#da312ea6b9d8c8eabbf4c1ae03c417f37e64aced"
 dependencies = [
  "cfg_aliases",
  "libc",
