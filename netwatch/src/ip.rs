@@ -29,8 +29,8 @@ impl Default for LocalAddresses {
 #[cfg(not(wasm_browser))]
 impl LocalAddresses {
     /// Returns the machine's IP addresses.
-    /// If there are no regular addresses it will return any IPv4 linklocal or IPv6 unique local
-    /// addresses because we know of environments where these are used with NAT to provide connectivity.
+    /// Regular includes all non-loopback IPv4 (including link-local).
+    /// IPv6 link-local and unique local are excluded from regular.
     pub fn new() -> Self {
         let ifaces = netdev::interface::get_interfaces();
         Self::from_raw_interfaces(&ifaces)
@@ -83,16 +83,8 @@ impl LocalAddresses {
             }
         }
 
-        if regular4.is_empty() && regular6.is_empty() {
-            // if we have no usable IP addresses then be willing to accept
-            // addresses we otherwise wouldn't, like:
-            //   + 169.254.x.x (AWS Lambda uses NAT with these)
-            //   + IPv6 ULA (Google Cloud Run uses these with address translation)
-            regular4 = linklocal4;
-            regular6 = ula6;
-        }
         let mut regular = regular4;
-        regular.extend(regular6);
+        regular.extend(linklocal4.into_iter().chain(regular6));
 
         regular.sort();
         loopback.sort();
