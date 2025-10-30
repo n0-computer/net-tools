@@ -2,10 +2,9 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use nested_enum_utils::common_fields;
 use netwatch::UdpSocket;
 use rand::RngCore;
-use snafu::{Backtrace, ResultExt, Snafu};
+use n0_error::{e, stack_error};
 use tracing::{debug, trace};
 
 use crate::{Protocol, defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT};
@@ -38,28 +37,25 @@ pub struct Mapping {
     nonce: [u8; 12],
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("received nonce does not match sent request"))]
+    #[error("received nonce does not match sent request")]
     NonceMissmatch {},
-    #[snafu(display("received mapping does not match the requested protocol"))]
+    #[error("received mapping does not match the requested protocol")]
     ProtocolMissmatch {},
-    #[snafu(display("received mapping is for a local port that does not match the requested one"))]
+    #[error("received mapping is for a local port that does not match the requested one")]
     PortMissmatch {},
-    #[snafu(display("received 0 external port for mapping"))]
+    #[error("received 0 external port for mapping")]
     ZeroExternalPort {},
-    #[snafu(display("received external address is not ipv4"))]
+    #[error("received external address is not ipv4")]
     NotIpv4 {},
-    #[snafu(display("received an announce response for a map request"))]
+    #[error("received an announce response for a map request")]
     InvalidAnnounce {},
-    #[snafu(display("IO error during PCP"))]
-    Io { source: std::io::Error },
-    #[snafu(display("Protocol error during PCP"))]
+    #[error(transparent)]
+    Io { #[error(std_err)] source: std::io::Error },
+    #[error("Protocol error during PCP")]
     Protocol { source: protocol::Error },
 }
 
@@ -83,10 +79,10 @@ impl Mapping {
         preferred_external_address: Option<(Ipv4Addr, NonZeroU16)>,
     ) -> Result<Self, Error> {
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).context(IoSnafu)?;
+        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
         socket
             .connect((gateway, protocol::SERVER_PORT).into())
-            .context(IoSnafu)?;
+            .map_err(|err| e!(Error::Io, err))?;
 
         let mut nonce = [0u8; 12];
         rand::rng().fill_bytes(&mut nonce);
@@ -110,7 +106,10 @@ impl Mapping {
             MAPPING_REQUESTED_LIFETIME_SECONDS,
         );
 
-        socket.send(&req.encode()).await.context(IoSnafu)?;
+        socket
+            .send(&req.encode())
+            .await
+            .map_err(|err| e!(Error::Io, err))?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; protocol::Response::MAX_SIZE];
@@ -119,9 +118,10 @@ impl Mapping {
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
             })
-            .context(IoSnafu)?
-            .context(IoSnafu)?;
-        let response = protocol::Response::decode(&buffer[..read]).context(ProtocolSnafu)?;
+            .map_err(|err| e!(Error::Io, err))?
+            .map_err(|err| e!(Error::Io, err))?;
+        let response = protocol::Response::decode(&buffer[..read])
+            .map_err(|err| e!(Error::Protocol, err))?;
 
         // verify that the response is correct and matches the request
         let protocol::Response {
@@ -141,24 +141,24 @@ impl Mapping {
                 } = map_data;
 
                 if nonce != received_nonce {
-                    return Err(NonceMissmatchSnafu.build());
+                    return Err(e!(Error::NonceMissmatch));
                 }
 
                 if received_protocol != protocol {
-                    return Err(ProtocolMissmatchSnafu.build());
+                    return Err(e!(Error::ProtocolMissmatch));
                 }
 
                 let sent_port: u16 = local_port.into();
                 if received_local_port != sent_port {
-                    return Err(PortMissmatchSnafu.build());
+                    return Err(e!(Error::PortMissmatch));
                 }
                 let external_port = external_port
                     .try_into()
-                    .map_err(|_| ZeroExternalPortSnafu.build())?;
+                    .map_err(|_| e!(Error::ZeroExternalPort))?;
 
                 let external_address = external_address
                     .to_ipv4_mapped()
-                    .ok_or(NotIpv4Snafu.build())?;
+                    .ok_or(e!(Error::NotIpv4))?;
 
                 Ok(Mapping {
                     protocol: received_protocol,
@@ -171,7 +171,7 @@ impl Mapping {
                     gateway,
                 })
             }
-            protocol::OpcodeData::Announce => Err(InvalidAnnounceSnafu.build()),
+            protocol::OpcodeData::Announce => Err(e!(Error::InvalidAnnounce)),
         }
     }
 
@@ -186,15 +186,18 @@ impl Mapping {
         } = self;
 
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).context(IoSnafu)?;
+        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
         socket
             .connect((gateway, protocol::SERVER_PORT).into())
-            .context(IoSnafu)?;
+            .map_err(|err| e!(Error::Io, err))?;
 
         let local_port = local_port.into();
         let req = protocol::Request::mapping(nonce, protocol, local_port, local_ip, None, None, 0);
 
-        socket.send(&req.encode()).await.context(IoSnafu)?;
+        socket
+            .send(&req.encode())
+            .await
+            .map_err(|err| e!(Error::Io, err))?;
 
         // mapping deletion is a notification, no point in waiting for the response
         Ok(())
@@ -232,21 +235,29 @@ async fn probe_available_fallible(
     gateway: Ipv4Addr,
 ) -> Result<protocol::Response, Error> {
     // create the socket and send the request
-    let socket = UdpSocket::bind_full((local_ip, 0)).context(IoSnafu)?;
+    let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
     socket
         .connect((gateway, protocol::SERVER_PORT).into())
-        .context(IoSnafu)?;
+        .map_err(|err| e!(Error::Io, err))?;
     let req = protocol::Request::announce(local_ip.to_ipv6_mapped());
-    socket.send(&req.encode()).await.context(IoSnafu)?;
+    socket
+        .send(&req.encode())
+        .await
+        .map_err(|err| e!(Error::Io, err))?;
 
     // wait for the response and decode it
     let mut buffer = vec![0; protocol::Response::MAX_SIZE];
     let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
         .await
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string()))
-        .context(IoSnafu)?
-        .context(IoSnafu)?;
-    let response = protocol::Response::decode(&buffer[..read]).context(ProtocolSnafu)?;
+        .map_err(|_| {
+            e!(
+                Error::Io,
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            )
+        })?
+        .map_err(|err| e!(Error::Io, err))?;
+    let response = protocol::Response::decode(&buffer[..read])
+        .map_err(|err| e!(Error::Protocol, err))?;
 
     Ok(response)
 }

@@ -9,8 +9,8 @@ use std::{
 
 use current_mapping::CurrentMapping;
 use futures_lite::StreamExt;
+use n0_error::{e, stack_error};
 use netwatch::interfaces::HomeRouter;
-use snafu::Snafu;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 use tracing::{Instrument, debug, info_span, trace};
@@ -72,18 +72,19 @@ impl ProbeOutput {
 //     backtrace: Option<snafu::Backtrace>,
 // })]
 #[allow(missing_docs)]
-#[derive(Debug, Clone, Snafu)]
+#[stack_error(derive, add_meta)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub enum ProbeError {
-    #[snafu(display("Mapping channel is full"))]
+    #[error("Mapping channel is full")]
     ChannelFull,
-    #[snafu(display("Mapping channel is closed"))]
+    #[error("Mapping channel is closed")]
     ChannelClosed,
-    #[snafu(display("No gateway found for probe"))]
+    #[error("No gateway found for probe")]
     NoGateway,
-    #[snafu(display("gateway found is ipv6, ignoring"))]
+    #[error("gateway found is ipv6, ignoring")]
     Ipv6Gateway,
-    #[snafu(display("Probe task stopped. is_panic: {is_panic}, is_cancelled: {is_cancelled}"))]
+    #[error("Probe task stopped. is_panic: {is_panic}, is_cancelled: {is_cancelled}")]
     Join { is_panic: bool, is_cancelled: bool },
 }
 
@@ -198,8 +199,8 @@ impl Client {
 
             // recover the sender and return the error there
             let (result_tx, e) = match e {
-                Full(Message::Probe { result_tx }) => (result_tx, ChannelFullSnafu.build()),
-                Closed(Message::Probe { result_tx }) => (result_tx, ChannelClosedSnafu.build()),
+                Full(Message::Probe { result_tx }) => (result_tx, e!(ProbeError::ChannelFull)),
+                Closed(Message::Probe { result_tx }) => (result_tx, e!(ProbeError::ChannelClosed)),
                 Full(_) | Closed(_) => unreachable!("Sent value is a probe."),
             };
 
@@ -526,7 +527,7 @@ impl Service {
                     trace!("tick: probe ready");
                     // retrieve the receivers and clear the task
                     let receivers = self.probing_task.take().expect("is some").1;
-                    let probe_result = probe_result.map_err(|e| JoinSnafu { is_panic: e.is_panic(), is_cancelled: e.is_cancelled() }.build());
+                    let probe_result = probe_result.map_err(|e| e!(ProbeError::Join { is_panic: e.is_panic(), is_cancelled: e.is_cancelled() }));
                     self.on_probe_result(probe_result, receivers);
                 }
                 Some(event) = self.current_mapping.next() => {
@@ -774,7 +775,7 @@ impl Service {
 /// Gets the local ip and gateway address for port mapping.
 fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
     let Some(HomeRouter { gateway, my_ip }) = HomeRouter::new() else {
-        return Err(NoGatewaySnafu.build());
+        return Err(e!(ProbeError::NoGateway));
     };
 
     let local_ip = match my_ip {
@@ -790,7 +791,7 @@ fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
     };
 
     let std::net::IpAddr::V4(gateway) = gateway else {
-        return Err(Ipv6GatewaySnafu.build());
+        return Err(e!(ProbeError::Ipv6Gateway));
     };
 
     Ok((local_ip, gateway))

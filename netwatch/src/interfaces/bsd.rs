@@ -13,8 +13,7 @@ use libc::{AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET, c_int, uint
 use libc::{
     NET_RT_DUMP, RTA_IFP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTF_GATEWAY,
 };
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, IntoError, OptionExt, Snafu};
+use n0_error::{e, ensure, stack_error};
 use tracing::warn;
 
 use super::DefaultRouteDetails;
@@ -246,10 +245,11 @@ fn u16_from_ne_range(
     data: &[u8],
     range: impl std::slice::SliceIndex<[u8], Output = [u8]>,
 ) -> Result<u16, RouteError> {
-    data.get(range)
+    data
+        .get(range)
         .and_then(|s| TryInto::<[u8; 2]>::try_into(s).ok())
         .map(u16::from_ne_bytes)
-        .context(MessageTooShortSnafu)
+        .ok_or_else(|| e!(RouteError::MessageTooShort))
 }
 
 /// Safely convert some bytes from a slice into a u32.
@@ -257,10 +257,11 @@ fn u32_from_ne_range(
     data: &[u8],
     range: impl std::slice::SliceIndex<[u8], Output = [u8]>,
 ) -> Result<u32, RouteError> {
-    data.get(range)
+    data
+        .get(range)
         .and_then(|s| TryInto::<[u8; 4]>::try_into(s).ok())
         .map(u32::from_ne_bytes)
-        .context(MessageTooShortSnafu)
+        .ok_or_else(|| e!(RouteError::MessageTooShort))
 }
 
 impl WireFormat {
@@ -273,12 +274,12 @@ impl WireFormat {
                 target_os = "ios"
             ))]
             MessageType::Route => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
                 let attrs: i32 = u32_from_ne_range(data, 12..16)?
                     .try_into()
-                    .map_err(|_| InvalidMessageSnafu.build())?;
+                    .map_err(|_| e!(RouteError::InvalidMessage))?;
                 let addrs = parse_addrs(attrs, parse_kernel_inet_addr, &data[self.body_off..])?;
                 let mut m = RouteMessage {
                     version: data[2] as _,
@@ -300,11 +301,11 @@ impl WireFormat {
             }
             #[cfg(target_os = "openbsd")]
             MessageType::Route => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
                 let ll = u16_from_ne_range(data, 4..6)? as usize;
-                snafu::ensure!(data.len() >= ll as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= ll as usize, RouteError::InvalidMessage);
 
                 let addrs = parse_addrs(
                     u32_from_ne_range(data, 12..16)? as _,
@@ -331,9 +332,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::Route(m)))
             }
             MessageType::Interface => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, 0..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let attrs = u32_from_ne_range(data, 4..8)?;
                 if attrs as c_int & RTA_IFP == 0 {
@@ -354,9 +355,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::Interface(m)))
             }
             MessageType::InterfaceAddr => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 #[cfg(target_os = "netbsd")]
                 let index = u16_from_ne_range(data, 16..18)?;
@@ -379,9 +380,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::InterfaceAddr(m)))
             }
             MessageType::InterfaceMulticastAddr => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let addrs = parse_addrs(
                     u32_from_ne_range(data, 4..8)? as _,
@@ -398,9 +399,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::InterfaceMulticastAddr(m)))
             }
             MessageType::InterfaceAnnounce => {
-                snafu::ensure!(data.len() >= self.body_off, MessageTooShortSnafu);
+                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                snafu::ensure!(data.len() >= l as usize, InvalidMessageSnafu);
+                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let mut name = String::new();
                 for i in 0..16 {
@@ -408,7 +409,7 @@ impl WireFormat {
                         continue;
                     }
                     name = std::str::from_utf8(&data[6..6 + i])
-                        .map_err(|_| InvalidAddressSnafu.build())?
+                        .map_err(|_| e!(RouteError::InvalidAddress))?
                         .to_string();
                     break;
                 }
@@ -446,9 +447,9 @@ struct RoutingStack {
 
 /// Parses b as a routing information base and returns a list of routing messages.
 pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteError> {
-    snafu::ensure!(
+    n0_error::ensure!(
         is_valid_rib_type(typ),
-        InvalidRibTypeSnafu { rib_type: typ }
+        RouteError::InvalidRibType { rib_type: typ }
     );
 
     let mut msgs = Vec::new();
@@ -459,8 +460,8 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
     while b.len() > 4 {
         nmsgs += 1;
         let l = u16_from_ne_range(b, ..2)?;
-        snafu::ensure!(l != 0, InvalidMessageSnafu);
-        snafu::ensure!(b.len() >= l as usize, MessageTooShortSnafu);
+        n0_error::ensure!(l != 0, RouteError::InvalidMessage);
+        n0_error::ensure!(b.len() >= l as usize, RouteError::MessageTooShort);
         if b[2] as i32 != ROUTING_STACK.rtm_version {
             // b = b[l:];
             continue;
@@ -485,7 +486,7 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
     }
 
     // We failed to parse any of the messages - version mismatch?
-    snafu::ensure!(nmsgs == msgs.len() + nskips, MessageMismatchSnafu);
+    n0_error::ensure!(nmsgs == msgs.len() + nskips, RouteError::MessageMismatch);
 
     Ok(msgs)
 }
@@ -599,27 +600,21 @@ pub struct InterfaceAnnounceMessage {
 /// Represents a type of routing information base.
 type RIBType = i32;
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum RouteError {
-    #[snafu(display("message mismatch"))]
+    #[error("message mismatch")]
     MessageMismatch {},
-    #[snafu(display("message too short"))]
+    #[error("message too short")]
     MessageTooShort {},
-    #[snafu(display("invalid message"))]
+    #[error("invalid message")]
     InvalidMessage {},
-    #[snafu(display("invalid address"))]
+    #[error("invalid address")]
     InvalidAddress {},
-    #[snafu(display("invalid rib type {rib_type}"))]
+    #[error("invalid rib type {rib_type}")]
     InvalidRibType { rib_type: RIBType },
-    #[snafu(display("io error calling '{name}'"))]
-    Io {
-        source: std::io::Error,
-        name: &'static str,
-    },
+    #[error("io error calling '{name}'")]
+    Io { #[error(std_err)] source: std::io::Error, name: &'static str },
 }
 
 /// FetchRIB fetches a routing information base from the operating system.
@@ -649,7 +644,10 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             )
         };
         if err != 0 {
-            return Err(IoSnafu { name: "sysctl" }.into_error(std::io::Error::last_os_error()));
+            return Err(e!(
+                RouteError::Io { name: "sysctl" },
+                std::io::Error::last_os_error()
+            ));
         }
         if n == 0 {
             // nothing available
@@ -675,7 +673,7 @@ fn fetch_rib(af: i32, typ: RIBType, arg: i32) -> Result<Vec<u8>, RouteError> {
             if io_err.raw_os_error().unwrap_or_default() == libc::ENOMEM && round < MAX_TRIES {
                 continue;
             }
-            return Err(IoSnafu { name: "sysctl" }.into_error(io_err));
+            return Err(e!(RouteError::Io { name: "sysctl" }, io_err));
         }
         // Truncate b, to the new length
         b.truncate(n);
@@ -768,7 +766,7 @@ where
                     let a = parse_link_addr(b)?;
                     addrs.push(a);
                     let l = roundup(b[0] as usize);
-                    snafu::ensure!(b.len() >= l, MessageTooShortSnafu);
+                    n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
                     b = &b[l..];
                 }
                 AF_INET | AF_INET6 => {
@@ -776,7 +774,7 @@ where
                     let a = parse_inet_addr(af, b)?;
                     addrs.push(a);
                     let l = roundup(b[0] as usize);
-                    snafu::ensure!(b.len() >= l, MessageTooShortSnafu);
+                    n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
                     b = &b[l..];
                 }
                 _ => {
@@ -794,7 +792,7 @@ where
             let a = parse_default_addr(b)?;
             addrs.push(a);
             let l = roundup(b[0] as usize);
-            snafu::ensure!(b.len() >= l, MessageTooShortSnafu);
+            n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
             b = &b[l..];
         }
     }
@@ -809,19 +807,19 @@ where
 fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
     match af {
         AF_INET => {
-            snafu::ensure!(b.len() >= SIZEOF_SOCKADDR_INET, InvalidAddressSnafu);
+            n0_error::ensure!(b.len() >= SIZEOF_SOCKADDR_INET, RouteError::InvalidAddress);
 
             let ip = Ipv4Addr::new(b[4], b[5], b[6], b[7]);
             Ok(Addr::Inet4 { ip })
         }
         AF_INET6 => {
-            snafu::ensure!(b.len() >= SIZEOF_SOCKADDR_INET6, InvalidAddressSnafu);
+            n0_error::ensure!(b.len() >= SIZEOF_SOCKADDR_INET6, RouteError::InvalidAddress);
 
             let mut zone = u32_from_ne_range(b, 24..28)?;
             let mut oc: [u8; 16] = b
                 .get(8..24)
                 .and_then(|s| TryInto::<[u8; 16]>::try_into(s).ok())
-                .context(InvalidMessageSnafu)?;
+                .ok_or_else(|| e!(RouteError::InvalidMessage))?;
             if oc[0] == 0xfe && oc[1] & 0xc0 == 0x80
                 || oc[0] == 0xff && (oc[1] & 0x0f == 0x01 || oc[1] & 0x0f == 0x02)
             {
@@ -834,7 +832,8 @@ fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
                     .get(2..4)
                     .and_then(|s| TryInto::<[u8; 2]>::try_into(s).ok())
                     .map(u16::from_be_bytes)
-                    .context(InvalidMessageSnafu)? as u32;
+                    .map(u16::from_be_bytes)
+                    .ok_or_else(|| e!(RouteError::InvalidMessage))? as u32;
                 if id != 0 {
                     zone = id;
                     oc[2] = 0;
@@ -846,7 +845,7 @@ fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
                 zone,
             })
         }
-        _ => Err(InvalidAddressSnafu.build()),
+        _ => Err(e!(RouteError::InvalidAddress)),
     }
 }
 
@@ -885,7 +884,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
         l = roundup(l);
     }
 
-    snafu::ensure!(b.len() >= l, InvalidAddressSnafu);
+    n0_error::ensure!(b.len() >= l, RouteError::InvalidAddress);
     // Don't reorder case expressions.
     // The case expressions for IPv6 must come first.
     const OFF4: usize = 4; // offset of in_addr
@@ -895,7 +894,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
         let octets: [u8; 16] = b
             .get(OFF6..OFF6 + 16)
             .and_then(|s| TryInto::try_into(s).ok())
-            .context(InvalidMessageSnafu)?;
+            .ok_or_else(|| e!(RouteError::InvalidMessage))?;
         let ip = Ipv6Addr::from(octets);
         Addr::Inet6 { ip, zone: 0 }
     } else if af == AF_INET6 {
@@ -911,7 +910,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
         let octets: [u8; 4] = b
             .get(OFF4..OFF4 + 4)
             .and_then(|s| TryInto::try_into(s).ok())
-            .context(InvalidMessageSnafu)?;
+            .ok_or_else(|| e!(RouteError::InvalidMessage))?;
         let ip = Ipv4Addr::from(octets);
         Addr::Inet4 { ip }
     } else {
@@ -930,7 +929,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
 }
 
 fn parse_link_addr(b: &[u8]) -> Result<Addr, RouteError> {
-    snafu::ensure!(b.len() >= 8, InvalidAddressSnafu);
+    n0_error::ensure!(b.len() >= 8, RouteError::InvalidAddress);
     let (_, mut a) = parse_kernel_link_addr(AF_LINK, &b[4..])?;
 
     if let Addr::Link { index, .. } = &mut a {
@@ -972,12 +971,12 @@ fn parse_kernel_link_addr(_: i32, b: &[u8]) -> Result<(usize, Addr), RouteError>
     }
 
     let l = 4 + nlen + alen + slen;
-    snafu::ensure!(b.len() >= l, InvalidAddressSnafu);
+    n0_error::ensure!(b.len() >= l, RouteError::InvalidAddress);
     let mut data = &b[4..];
 
     let name = if nlen > 0 {
         let name = std::str::from_utf8(&data[..nlen])
-            .map_err(|_| InvalidAddressSnafu.build())?
+            .map_err(|_| e!(RouteError::InvalidAddress))?
             .to_string();
         data = &data[nlen..];
         Some(name)
@@ -1001,9 +1000,9 @@ fn parse_kernel_link_addr(_: i32, b: &[u8]) -> Result<(usize, Addr), RouteError>
 }
 
 fn parse_default_addr(b: &[u8]) -> Result<Addr, RouteError> {
-    snafu::ensure!(
+    n0_error::ensure!(
         b.len() >= 2 && b.len() >= b[0] as usize,
-        InvalidAddressSnafu
+        RouteError::InvalidAddress
     );
     Ok(Addr::Default {
         af: b[1] as _,

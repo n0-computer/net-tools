@@ -2,9 +2,8 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use nested_enum_utils::common_fields;
 use netwatch::UdpSocket;
-use snafu::{Backtrace, Snafu};
+use n0_error::{e, stack_error};
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
@@ -33,20 +32,17 @@ pub struct Mapping {
     lifetime_seconds: u32,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>
-})]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("server returned unexpected response for mapping request"))]
+    #[error("server returned unexpected response for mapping request")]
     UnexpectedServerResponse {},
-    #[snafu(display("received 0 port from server as external port"))]
+    #[error("received 0 port from server as external port")]
     ZeroExternalPort {},
-    #[snafu(transparent)]
-    Io { source: std::io::Error },
-    #[snafu(transparent)]
+    #[error(transparent)]
+    Io { #[error(std_err)] source: std::io::Error },
+    #[error(transparent)]
     Protocol { source: protocol::Error },
 }
 
@@ -70,8 +66,10 @@ impl Mapping {
         external_port: Option<NonZeroU16>,
     ) -> Result<Self, Error> {
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0))?;
-        socket.connect((gateway, protocol::SERVER_PORT).into())?;
+        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
+        socket
+            .connect((gateway, protocol::SERVER_PORT).into())
+            .map_err(|err| e!(Error::Io, err))?;
 
         let proto = match protocol {
             Protocol::Udp => MapProtocol::Udp,
@@ -84,16 +82,26 @@ impl Mapping {
             lifetime_seconds: MAPPING_REQUESTED_LIFETIME_SECONDS,
         };
 
-        socket.send(&req.encode()).await?;
+        socket
+            .send(&req.encode())
+            .await
+            .map_err(|err| e!(Error::Io, err))?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
         let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
             .await
             .map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })??;
-        let response = Response::decode(&buffer[..read])?;
+                e!(
+                    Error::Io,
+                    std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "read timeout".to_string()
+                    )
+                )
+            })?
+            .map_err(|err| e!(Error::Io, err))?;
+        let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
         let (external_port, lifetime_seconds) = match response {
             Response::PortMap {
@@ -105,32 +113,42 @@ impl Mapping {
             } if private_port == Into::<u16>::into(local_port) && proto == proto_rcvd => {
                 (external_port, lifetime_seconds)
             }
-            _ => return Err(UnexpectedServerResponseSnafu.build()),
+            _ => return Err(e!(Error::UnexpectedServerResponse)),
         };
 
         let external_port = external_port
             .try_into()
-            .map_err(|_| ZeroExternalPortSnafu.build())?;
+            .map_err(|_| e!(Error::ZeroExternalPort))?;
 
         // now send the second request to get the external address
         let req = Request::ExternalAddress;
-        socket.send(&req.encode()).await?;
+        socket
+            .send(&req.encode())
+            .await
+            .map_err(|err| e!(Error::Io, err))?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
         let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
             .await
             .map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })??;
-        let response = Response::decode(&buffer[..read])?;
+                e!(
+                    Error::Io,
+                    std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "read timeout".to_string()
+                    )
+                )
+            })?
+            .map_err(|err| e!(Error::Io, err))?;
+        let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
         let external_addr = match response {
             Response::PublicAddress {
                 epoch_time: _,
                 public_ip,
             } => public_ip,
-            _ => return Err(UnexpectedServerResponseSnafu.build()),
+            _ => return Err(e!(Error::UnexpectedServerResponse)),
         };
 
         Ok(Mapping {
@@ -157,8 +175,10 @@ impl Mapping {
         } = self;
 
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0))?;
-        socket.connect((gateway, protocol::SERVER_PORT).into())?;
+        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
+        socket
+            .connect((gateway, protocol::SERVER_PORT).into())
+            .map_err(|err| e!(Error::Io, err))?;
 
         let req = Request::Mapping {
             proto: MapProtocol::Udp,
@@ -167,7 +187,10 @@ impl Mapping {
             lifetime_seconds: 0,
         };
 
-        socket.send(&req.encode()).await?;
+        socket
+            .send(&req.encode())
+            .await
+            .map_err(|err| e!(Error::Io, err))?;
 
         // mapping deletion is a notification, no point in waiting for the response
         Ok(())
@@ -200,19 +223,31 @@ async fn probe_available_fallible(
     gateway: Ipv4Addr,
 ) -> Result<Response, Error> {
     // create the socket and send the request
-    let socket = UdpSocket::bind_full((local_ip, 0))?;
-    socket.connect((gateway, protocol::SERVER_PORT).into())?;
+    let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
+    socket
+        .connect((gateway, protocol::SERVER_PORT).into())
+        .map_err(|err| e!(Error::Io, err))?;
     let req = Request::ExternalAddress;
-    socket.send(&req.encode()).await?;
+    socket
+        .send(&req.encode())
+        .await
+        .map_err(|err| e!(Error::Io, err))?;
 
     // wait for the response and decode it
     let mut buffer = vec![0; Response::MAX_SIZE];
     let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
         .await
         .map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-        })??;
-    let response = Response::decode(&buffer[..read])?;
+            e!(
+                Error::Io,
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "read timeout".to_string()
+                )
+            )
+        })?
+        .map_err(|err| e!(Error::Io, err))?;
+    let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
     Ok(response)
 }

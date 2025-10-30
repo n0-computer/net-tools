@@ -1,8 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use libc::c_void;
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, ResultExt, Snafu};
+use n0_error::{e, stack_error, StdResultExt};
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
@@ -20,15 +19,12 @@ pub(super) struct RouteMonitor {
     cb_handler: CallbackHandler,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("IO"))]
-    Io { source: std::io::Error },
-    #[snafu(display("win32"))]
+    #[error(transparent)]
+    Io { #[error(std_err)] source: std::io::Error },
+    #[error("win32")]
     Win32 { source: windows_result::Error },
 }
 
@@ -121,7 +117,7 @@ impl CallbackHandler {
                 &mut handle,
             )
             .ok()
-            .context(Win32Snafu)?;
+            .map_err(|err| e!(Error::Win32, err))?;
         }
 
         self.unicast_callbacks.insert(handle.0 as isize, cb);
@@ -142,7 +138,7 @@ impl CallbackHandler {
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
                     .ok()
-                    .context(Win32Snafu)?;
+                    .map_err(|err| e!(Error::Win32, err))?;
             }
         }
 
@@ -165,7 +161,7 @@ impl CallbackHandler {
                 &mut handle,
             )
             .ok()
-            .context(Win32Snafu)?;
+            .map_err(|err| e!(Error::Win32, err))?;
         }
 
         self.route_callbacks.insert(handle.0 as isize, cb);
@@ -186,7 +182,7 @@ impl CallbackHandler {
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
                     .ok()
-                    .context(Win32Snafu)?;
+                    .map_err(|err| e!(Error::Win32, err))?;
             }
         }
 

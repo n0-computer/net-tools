@@ -1,7 +1,6 @@
 //! Linux-specific network interfaces implementations.
 
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use n0_error::{e, stack_error};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, BufReader},
@@ -9,37 +8,34 @@ use tokio::{
 
 use super::DefaultRouteDetails;
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(super)))]
+#[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("IO"))]
-    Io { source: std::io::Error },
+    #[error(transparent)]
+    Io { #[error(std_err)] source: std::io::Error },
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("no netlink response"))]
+    #[error("no netlink response")]
     NoResponse {},
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("interface not found"))]
+    #[error("interface not found")]
     InterfaceNotFound {},
-    #[snafu(display("iface field is missing"))]
+    #[error("iface field is missing")]
     MissingIfaceField {},
-    #[snafu(display("destination field is missing"))]
+    #[error("destination field is missing")]
     MissingDestinationField {},
-    #[snafu(display("mask field is missing"))]
+    #[error("mask field is missing")]
     MissingMaskField {},
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("netlink"))]
+    #[error("netlink")]
     Netlink {
+        #[error(std_err)]
         source: netlink_proto::Error<netlink_packet_route::RouteNetlinkMessage>,
     },
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("unexpected netlink message"))]
+    #[error("unexpected netlink message")]
     UnexpectedNetlinkMessage {},
     #[cfg(not(target_os = "android"))]
-    #[snafu(display("netlink error message: {message:?}"))]
+    #[error("netlink error message: {message:?}")]
     NetlinkErrorMessage {
         message: netlink_packet_core::ErrorMessage,
     },
@@ -64,7 +60,9 @@ const PROC_NET_ROUTE_PATH: &str = "/proc/net/route";
 
 async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     const ZERO_ADDR: &str = "00000000";
-    let file = File::open(PROC_NET_ROUTE_PATH).await.context(IoSnafu)?;
+    let file = File::open(PROC_NET_ROUTE_PATH)
+        .await
+        .map_err(|err| e!(Error::Io, err))?;
 
     // Explicitly set capacity, this is min(4096, DEFAULT_BUF_SIZE):
     // https://github.com/google/gvisor/issues/5732
@@ -80,14 +78,22 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     // read it all in one call.
     let reader = BufReader::with_capacity(8 * 1024, file);
     let mut lines_iter = reader.lines();
-    while let Some(line) = lines_iter.next_line().await.context(IoSnafu)? {
+    while let Some(line) = lines_iter
+        .next_line()
+        .await
+        .map_err(|err| e!(Error::Io, err))?
+    {
         if !line.contains(ZERO_ADDR) {
             continue;
         }
         let mut fields = line.split_ascii_whitespace();
-        let iface = fields.next().context(MissingIfaceFieldSnafu)?;
-        let destination = fields.next().context(MissingDestinationFieldSnafu)?;
-        let mask = fields.nth(5).context(MissingMaskFieldSnafu)?;
+        let iface = fields.next().ok_or_else(|| e!(Error::MissingIfaceField))?;
+        let destination = fields
+            .next()
+            .ok_or_else(|| e!(Error::MissingDestinationField))?;
+        let mask = fields
+            .nth(5)
+            .ok_or_else(|| e!(Error::MissingMaskField))?;
         // if iface.starts_with("tailscale") || iface.starts_with("wg") {
         //     continue;
         // }
@@ -135,7 +141,7 @@ mod sane {
         route::{RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope, RouteType},
     };
     use netlink_sys::protocols::NETLINK_ROUTE;
-    use snafu::IntoError;
+    use n0_error::e;
     use tracing::{Instrument, info_span};
 
     use super::*;
@@ -151,16 +157,18 @@ mod sane {
             match payload {
                 NetlinkPayload::InnerMessage($message_type(msg)) => msg,
                 NetlinkPayload::Error(err) => {
-                    return Err(NetlinkErrorMessageSnafu { message: err }.build());
+                    return Err(e!(Error::NetlinkErrorMessage { message: err }));
                 }
-                _ => return Err(UnexpectedNetlinkMessageSnafu.build()),
+                _ => return Err(e!(Error::UnexpectedNetlinkMessage)),
             }
         }};
     }
 
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
-        let (connection, handle, _receiver) =
-            netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE).context(IoSnafu)?;
+        let (connection, handle, _receiver) = netlink_proto::new_connection::<RouteNetlinkMessage>(
+            NETLINK_ROUTE,
+        )
+        .map_err(|err| e!(Error::Io, err))?;
 
         let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
 
@@ -191,7 +199,7 @@ mod sane {
                 response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))),
             ),
             Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
-                NetlinkSnafu.into_error(e),
+                e!(Error::Netlink, e),
             ))),
         }
     }
@@ -259,7 +267,7 @@ mod sane {
                 response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))),
             ),
             Err(e) => Either::Right(n0_future::stream::once::<Result<LinkMessage, Error>>(Err(
-                NetlinkSnafu.into_error(e),
+                e!(Error::Netlink, e),
             ))),
         }
     }
@@ -273,14 +281,14 @@ mod sane {
     async fn iface_by_index(handle: &Handle, index: u32) -> Result<String, Error> {
         let message = create_link_get_message(index);
         let mut links = get_link(handle.clone(), message);
-        let msg = links.try_next().await?.context(NoResponseSnafu)?;
+        let msg = links.try_next().await?.ok_or_else(|| e!(Error::NoResponse))?;
 
         for nla in msg.attributes {
             if let LinkAttribute::IfName(name) = nla {
                 return Ok(name);
             }
         }
-        Err(InterfaceNotFoundSnafu.build())
+        Err(e!(Error::InterfaceNotFound))
     }
 
     #[cfg(test)]
