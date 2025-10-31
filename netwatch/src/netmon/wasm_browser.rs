@@ -8,11 +8,8 @@ use web_sys::{EventListener, EventTarget};
 
 use super::actor::NetworkMessage;
 
-#[derive(Debug, derive_more::Display)]
-#[display("error")]
+#[n0_error::stack_error(derive, add_meta)]
 pub struct Error;
-
-impl std::error::Error for Error {}
 
 #[derive(Debug)]
 pub(super) struct RouteMonitor {

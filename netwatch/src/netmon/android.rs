@@ -2,7 +2,7 @@ use tokio::sync::mpsc;
 
 use super::actor::NetworkMessage;
 
-#[derive(n0_error::Error)]
+#[n0_error::stack_error(derive, add_meta)]
 pub struct Error;
 
 #[derive(Debug)]
