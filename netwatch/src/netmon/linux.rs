@@ -34,7 +34,7 @@ impl Drop for RouteMonitor {
 #[stack_error(derive, add_meta)]
 #[non_exhaustive]
 pub enum Error {
-    #[error(transparent)]
+    #[error("IO")]
     Io {
         #[error(std_err)]
         source: std::io::Error,
