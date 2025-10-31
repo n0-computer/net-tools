@@ -19,14 +19,11 @@ pub(super) struct RouteMonitor {
     cb_handler: CallbackHandler,
 }
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, std_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Io {
-        #[error(std_err)]
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
     #[error("win32")]
     Win32 { source: windows_result::Error },
 }
