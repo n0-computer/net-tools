@@ -15,14 +15,11 @@ pub(super) struct RouteMonitor {
     _handle: AbortOnDropHandle<()>,
 }
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources, std_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("IO")]
-    Io {
-        #[error(std_err)]
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
 }
 
 fn create_socket() -> std::io::Result<tokio::net::UnixStream> {
@@ -38,7 +35,7 @@ fn create_socket() -> std::io::Result<tokio::net::UnixStream> {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        let mut socket = create_socket().map_err(|err| e!(Error::Io, err))?;
+        let mut socket = create_socket()?;
         let handle = tokio::task::spawn(async move {
             trace!("AF_ROUTE monitor started");
 

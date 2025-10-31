@@ -2,7 +2,7 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use n0_error::{e, stack_error};
+use n0_error::stack_error;
 
 use super::{nat_pmp, pcp, upnp};
 use crate::Protocol;
@@ -26,7 +26,7 @@ pub enum Mapping {
 
 /// Mapping error.
 #[allow(missing_docs)]
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("PCP mapping failed")]
@@ -49,7 +49,7 @@ impl Mapping {
         pcp::Mapping::new(protocol, local_ip, local_port, gateway, external_addr)
             .await
             .map(Self::Pcp)
-            .map_err(|err| e!(Error::Pcp, err))
+            .map_err(Error::from)
     }
 
     /// Create a new NAT-PMP mapping.
@@ -69,7 +69,7 @@ impl Mapping {
         )
         .await
         .map(Self::NatPmp)
-        .map_err(|err| e!(Error::NatPmp, err))
+        .map_err(Error::from)
     }
 
     /// Create a new UPnP mapping.
@@ -83,15 +83,15 @@ impl Mapping {
         upnp::Mapping::new(protocol, local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
-            .map_err(|err| e!(Error::Upnp, err))
+            .map_err(Error::from)
     }
 
     /// Release the mapping.
     pub(crate) async fn release(self) -> Result<(), Error> {
         match self {
-            Mapping::Upnp(m) => m.release().await.map_err(|err| e!(Error::Upnp, err))?,
-            Mapping::Pcp(m) => m.release().await.map_err(|err| e!(Error::Pcp, err))?,
-            Mapping::NatPmp(m) => m.release().await.map_err(|err| e!(Error::NatPmp, err))?,
+            Mapping::Upnp(m) => m.release().await?,
+            Mapping::Pcp(m) => m.release().await?,
+            Mapping::NatPmp(m) => m.release().await?,
         }
         Ok(())
     }
