@@ -2,9 +2,8 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use nested_enum_utils::common_fields;
+use n0_error::{e, stack_error};
 use netwatch::UdpSocket;
-use snafu::{Backtrace, Snafu};
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
@@ -33,20 +32,20 @@ pub struct Mapping {
     lifetime_seconds: u32,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>
-})]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("server returned unexpected response for mapping request"))]
+    #[error("server returned unexpected response for mapping request")]
     UnexpectedServerResponse {},
-    #[snafu(display("received 0 port from server as external port"))]
+    #[error("received 0 port from server as external port")]
     ZeroExternalPort {},
-    #[snafu(transparent)]
-    Io { source: std::io::Error },
-    #[snafu(transparent)]
+    #[error(transparent)]
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
+    #[error(transparent)]
     Protocol { source: protocol::Error },
 }
 
@@ -105,12 +104,12 @@ impl Mapping {
             } if private_port == Into::<u16>::into(local_port) && proto == proto_rcvd => {
                 (external_port, lifetime_seconds)
             }
-            _ => return Err(UnexpectedServerResponseSnafu.build()),
+            _ => return Err(e!(Error::UnexpectedServerResponse)),
         };
 
         let external_port = external_port
             .try_into()
-            .map_err(|_| ZeroExternalPortSnafu.build())?;
+            .map_err(|_| e!(Error::ZeroExternalPort))?;
 
         // now send the second request to get the external address
         let req = Request::ExternalAddress;
@@ -130,7 +129,7 @@ impl Mapping {
                 epoch_time: _,
                 public_ip,
             } => public_ip,
-            _ => return Err(UnexpectedServerResponseSnafu.build()),
+            _ => return Err(e!(Error::UnexpectedServerResponse)),
         };
 
         Ok(Mapping {
