@@ -39,7 +39,7 @@ pub struct Mapping {
 }
 
 #[allow(missing_docs)]
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("Zero external port")]
@@ -47,30 +47,15 @@ pub enum Error {
     #[error("igd device's external ip is ipv6")]
     NotIpv4 {},
     #[error("Remove Port")]
-    RemovePort {
-        #[error(std_err)]
-        source: RemovePortError,
-    },
+    RemovePort { source: RemovePortError },
     #[error("Search")]
-    Search {
-        #[error(std_err)]
-        source: SearchError,
-    },
+    Search { source: SearchError },
     #[error("Get external IP")]
-    GetExternalIp {
-        #[error(std_err)]
-        source: GetExternalIpError,
-    },
+    GetExternalIp { source: GetExternalIpError },
     #[error("Add any port")]
-    AddAnyPort {
-        #[error(std_err)]
-        source: AddAnyPortError,
-    },
-    #[error(transparent)]
-    Io {
-        #[error(std_err)]
-        source: std::io::Error,
-    },
+    AddAnyPort { source: AddAnyPortError },
+    #[error("IO")]
+    Io { source: std::io::Error },
 }
 
 impl Mapping {
@@ -98,16 +83,10 @@ impl Mapping {
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })
-            .map_err(|err| e!(Error::Io, err))?
-            .map_err(|err| e!(Error::Search, err))?
+            })??
         };
 
-        let std::net::IpAddr::V4(external_ip) = gateway
-            .get_external_ip()
-            .await
-            .map_err(|err| e!(Error::GetExternalIp, err))?
-        else {
+        let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
             return Err(e!(Error::NotIpv4));
         };
 
@@ -146,8 +125,7 @@ impl Mapping {
                 PORT_MAPPING_LEASE_DURATION_SECONDS,
                 PORT_MAPPING_DESCRIPTION,
             )
-            .await
-            .map_err(|err| e!(Error::AddAnyPort, err))?
+            .await?
             .try_into()
             .map_err(|_| e!(Error::ZeroExternalPort))?;
 
@@ -171,10 +149,7 @@ impl Mapping {
             protocol,
             ..
         } = self;
-        gateway
-            .remove_port(protocol, external_port.into())
-            .await
-            .map_err(|err| e!(Error::RemovePort, err))?;
+        gateway.remove_port(protocol, external_port.into()).await?;
         Ok(())
     }
 

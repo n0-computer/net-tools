@@ -38,7 +38,7 @@ pub struct Mapping {
 }
 
 #[allow(missing_docs)]
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("received nonce does not match sent request")]
@@ -53,7 +53,7 @@ pub enum Error {
     NotIpv4 {},
     #[error("received an announce response for a map request")]
     InvalidAnnounce {},
-    #[error(transparent)]
+    #[error("IO error during PCP")]
     Io {
         #[error(std_err)]
         source: std::io::Error,
@@ -82,10 +82,8 @@ impl Mapping {
         preferred_external_address: Option<(Ipv4Addr, NonZeroU16)>,
     ) -> Result<Self, Error> {
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-        socket
-            .connect((gateway, protocol::SERVER_PORT).into())
-            .map_err(|err| e!(Error::Io, err))?;
+        let socket = UdpSocket::bind_full((local_ip, 0))?;
+        socket.connect((gateway, protocol::SERVER_PORT).into())?;
 
         let mut nonce = [0u8; 12];
         rand::rng().fill_bytes(&mut nonce);
@@ -109,10 +107,7 @@ impl Mapping {
             MAPPING_REQUESTED_LIFETIME_SECONDS,
         );
 
-        socket
-            .send(&req.encode())
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+        socket.send(&req.encode()).await?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; protocol::Response::MAX_SIZE];
@@ -120,11 +115,8 @@ impl Mapping {
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })
-            .map_err(|err| e!(Error::Io, err))?
-            .map_err(|err| e!(Error::Io, err))?;
-        let response =
-            protocol::Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
+            })??;
+        let response = protocol::Response::decode(&buffer[..read])?;
 
         // verify that the response is correct and matches the request
         let protocol::Response {
@@ -189,18 +181,13 @@ impl Mapping {
         } = self;
 
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-        socket
-            .connect((gateway, protocol::SERVER_PORT).into())
-            .map_err(|err| e!(Error::Io, err))?;
+        let socket = UdpSocket::bind_full((local_ip, 0))?;
+        socket.connect((gateway, protocol::SERVER_PORT).into())?;
 
         let local_port = local_port.into();
         let req = protocol::Request::mapping(nonce, protocol, local_port, local_ip, None, None, 0);
 
-        socket
-            .send(&req.encode())
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+        socket.send(&req.encode()).await?;
 
         // mapping deletion is a notification, no point in waiting for the response
         Ok(())
@@ -238,15 +225,10 @@ async fn probe_available_fallible(
     gateway: Ipv4Addr,
 ) -> Result<protocol::Response, Error> {
     // create the socket and send the request
-    let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-    socket
-        .connect((gateway, protocol::SERVER_PORT).into())
-        .map_err(|err| e!(Error::Io, err))?;
+    let socket = UdpSocket::bind_full((local_ip, 0))?;
+    socket.connect((gateway, protocol::SERVER_PORT).into())?;
     let req = protocol::Request::announce(local_ip.to_ipv6_mapped());
-    socket
-        .send(&req.encode())
-        .await
-        .map_err(|err| e!(Error::Io, err))?;
+    socket.send(&req.encode()).await?;
 
     // wait for the response and decode it
     let mut buffer = vec![0; protocol::Response::MAX_SIZE];
@@ -257,10 +239,8 @@ async fn probe_available_fallible(
                 Error::Io,
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
             )
-        })?
-        .map_err(|err| e!(Error::Io, err))?;
-    let response =
-        protocol::Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
+        })??;
+    let response = protocol::Response::decode(&buffer[..read])?;
 
     Ok(response)
 }

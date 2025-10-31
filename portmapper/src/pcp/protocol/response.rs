@@ -145,7 +145,7 @@ pub enum DecodeError {
     InvalidOpcodeData {},
 }
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources)]
 pub enum Error {
     #[error(transparent)]
     DecodeError { source: DecodeError },
@@ -176,33 +176,33 @@ impl Response {
 
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
-        if !(Self::MIN_SIZE <= buf.len() && buf.len() <= Self::MAX_SIZE) {
-            return Err(e!(Error::DecodeError, e!(DecodeError::Malformed)));
-        }
+        n0_error::ensure!(
+            Self::MIN_SIZE <= buf.len() && buf.len() <= Self::MAX_SIZE,
+            DecodeError::Malformed
+        );
 
         let _version: Version = buf[0]
             .try_into()
-            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidVersion)))?;
+            .map_err(|_| e!(DecodeError::InvalidVersion))?;
 
         let opcode = buf[1];
-        if opcode & Self::RESPONSE_INDICATOR != Self::RESPONSE_INDICATOR {
-            return Err(e!(Error::DecodeError, e!(DecodeError::NotAResponse)));
-        }
+        n0_error::ensure!(
+            opcode & Self::RESPONSE_INDICATOR == Self::RESPONSE_INDICATOR,
+            DecodeError::NotAResponse
+        );
         let opcode: Opcode = (opcode & !Self::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidOpcode)))?;
+            .map_err(|_| e!(DecodeError::InvalidOpcode))?;
 
         // buf[2] reserved
 
         // return early if the result code is an error
         let result_code: ResultCode = buf[3]
             .try_into()
-            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidResultCode)))?;
+            .map_err(|_| e!(DecodeError::InvalidResultCode))?;
         match result_code {
             ResultCode::Success => {}
-            ResultCode::Error(error_code) => {
-                return Err(e!(Error::ErrorCode { source: error_code }));
-            }
+            ResultCode::Error(error_code) => return Err(error_code.into()),
         }
 
         let lifetime_bytes = buf[4..8].try_into().expect("slice has the right len");
@@ -214,7 +214,7 @@ impl Response {
         // buf[12..24] reserved
 
         let data = OpcodeData::decode(opcode, &buf[24..])
-            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidOpcodeData)))?;
+            .map_err(|_| e!(DecodeError::InvalidOpcodeData))?;
 
         Ok(Response {
             lifetime_seconds,
