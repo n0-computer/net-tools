@@ -21,7 +21,6 @@ bytes = "1.7"
 n0-error = "0.1.0"
 n0-future = "0.3.0"
 n0-watcher = "0.4.0"
-nested_enum_utils = "0.2.3"
 pin-project-lite = "0.2.16"
 time = "0.3.20"
 tokio = { version = "1", features = [
