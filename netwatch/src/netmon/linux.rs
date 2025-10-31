@@ -7,7 +7,7 @@ use libc::{
     RTNLGRP_IPV4_IFADDR, RTNLGRP_IPV4_ROUTE, RTNLGRP_IPV4_RULE, RTNLGRP_IPV6_IFADDR,
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
-use n0_error::{e, stack_error};
+use n0_error::stack_error;
 use n0_future::StreamExt;
 use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::{RouteNetlinkMessage, address, route};
@@ -31,14 +31,11 @@ impl Drop for RouteMonitor {
     }
 }
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources, std_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("IO")]
-    Io {
-        #[error(std_err)]
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
 }
 
 const fn nl_mgrp(group: u32) -> u32 {
@@ -62,8 +59,7 @@ impl RouteMonitor {
 
         let (mut conn, _handle, mut messages) = netlink_proto::new_connection::<
             netlink_packet_route::RouteNetlinkMessage,
-        >(NETLINK_ROUTE)
-        .map_err(|err| e!(Error::Io, err))?;
+        >(NETLINK_ROUTE)?;
 
         // Specify flags to listen on.
         let groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
@@ -74,10 +70,7 @@ impl RouteMonitor {
             | nl_mgrp(RTNLGRP_IPV6_RULE);
 
         let addr = SocketAddr::new(0, groups);
-        conn.socket_mut()
-            .socket_mut()
-            .bind(&addr)
-            .map_err(|err| e!(Error::Io, err))?;
+        conn.socket_mut().socket_mut().bind(&addr)?;
 
         let conn_handle = tokio::task::spawn(conn);
 

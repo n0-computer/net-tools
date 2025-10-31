@@ -8,14 +8,11 @@ use tokio::{
 
 use super::DefaultRouteDetails;
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources, std_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("IO")]
-    Io {
-        #[error(std_err)]
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
     #[cfg(not(target_os = "android"))]
     #[error("no netlink response")]
     NoResponse {},
@@ -31,7 +28,6 @@ pub enum Error {
     #[cfg(not(target_os = "android"))]
     #[error("netlink")]
     Netlink {
-        #[error(std_err)]
         source: netlink_proto::Error<netlink_packet_route::RouteNetlinkMessage>,
     },
     #[cfg(not(target_os = "android"))]
@@ -63,9 +59,7 @@ const PROC_NET_ROUTE_PATH: &str = "/proc/net/route";
 
 async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     const ZERO_ADDR: &str = "00000000";
-    let file = File::open(PROC_NET_ROUTE_PATH)
-        .await
-        .map_err(|err| e!(Error::Io, err))?;
+    let file = File::open(PROC_NET_ROUTE_PATH).await?;
 
     // Explicitly set capacity, this is min(4096, DEFAULT_BUF_SIZE):
     // https://github.com/google/gvisor/issues/5732
@@ -81,11 +75,7 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
     // read it all in one call.
     let reader = BufReader::with_capacity(8 * 1024, file);
     let mut lines_iter = reader.lines();
-    while let Some(line) = lines_iter
-        .next_line()
-        .await
-        .map_err(|err| e!(Error::Io, err))?
-    {
+    while let Some(line) = lines_iter.next_line().await? {
         if !line.contains(ZERO_ADDR) {
             continue;
         }
@@ -122,8 +112,7 @@ mod android {
             .args(["route", "show", "table", "0"])
             .kill_on_drop(true)
             .output()
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+            .await?;
         let stdout = std::string::String::from_utf8_lossy(&output.stdout);
         let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
             interface_name: iface.to_string(),
@@ -167,8 +156,7 @@ mod sane {
 
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
         let (connection, handle, _receiver) =
-            netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE)
-                .map_err(|err| e!(Error::Io, err))?;
+            netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE)?;
 
         let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
 

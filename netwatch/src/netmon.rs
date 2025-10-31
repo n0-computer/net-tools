@@ -37,7 +37,7 @@ pub struct Monitor {
     interface_state: Watchable<State>,
 }
 
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("channel closed")]
@@ -61,7 +61,7 @@ impl From<oneshot::error::RecvError> for Error {
 impl Monitor {
     /// Create a new monitor.
     pub async fn new() -> Result<Self, Error> {
-        let actor = Actor::new().await.map_err(|err| e!(Error::Actor, err))?;
+        let actor = Actor::new().await?;
         let actor_tx = actor.subscribe();
         let interface_state = actor.state().clone();
 

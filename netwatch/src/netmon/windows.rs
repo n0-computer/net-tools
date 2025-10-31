@@ -19,7 +19,7 @@ pub(super) struct RouteMonitor {
     cb_handler: CallbackHandler,
 }
 
-#[stack_error(derive, add_meta, std_sources)]
+#[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("IO")]
@@ -116,8 +116,7 @@ impl CallbackHandler {
                 false,                                   // initial notification,
                 &mut handle,
             )
-            .ok()
-            .map_err(|err| e!(Error::Win32, err))?;
+            .ok()?;
         }
 
         self.unicast_callbacks.insert(handle.0 as isize, cb);
@@ -137,8 +136,7 @@ impl CallbackHandler {
         {
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
-                    .ok()
-                    .map_err(|err| e!(Error::Win32, err))?;
+                    .ok()?;
             }
         }
 
@@ -160,8 +158,7 @@ impl CallbackHandler {
                 false,                             // initial notification,
                 &mut handle,
             )
-            .ok()
-            .map_err(|err| e!(Error::Win32, err))?;
+            .ok()?;
         }
 
         self.route_callbacks.insert(handle.0 as isize, cb);
@@ -181,8 +178,7 @@ impl CallbackHandler {
         {
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
-                    .ok()
-                    .map_err(|err| e!(Error::Win32, err))?;
+                    .ok()?;
             }
         }
 

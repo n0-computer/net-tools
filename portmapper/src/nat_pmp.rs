@@ -113,10 +113,7 @@ impl Mapping {
 
         // now send the second request to get the external address
         let req = Request::ExternalAddress;
-        socket
-            .send(&req.encode())
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+        socket.send(&req.encode()).await?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
@@ -125,7 +122,7 @@ impl Mapping {
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
             })??;
-        let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
+        let response = Response::decode(&buffer[..read])?;
 
         let external_addr = match response {
             Response::PublicAddress {
@@ -202,15 +199,10 @@ async fn probe_available_fallible(
     gateway: Ipv4Addr,
 ) -> Result<Response, Error> {
     // create the socket and send the request
-    let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-    socket
-        .connect((gateway, protocol::SERVER_PORT).into())
-        .map_err(|err| e!(Error::Io, err))?;
+    let socket = UdpSocket::bind_full((local_ip, 0))?;
+    socket.connect((gateway, protocol::SERVER_PORT).into())?;
     let req = Request::ExternalAddress;
-    socket
-        .send(&req.encode())
-        .await
-        .map_err(|err| e!(Error::Io, err))?;
+    socket.send(&req.encode()).await?;
 
     // wait for the response and decode it
     let mut buffer = vec![0; Response::MAX_SIZE];

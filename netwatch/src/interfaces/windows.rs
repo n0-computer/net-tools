@@ -14,7 +14,7 @@ struct Win32_IP4RouteTable {
     Name: String,
 }
 
-#[stack_error(derive, add_meta, std_sources)]
+#[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[allow(dead_code)] // not sure why we have this here?
@@ -27,13 +27,12 @@ pub enum Error {
 }
 
 fn get_default_route() -> Result<DefaultRouteDetails, Error> {
-    let com_con = COMLibrary::new().map_err(|err| e!(Error::Wmi, err))?;
-    let wmi_con = WMIConnection::new(com_con).map_err(|err| e!(Error::Wmi, err))?;
+    let com_con = COMLibrary::new()?;
+    let wmi_con = WMIConnection::new(com_con)?;
 
     let query: HashMap<_, _> = [("Destination".into(), FilterValue::Str("0.0.0.0"))].into();
     let route: Win32_IP4RouteTable = wmi_con
-        .filtered_query(&query)
-        .map_err(|err| e!(Error::Wmi, err))?
+        .filtered_query(&query)?
         .drain(..)
         .next()
         .ok_or_else(|| e!(Error::NoRoute))?;
