@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use n0_error::{StdResultExt, e, stack_error};
 use serde::Deserialize;
-use n0_error::{e, stack_error, StdResultExt};
 use tracing::warn;
 use wmi::{COMLibrary, FilterValue, WMIConnection};
 
@@ -19,7 +19,10 @@ struct Win32_IP4RouteTable {
 pub enum Error {
     #[allow(dead_code)] // not sure why we have this here?
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
     #[error("not route found")]
     NoRoute {},
     #[error("WMI")]

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use libc::c_void;
-use n0_error::{e, stack_error, StdResultExt};
+use n0_error::{StdResultExt, e, stack_error};
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
@@ -23,7 +23,10 @@ pub(super) struct RouteMonitor {
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
     #[error("win32")]
     Win32 { source: windows_result::Error },
 }

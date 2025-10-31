@@ -1,8 +1,8 @@
 //! A PCP response encoding and decoding.
 
 use derive_more::Display;
-use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 use n0_error::{e, stack_error};
+use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 
 use super::{Opcode, Version, opcode_data::OpcodeData};
 
@@ -150,7 +150,10 @@ pub enum Error {
     #[error(transparent)]
     DecodeError { source: DecodeError },
     #[error("PCP error code")]
-    ErrorCode { #[error(std_err)] source: ErrorCode },
+    ErrorCode {
+        #[error(std_err)]
+        source: ErrorCode,
+    },
 }
 
 impl Response {
@@ -177,9 +180,9 @@ impl Response {
             return Err(e!(Error::DecodeError, e!(DecodeError::Malformed)));
         }
 
-        let _version: Version = buf[0].try_into().map_err(|_| {
-            e!(Error::DecodeError, e!(DecodeError::InvalidVersion))
-        })?;
+        let _version: Version = buf[0]
+            .try_into()
+            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidVersion)))?;
 
         let opcode = buf[1];
         if opcode & Self::RESPONSE_INDICATOR != Self::RESPONSE_INDICATOR {
@@ -197,7 +200,9 @@ impl Response {
             .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidResultCode)))?;
         match result_code {
             ResultCode::Success => {}
-            ResultCode::Error(error_code) => return Err(e!(Error::ErrorCode { source: error_code })),
+            ResultCode::Error(error_code) => {
+                return Err(e!(Error::ErrorCode { source: error_code }));
+            }
         }
 
         let lifetime_bytes = buf[4..8].try_into().expect("slice has the right len");
@@ -208,9 +213,8 @@ impl Response {
 
         // buf[12..24] reserved
 
-        let data = OpcodeData::decode(opcode, &buf[24..]).map_err(|_| {
-            e!(Error::DecodeError, e!(DecodeError::InvalidOpcodeData))
-        })?;
+        let data = OpcodeData::decode(opcode, &buf[24..])
+            .map_err(|_| e!(Error::DecodeError, e!(DecodeError::InvalidOpcodeData)))?;
 
         Ok(Response {
             lifetime_seconds,

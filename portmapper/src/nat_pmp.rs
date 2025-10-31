@@ -2,8 +2,8 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use netwatch::UdpSocket;
 use n0_error::{e, stack_error};
+use netwatch::UdpSocket;
 use tracing::{debug, trace};
 
 use self::protocol::{MapProtocol, Request, Response};
@@ -41,7 +41,10 @@ pub enum Error {
     #[error("received 0 port from server as external port")]
     ZeroExternalPort {},
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
     #[error(transparent)]
     Protocol { source: protocol::Error },
 }
@@ -94,10 +97,7 @@ impl Mapping {
             .map_err(|_| {
                 e!(
                     Error::Io,
-                    std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "read timeout".to_string()
-                    )
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
                 )
             })?
             .map_err(|err| e!(Error::Io, err))?;
@@ -134,10 +134,7 @@ impl Mapping {
             .map_err(|_| {
                 e!(
                     Error::Io,
-                    std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "read timeout".to_string()
-                    )
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
                 )
             })?
             .map_err(|err| e!(Error::Io, err))?;
@@ -240,10 +237,7 @@ async fn probe_available_fallible(
         .map_err(|_| {
             e!(
                 Error::Io,
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "read timeout".to_string()
-                )
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
             )
         })?
         .map_err(|err| e!(Error::Io, err))?;
