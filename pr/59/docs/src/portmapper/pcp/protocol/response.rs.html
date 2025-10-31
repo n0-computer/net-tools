@@ -145,7 +145,7 @@
 <a href=#145 id=145 data-nosnippet>145</a>    </span>InvalidOpcodeData {},
 <a href=#146 id=146 data-nosnippet>146</a>}
 <a href=#147 id=147 data-nosnippet>147</a>
-<a href=#148 id=148 data-nosnippet>148</a><span class="attr">#[stack_error(derive, add_meta)]
+<a href=#148 id=148 data-nosnippet>148</a><span class="attr">#[stack_error(derive, add_meta, from_sources)]
 <a href=#149 id=149 data-nosnippet>149</a></span><span class="kw">pub enum </span>Error {
 <a href=#150 id=150 data-nosnippet>150</a>    <span class="attr">#[error(transparent)]
 <a href=#151 id=151 data-nosnippet>151</a>    </span>DecodeError { source: DecodeError },
@@ -176,33 +176,33 @@
 <a href=#176 id=176 data-nosnippet>176</a>
 <a href=#177 id=177 data-nosnippet>177</a>    <span class="doccomment">/// Decode a response.
 <a href=#178 id=178 data-nosnippet>178</a>    </span><span class="kw">pub fn </span>decode(buf: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-<a href=#179 id=179 data-nosnippet>179</a>        <span class="kw">if </span>!(<span class="self">Self</span>::MIN_SIZE &lt;= buf.len() &amp;&amp; buf.len() &lt;= <span class="self">Self</span>::MAX_SIZE) {
-<a href=#180 id=180 data-nosnippet>180</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::Malformed)));
-<a href=#181 id=181 data-nosnippet>181</a>        }
-<a href=#182 id=182 data-nosnippet>182</a>
-<a href=#183 id=183 data-nosnippet>183</a>        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>]
-<a href=#184 id=184 data-nosnippet>184</a>            .try_into()
-<a href=#185 id=185 data-nosnippet>185</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidVersion)))<span class="question-mark">?</span>;
-<a href=#186 id=186 data-nosnippet>186</a>
-<a href=#187 id=187 data-nosnippet>187</a>        <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
-<a href=#188 id=188 data-nosnippet>188</a>        <span class="kw">if </span>opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR != <span class="self">Self</span>::RESPONSE_INDICATOR {
-<a href=#189 id=189 data-nosnippet>189</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::NotAResponse)));
-<a href=#190 id=190 data-nosnippet>190</a>        }
-<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
-<a href=#192 id=192 data-nosnippet>192</a>            .try_into()
-<a href=#193 id=193 data-nosnippet>193</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcode)))<span class="question-mark">?</span>;
-<a href=#194 id=194 data-nosnippet>194</a>
-<a href=#195 id=195 data-nosnippet>195</a>        <span class="comment">// buf[2] reserved
+<a href=#179 id=179 data-nosnippet>179</a>        <span class="macro">n0_error::ensure!</span>(
+<a href=#180 id=180 data-nosnippet>180</a>            <span class="self">Self</span>::MIN_SIZE &lt;= buf.len() &amp;&amp; buf.len() &lt;= <span class="self">Self</span>::MAX_SIZE,
+<a href=#181 id=181 data-nosnippet>181</a>            DecodeError::Malformed
+<a href=#182 id=182 data-nosnippet>182</a>        );
+<a href=#183 id=183 data-nosnippet>183</a>
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>]
+<a href=#185 id=185 data-nosnippet>185</a>            .try_into()
+<a href=#186 id=186 data-nosnippet>186</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(DecodeError::InvalidVersion))<span class="question-mark">?</span>;
+<a href=#187 id=187 data-nosnippet>187</a>
+<a href=#188 id=188 data-nosnippet>188</a>        <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
+<a href=#189 id=189 data-nosnippet>189</a>        <span class="macro">n0_error::ensure!</span>(
+<a href=#190 id=190 data-nosnippet>190</a>            opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR == <span class="self">Self</span>::RESPONSE_INDICATOR,
+<a href=#191 id=191 data-nosnippet>191</a>            DecodeError::NotAResponse
+<a href=#192 id=192 data-nosnippet>192</a>        );
+<a href=#193 id=193 data-nosnippet>193</a>        <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
+<a href=#194 id=194 data-nosnippet>194</a>            .try_into()
+<a href=#195 id=195 data-nosnippet>195</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(DecodeError::InvalidOpcode))<span class="question-mark">?</span>;
 <a href=#196 id=196 data-nosnippet>196</a>
-<a href=#197 id=197 data-nosnippet>197</a>        // return early if the result code is an error
-<a href=#198 id=198 data-nosnippet>198</a>        </span><span class="kw">let </span>result_code: ResultCode = buf[<span class="number">3</span>]
-<a href=#199 id=199 data-nosnippet>199</a>            .try_into()
-<a href=#200 id=200 data-nosnippet>200</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidResultCode)))<span class="question-mark">?</span>;
-<a href=#201 id=201 data-nosnippet>201</a>        <span class="kw">match </span>result_code {
-<a href=#202 id=202 data-nosnippet>202</a>            ResultCode::Success =&gt; {}
-<a href=#203 id=203 data-nosnippet>203</a>            ResultCode::Error(error_code) =&gt; {
-<a href=#204 id=204 data-nosnippet>204</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::ErrorCode { source: error_code }));
-<a href=#205 id=205 data-nosnippet>205</a>            }
+<a href=#197 id=197 data-nosnippet>197</a>        <span class="comment">// buf[2] reserved
+<a href=#198 id=198 data-nosnippet>198</a>
+<a href=#199 id=199 data-nosnippet>199</a>        // return early if the result code is an error
+<a href=#200 id=200 data-nosnippet>200</a>        </span><span class="kw">let </span>result_code: ResultCode = buf[<span class="number">3</span>]
+<a href=#201 id=201 data-nosnippet>201</a>            .try_into()
+<a href=#202 id=202 data-nosnippet>202</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(DecodeError::InvalidResultCode))<span class="question-mark">?</span>;
+<a href=#203 id=203 data-nosnippet>203</a>        <span class="kw">match </span>result_code {
+<a href=#204 id=204 data-nosnippet>204</a>            ResultCode::Success =&gt; {}
+<a href=#205 id=205 data-nosnippet>205</a>            ResultCode::Error(error_code) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(error_code.into()),
 <a href=#206 id=206 data-nosnippet>206</a>        }
 <a href=#207 id=207 data-nosnippet>207</a>
 <a href=#208 id=208 data-nosnippet>208</a>        <span class="kw">let </span>lifetime_bytes = buf[<span class="number">4</span>..<span class="number">8</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
@@ -214,7 +214,7 @@
 <a href=#214 id=214 data-nosnippet>214</a>        <span class="comment">// buf[12..24] reserved
 <a href=#215 id=215 data-nosnippet>215</a>
 <a href=#216 id=216 data-nosnippet>216</a>        </span><span class="kw">let </span>data = OpcodeData::decode(opcode, <span class="kw-2">&amp;</span>buf[<span class="number">24</span>..])
-<a href=#217 id=217 data-nosnippet>217</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcodeData)))<span class="question-mark">?</span>;
+<a href=#217 id=217 data-nosnippet>217</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(DecodeError::InvalidOpcodeData))<span class="question-mark">?</span>;
 <a href=#218 id=218 data-nosnippet>218</a>
 <a href=#219 id=219 data-nosnippet>219</a>        <span class="prelude-val">Ok</span>(Response {
 <a href=#220 id=220 data-nosnippet>220</a>            lifetime_seconds,
