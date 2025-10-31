@@ -2,11 +2,8 @@ use tokio::sync::mpsc;
 
 use super::actor::NetworkMessage;
 
-#[derive(Debug, derive_more::Display)]
-#[display("error")]
+#[derive(n0_error::Error)]
 pub struct Error;
-
-impl std::error::Error for Error {}
 
 #[derive(Debug)]
 pub(super) struct RouteMonitor {
