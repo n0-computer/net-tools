@@ -37,7 +37,7 @@
 <a href=#37 id=37 data-nosnippet>37</a>    interface_state: Watchable&lt;State&gt;,
 <a href=#38 id=38 data-nosnippet>38</a>}
 <a href=#39 id=39 data-nosnippet>39</a>
-<a href=#40 id=40 data-nosnippet>40</a><span class="attr">#[stack_error(derive, add_meta)]
+<a href=#40 id=40 data-nosnippet>40</a><span class="attr">#[stack_error(derive, add_meta, from_sources)]
 <a href=#41 id=41 data-nosnippet>41</a>#[non_exhaustive]
 <a href=#42 id=42 data-nosnippet>42</a></span><span class="kw">pub enum </span>Error {
 <a href=#43 id=43 data-nosnippet>43</a>    <span class="attr">#[error(<span class="string">"channel closed"</span>)]
@@ -61,7 +61,7 @@
 <a href=#61 id=61 data-nosnippet>61</a><span class="kw">impl </span>Monitor {
 <a href=#62 id=62 data-nosnippet>62</a>    <span class="doccomment">/// Create a new monitor.
 <a href=#63 id=63 data-nosnippet>63</a>    </span><span class="kw">pub async fn </span>new() -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-<a href=#64 id=64 data-nosnippet>64</a>        <span class="kw">let </span>actor = Actor::new().<span class="kw">await</span>.map_err(|err| <span class="macro">e!</span>(Error::Actor, err))<span class="question-mark">?</span>;
+<a href=#64 id=64 data-nosnippet>64</a>        <span class="kw">let </span>actor = Actor::new().<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#65 id=65 data-nosnippet>65</a>        <span class="kw">let </span>actor_tx = actor.subscribe();
 <a href=#66 id=66 data-nosnippet>66</a>        <span class="kw">let </span>interface_state = actor.state().clone();
 <a href=#67 id=67 data-nosnippet>67</a>
