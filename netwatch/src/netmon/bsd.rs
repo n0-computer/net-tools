@@ -1,6 +1,6 @@
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{RTAX_DST, RTAX_IFP};
-use n0_error::{e, stack_error, StdResultExt};
+use n0_error::{StdResultExt, e, stack_error};
 use tokio::{io::AsyncReadExt, sync::mpsc};
 use tokio_util::task::AbortOnDropHandle;
 use tracing::{trace, warn};
@@ -19,7 +19,10 @@ pub(super) struct RouteMonitor {
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
 }
 
 fn create_socket() -> std::io::Result<tokio::net::UnixStream> {

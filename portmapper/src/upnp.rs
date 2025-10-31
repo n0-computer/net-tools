@@ -47,15 +47,30 @@ pub enum Error {
     #[error("igd device's external ip is ipv6")]
     NotIpv4 {},
     #[error("Remove Port")]
-    RemovePort { #[error(std_err)] source: RemovePortError },
+    RemovePort {
+        #[error(std_err)]
+        source: RemovePortError,
+    },
     #[error("Search")]
-    Search { #[error(std_err)] source: SearchError },
+    Search {
+        #[error(std_err)]
+        source: SearchError,
+    },
     #[error("Get external IP")]
-    GetExternalIp { #[error(std_err)] source: GetExternalIpError },
+    GetExternalIp {
+        #[error(std_err)]
+        source: GetExternalIpError,
+    },
     #[error("Add any port")]
-    AddAnyPort { #[error(std_err)] source: AddAnyPortError },
+    AddAnyPort {
+        #[error(std_err)]
+        source: AddAnyPortError,
+    },
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
 }
 
 impl Mapping {

@@ -7,11 +7,11 @@ use libc::{
     RTNLGRP_IPV4_IFADDR, RTNLGRP_IPV4_ROUTE, RTNLGRP_IPV4_RULE, RTNLGRP_IPV6_IFADDR,
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
+use n0_error::{e, stack_error};
 use n0_future::StreamExt;
 use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::{RouteNetlinkMessage, address, route};
 use netlink_sys::{AsyncSocket, SocketAddr};
-use n0_error::{e, stack_error};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{trace, warn};
 

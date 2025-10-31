@@ -2,8 +2,8 @@
 
 use std::net::Ipv4Addr;
 
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use n0_error::{e, stack_error};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use super::{MapProtocol, Opcode, Version};
 
@@ -142,9 +142,7 @@ impl Response {
         if buf.len() < Self::MIN_SIZE || buf.len() > Self::MAX_SIZE {
             return Err(e!(Error::Malformed));
         }
-        let _: Version = buf[0]
-            .try_into()
-            .map_err(|_| e!(Error::InvalidVersion))?;
+        let _: Version = buf[0].try_into().map_err(|_| e!(Error::InvalidVersion))?;
         let opcode = buf[1];
         if opcode & Self::RESPONSE_INDICATOR != Self::RESPONSE_INDICATOR {
             return Err(e!(Error::NotAResponse));

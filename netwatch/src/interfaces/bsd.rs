@@ -245,8 +245,7 @@ fn u16_from_ne_range(
     data: &[u8],
     range: impl std::slice::SliceIndex<[u8], Output = [u8]>,
 ) -> Result<u16, RouteError> {
-    data
-        .get(range)
+    data.get(range)
         .and_then(|s| TryInto::<[u8; 2]>::try_into(s).ok())
         .map(u16::from_ne_bytes)
         .ok_or_else(|| e!(RouteError::MessageTooShort))
@@ -257,8 +256,7 @@ fn u32_from_ne_range(
     data: &[u8],
     range: impl std::slice::SliceIndex<[u8], Output = [u8]>,
 ) -> Result<u32, RouteError> {
-    data
-        .get(range)
+    data.get(range)
         .and_then(|s| TryInto::<[u8; 4]>::try_into(s).ok())
         .map(u32::from_ne_bytes)
         .ok_or_else(|| e!(RouteError::MessageTooShort))
@@ -614,7 +612,11 @@ pub enum RouteError {
     #[error("invalid rib type {rib_type}")]
     InvalidRibType { rib_type: RIBType },
     #[error("io error calling '{name}'")]
-    Io { #[error(std_err)] source: std::io::Error, name: &'static str },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+        name: &'static str,
+    },
 }
 
 /// FetchRIB fetches a routing information base from the operating system.

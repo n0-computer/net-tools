@@ -2,9 +2,9 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
+use n0_error::{e, stack_error};
 use netwatch::UdpSocket;
 use rand::RngCore;
-use n0_error::{e, stack_error};
 use tracing::{debug, trace};
 
 use crate::{Protocol, defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT};
@@ -54,7 +54,10 @@ pub enum Error {
     #[error("received an announce response for a map request")]
     InvalidAnnounce {},
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
     #[error("Protocol error during PCP")]
     Protocol { source: protocol::Error },
 }
@@ -120,8 +123,8 @@ impl Mapping {
             })
             .map_err(|err| e!(Error::Io, err))?
             .map_err(|err| e!(Error::Io, err))?;
-        let response = protocol::Response::decode(&buffer[..read])
-            .map_err(|err| e!(Error::Protocol, err))?;
+        let response =
+            protocol::Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
         // verify that the response is correct and matches the request
         let protocol::Response {
@@ -256,8 +259,8 @@ async fn probe_available_fallible(
             )
         })?
         .map_err(|err| e!(Error::Io, err))?;
-    let response = protocol::Response::decode(&buffer[..read])
-        .map_err(|err| e!(Error::Protocol, err))?;
+    let response =
+        protocol::Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
     Ok(response)
 }
