@@ -1,8 +1,8 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `portmapper/src/pcp/protocol/response.rs`."><title>response.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="portmapper" data-themes="" data-resource-suffix="" data-rustdoc-version="1.92.0-nightly (b6f0945e4 2025-10-08)" data-channel="nightly" data-search-js="search-8d3311b9.js" data-stringdex-js="stringdex-828709d0.js" data-settings-js="settings-c38705f0.js" ><script src="../../../../static.files/storage-e2aeef58.js"></script><script defer src="../../../../static.files/src-script-813739b1.js"></script><script defer src="../../../../src-files.js"></script><script defer src="../../../../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">portmapper/pcp/protocol/</div>response.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! A PCP response encoding and decoding.
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a></span><span class="kw">use </span>derive_more::Display;
-<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
-<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>n0_error::{e, stack_error};
+<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>n0_error::{e, stack_error};
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 <a href=#6 id=6 data-nosnippet>6</a>
 <a href=#7 id=7 data-nosnippet>7</a><span class="kw">use super</span>::{Opcode, Version, opcode_data::OpcodeData};
 <a href=#8 id=8 data-nosnippet>8</a>
@@ -150,152 +150,156 @@
 <a href=#150 id=150 data-nosnippet>150</a>    <span class="attr">#[error(transparent)]
 <a href=#151 id=151 data-nosnippet>151</a>    </span>DecodeError { source: DecodeError },
 <a href=#152 id=152 data-nosnippet>152</a>    <span class="attr">#[error(<span class="string">"PCP error code"</span>)]
-<a href=#153 id=153 data-nosnippet>153</a>    </span>ErrorCode { <span class="attr">#[error(std_err)] </span>source: ErrorCode },
-<a href=#154 id=154 data-nosnippet>154</a>}
-<a href=#155 id=155 data-nosnippet>155</a>
-<a href=#156 id=156 data-nosnippet>156</a><span class="kw">impl </span>Response {
-<a href=#157 id=157 data-nosnippet>157</a>    <span class="doccomment">/// Max size of a PCP packet as indicated in
-<a href=#158 id=158 data-nosnippet>158</a>    /// [RFC 6887 Common Request and Response Header Format](https://datatracker.ietf.org/doc/html/rfc6887#section-7)
-<a href=#159 id=159 data-nosnippet>159</a>    </span><span class="kw">pub const </span>MAX_SIZE: usize = <span class="number">1100</span>;
-<a href=#160 id=160 data-nosnippet>160</a>
-<a href=#161 id=161 data-nosnippet>161</a>    <span class="doccomment">/// Minimum size of an encoded [`Response`] sent by a server to this client.
-<a href=#162 id=162 data-nosnippet>162</a>    </span><span class="kw">pub const </span>MIN_SIZE: usize = <span class="comment">// parts
-<a href=#163 id=163 data-nosnippet>163</a>        </span><span class="number">1 </span>+ <span class="comment">// version
-<a href=#164 id=164 data-nosnippet>164</a>        </span><span class="number">1 </span>+ <span class="comment">// opcode ORd with [`Response::RESPONSE_INDICATOR`]
-<a href=#165 id=165 data-nosnippet>165</a>        </span><span class="number">1 </span>+ <span class="comment">// reserved
-<a href=#166 id=166 data-nosnippet>166</a>        </span><span class="number">1 </span>+ <span class="comment">// result code
-<a href=#167 id=167 data-nosnippet>167</a>        </span><span class="number">4 </span>+ <span class="comment">// lifetime
-<a href=#168 id=168 data-nosnippet>168</a>        </span><span class="number">4 </span>+ <span class="comment">// epoch time
-<a href=#169 id=169 data-nosnippet>169</a>        </span><span class="number">12</span>; <span class="comment">// reserved
-<a href=#170 id=170 data-nosnippet>170</a>
-<a href=#171 id=171 data-nosnippet>171</a>    </span><span class="doccomment">/// Indicator ORd into the [`Opcode`] to indicate a response packet.
-<a href=#172 id=172 data-nosnippet>172</a>    </span><span class="kw">pub const </span>RESPONSE_INDICATOR: u8 = <span class="number">1u8 </span>&lt;&lt; <span class="number">7</span>;
+<a href=#153 id=153 data-nosnippet>153</a>    </span>ErrorCode {
+<a href=#154 id=154 data-nosnippet>154</a>        <span class="attr">#[error(std_err)]
+<a href=#155 id=155 data-nosnippet>155</a>        </span>source: ErrorCode,
+<a href=#156 id=156 data-nosnippet>156</a>    },
+<a href=#157 id=157 data-nosnippet>157</a>}
+<a href=#158 id=158 data-nosnippet>158</a>
+<a href=#159 id=159 data-nosnippet>159</a><span class="kw">impl </span>Response {
+<a href=#160 id=160 data-nosnippet>160</a>    <span class="doccomment">/// Max size of a PCP packet as indicated in
+<a href=#161 id=161 data-nosnippet>161</a>    /// [RFC 6887 Common Request and Response Header Format](https://datatracker.ietf.org/doc/html/rfc6887#section-7)
+<a href=#162 id=162 data-nosnippet>162</a>    </span><span class="kw">pub const </span>MAX_SIZE: usize = <span class="number">1100</span>;
+<a href=#163 id=163 data-nosnippet>163</a>
+<a href=#164 id=164 data-nosnippet>164</a>    <span class="doccomment">/// Minimum size of an encoded [`Response`] sent by a server to this client.
+<a href=#165 id=165 data-nosnippet>165</a>    </span><span class="kw">pub const </span>MIN_SIZE: usize = <span class="comment">// parts
+<a href=#166 id=166 data-nosnippet>166</a>        </span><span class="number">1 </span>+ <span class="comment">// version
+<a href=#167 id=167 data-nosnippet>167</a>        </span><span class="number">1 </span>+ <span class="comment">// opcode ORd with [`Response::RESPONSE_INDICATOR`]
+<a href=#168 id=168 data-nosnippet>168</a>        </span><span class="number">1 </span>+ <span class="comment">// reserved
+<a href=#169 id=169 data-nosnippet>169</a>        </span><span class="number">1 </span>+ <span class="comment">// result code
+<a href=#170 id=170 data-nosnippet>170</a>        </span><span class="number">4 </span>+ <span class="comment">// lifetime
+<a href=#171 id=171 data-nosnippet>171</a>        </span><span class="number">4 </span>+ <span class="comment">// epoch time
+<a href=#172 id=172 data-nosnippet>172</a>        </span><span class="number">12</span>; <span class="comment">// reserved
 <a href=#173 id=173 data-nosnippet>173</a>
-<a href=#174 id=174 data-nosnippet>174</a>    <span class="doccomment">/// Decode a response.
-<a href=#175 id=175 data-nosnippet>175</a>    </span><span class="kw">pub fn </span>decode(buf: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
-<a href=#176 id=176 data-nosnippet>176</a>        <span class="kw">if </span>!(<span class="self">Self</span>::MIN_SIZE &lt;= buf.len() &amp;&amp; buf.len() &lt;= <span class="self">Self</span>::MAX_SIZE) {
-<a href=#177 id=177 data-nosnippet>177</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::Malformed)));
-<a href=#178 id=178 data-nosnippet>178</a>        }
-<a href=#179 id=179 data-nosnippet>179</a>
-<a href=#180 id=180 data-nosnippet>180</a>        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>].try_into().map_err(|<span class="kw">_</span>| {
-<a href=#181 id=181 data-nosnippet>181</a>            <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidVersion))
-<a href=#182 id=182 data-nosnippet>182</a>        })<span class="question-mark">?</span>;
-<a href=#183 id=183 data-nosnippet>183</a>
-<a href=#184 id=184 data-nosnippet>184</a>        <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
-<a href=#185 id=185 data-nosnippet>185</a>        <span class="kw">if </span>opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR != <span class="self">Self</span>::RESPONSE_INDICATOR {
-<a href=#186 id=186 data-nosnippet>186</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::NotAResponse)));
-<a href=#187 id=187 data-nosnippet>187</a>        }
-<a href=#188 id=188 data-nosnippet>188</a>        <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
-<a href=#189 id=189 data-nosnippet>189</a>            .try_into()
-<a href=#190 id=190 data-nosnippet>190</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcode)))<span class="question-mark">?</span>;
-<a href=#191 id=191 data-nosnippet>191</a>
-<a href=#192 id=192 data-nosnippet>192</a>        <span class="comment">// buf[2] reserved
-<a href=#193 id=193 data-nosnippet>193</a>
-<a href=#194 id=194 data-nosnippet>194</a>        // return early if the result code is an error
-<a href=#195 id=195 data-nosnippet>195</a>        </span><span class="kw">let </span>result_code: ResultCode = buf[<span class="number">3</span>]
-<a href=#196 id=196 data-nosnippet>196</a>            .try_into()
-<a href=#197 id=197 data-nosnippet>197</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidResultCode)))<span class="question-mark">?</span>;
-<a href=#198 id=198 data-nosnippet>198</a>        <span class="kw">match </span>result_code {
-<a href=#199 id=199 data-nosnippet>199</a>            ResultCode::Success =&gt; {}
-<a href=#200 id=200 data-nosnippet>200</a>            ResultCode::Error(error_code) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::ErrorCode { source: error_code })),
-<a href=#201 id=201 data-nosnippet>201</a>        }
-<a href=#202 id=202 data-nosnippet>202</a>
-<a href=#203 id=203 data-nosnippet>203</a>        <span class="kw">let </span>lifetime_bytes = buf[<span class="number">4</span>..<span class="number">8</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
-<a href=#204 id=204 data-nosnippet>204</a>        <span class="kw">let </span>lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
-<a href=#205 id=205 data-nosnippet>205</a>
-<a href=#206 id=206 data-nosnippet>206</a>        <span class="kw">let </span>epoch_bytes = buf[<span class="number">8</span>..<span class="number">12</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
-<a href=#207 id=207 data-nosnippet>207</a>        <span class="kw">let </span>epoch_time = u32::from_be_bytes(epoch_bytes);
-<a href=#208 id=208 data-nosnippet>208</a>
-<a href=#209 id=209 data-nosnippet>209</a>        <span class="comment">// buf[12..24] reserved
+<a href=#174 id=174 data-nosnippet>174</a>    </span><span class="doccomment">/// Indicator ORd into the [`Opcode`] to indicate a response packet.
+<a href=#175 id=175 data-nosnippet>175</a>    </span><span class="kw">pub const </span>RESPONSE_INDICATOR: u8 = <span class="number">1u8 </span>&lt;&lt; <span class="number">7</span>;
+<a href=#176 id=176 data-nosnippet>176</a>
+<a href=#177 id=177 data-nosnippet>177</a>    <span class="doccomment">/// Decode a response.
+<a href=#178 id=178 data-nosnippet>178</a>    </span><span class="kw">pub fn </span>decode(buf: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Error&gt; {
+<a href=#179 id=179 data-nosnippet>179</a>        <span class="kw">if </span>!(<span class="self">Self</span>::MIN_SIZE &lt;= buf.len() &amp;&amp; buf.len() &lt;= <span class="self">Self</span>::MAX_SIZE) {
+<a href=#180 id=180 data-nosnippet>180</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::Malformed)));
+<a href=#181 id=181 data-nosnippet>181</a>        }
+<a href=#182 id=182 data-nosnippet>182</a>
+<a href=#183 id=183 data-nosnippet>183</a>        <span class="kw">let </span>_version: Version = buf[<span class="number">0</span>]
+<a href=#184 id=184 data-nosnippet>184</a>            .try_into()
+<a href=#185 id=185 data-nosnippet>185</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidVersion)))<span class="question-mark">?</span>;
+<a href=#186 id=186 data-nosnippet>186</a>
+<a href=#187 id=187 data-nosnippet>187</a>        <span class="kw">let </span>opcode = buf[<span class="number">1</span>];
+<a href=#188 id=188 data-nosnippet>188</a>        <span class="kw">if </span>opcode &amp; <span class="self">Self</span>::RESPONSE_INDICATOR != <span class="self">Self</span>::RESPONSE_INDICATOR {
+<a href=#189 id=189 data-nosnippet>189</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::NotAResponse)));
+<a href=#190 id=190 data-nosnippet>190</a>        }
+<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span>opcode: Opcode = (opcode &amp; !<span class="self">Self</span>::RESPONSE_INDICATOR)
+<a href=#192 id=192 data-nosnippet>192</a>            .try_into()
+<a href=#193 id=193 data-nosnippet>193</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcode)))<span class="question-mark">?</span>;
+<a href=#194 id=194 data-nosnippet>194</a>
+<a href=#195 id=195 data-nosnippet>195</a>        <span class="comment">// buf[2] reserved
+<a href=#196 id=196 data-nosnippet>196</a>
+<a href=#197 id=197 data-nosnippet>197</a>        // return early if the result code is an error
+<a href=#198 id=198 data-nosnippet>198</a>        </span><span class="kw">let </span>result_code: ResultCode = buf[<span class="number">3</span>]
+<a href=#199 id=199 data-nosnippet>199</a>            .try_into()
+<a href=#200 id=200 data-nosnippet>200</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidResultCode)))<span class="question-mark">?</span>;
+<a href=#201 id=201 data-nosnippet>201</a>        <span class="kw">match </span>result_code {
+<a href=#202 id=202 data-nosnippet>202</a>            ResultCode::Success =&gt; {}
+<a href=#203 id=203 data-nosnippet>203</a>            ResultCode::Error(error_code) =&gt; {
+<a href=#204 id=204 data-nosnippet>204</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(Error::ErrorCode { source: error_code }));
+<a href=#205 id=205 data-nosnippet>205</a>            }
+<a href=#206 id=206 data-nosnippet>206</a>        }
+<a href=#207 id=207 data-nosnippet>207</a>
+<a href=#208 id=208 data-nosnippet>208</a>        <span class="kw">let </span>lifetime_bytes = buf[<span class="number">4</span>..<span class="number">8</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
+<a href=#209 id=209 data-nosnippet>209</a>        <span class="kw">let </span>lifetime_seconds = u32::from_be_bytes(lifetime_bytes);
 <a href=#210 id=210 data-nosnippet>210</a>
-<a href=#211 id=211 data-nosnippet>211</a>        </span><span class="kw">let </span>data = OpcodeData::decode(opcode, <span class="kw-2">&amp;</span>buf[<span class="number">24</span>..]).map_err(|<span class="kw">_</span>| {
-<a href=#212 id=212 data-nosnippet>212</a>            <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcodeData))
-<a href=#213 id=213 data-nosnippet>213</a>        })<span class="question-mark">?</span>;
-<a href=#214 id=214 data-nosnippet>214</a>
-<a href=#215 id=215 data-nosnippet>215</a>        <span class="prelude-val">Ok</span>(Response {
-<a href=#216 id=216 data-nosnippet>216</a>            lifetime_seconds,
-<a href=#217 id=217 data-nosnippet>217</a>            epoch_time,
-<a href=#218 id=218 data-nosnippet>218</a>            data,
-<a href=#219 id=219 data-nosnippet>219</a>        })
-<a href=#220 id=220 data-nosnippet>220</a>    }
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a>    <span class="attr">#[cfg(test)]
-<a href=#223 id=223 data-nosnippet>223</a>    </span><span class="kw">fn </span>random&lt;R: rand::Rng&gt;(opcode: Opcode, rng: <span class="kw-2">&amp;mut </span>R) -&gt; <span class="self">Self </span>{
-<a href=#224 id=224 data-nosnippet>224</a>        <span class="kw">let </span>data = OpcodeData::random(opcode, rng);
-<a href=#225 id=225 data-nosnippet>225</a>        <span class="self">Self </span>{
-<a href=#226 id=226 data-nosnippet>226</a>            lifetime_seconds: rng.random(),
-<a href=#227 id=227 data-nosnippet>227</a>            epoch_time: rng.random(),
-<a href=#228 id=228 data-nosnippet>228</a>            data,
-<a href=#229 id=229 data-nosnippet>229</a>        }
-<a href=#230 id=230 data-nosnippet>230</a>    }
-<a href=#231 id=231 data-nosnippet>231</a>
-<a href=#232 id=232 data-nosnippet>232</a>    <span class="attr">#[cfg(test)]
-<a href=#233 id=233 data-nosnippet>233</a>    </span><span class="kw">fn </span>encode(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
-<a href=#234 id=234 data-nosnippet>234</a>        <span class="kw">let </span>Response {
-<a href=#235 id=235 data-nosnippet>235</a>            lifetime_seconds,
-<a href=#236 id=236 data-nosnippet>236</a>            epoch_time,
-<a href=#237 id=237 data-nosnippet>237</a>            data,
-<a href=#238 id=238 data-nosnippet>238</a>        } = <span class="self">self</span>;
-<a href=#239 id=239 data-nosnippet>239</a>        <span class="kw">let </span><span class="kw-2">mut </span>buf = Vec::with_capacity(<span class="self">Self</span>::MIN_SIZE);
-<a href=#240 id=240 data-nosnippet>240</a>        <span class="comment">// version
-<a href=#241 id=241 data-nosnippet>241</a>        </span>buf.push(Version::Pcp.into());
-<a href=#242 id=242 data-nosnippet>242</a>        <span class="comment">// response indicator and opcode
-<a href=#243 id=243 data-nosnippet>243</a>        </span><span class="kw">let </span>opcode: u8 = data.opcode().into();
-<a href=#244 id=244 data-nosnippet>244</a>        buf.push(Response::RESPONSE_INDICATOR | opcode);
-<a href=#245 id=245 data-nosnippet>245</a>        <span class="comment">// reserved
-<a href=#246 id=246 data-nosnippet>246</a>        </span>buf.push(<span class="number">0</span>);
-<a href=#247 id=247 data-nosnippet>247</a>        <span class="comment">// result code
-<a href=#248 id=248 data-nosnippet>248</a>        </span>buf.push(ResultCode::Success.into());
-<a href=#249 id=249 data-nosnippet>249</a>        <span class="comment">// lifetime
-<a href=#250 id=250 data-nosnippet>250</a>        </span><span class="kw">for </span>b <span class="kw">in </span>lifetime_seconds.to_be_bytes() {
-<a href=#251 id=251 data-nosnippet>251</a>            buf.push(b);
-<a href=#252 id=252 data-nosnippet>252</a>        }
-<a href=#253 id=253 data-nosnippet>253</a>        <span class="comment">// epoch
-<a href=#254 id=254 data-nosnippet>254</a>        </span><span class="kw">for </span>b <span class="kw">in </span>epoch_time.to_be_bytes() {
+<a href=#211 id=211 data-nosnippet>211</a>        <span class="kw">let </span>epoch_bytes = buf[<span class="number">8</span>..<span class="number">12</span>].try_into().expect(<span class="string">"slice has the right len"</span>);
+<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>epoch_time = u32::from_be_bytes(epoch_bytes);
+<a href=#213 id=213 data-nosnippet>213</a>
+<a href=#214 id=214 data-nosnippet>214</a>        <span class="comment">// buf[12..24] reserved
+<a href=#215 id=215 data-nosnippet>215</a>
+<a href=#216 id=216 data-nosnippet>216</a>        </span><span class="kw">let </span>data = OpcodeData::decode(opcode, <span class="kw-2">&amp;</span>buf[<span class="number">24</span>..])
+<a href=#217 id=217 data-nosnippet>217</a>            .map_err(|<span class="kw">_</span>| <span class="macro">e!</span>(Error::DecodeError, <span class="macro">e!</span>(DecodeError::InvalidOpcodeData)))<span class="question-mark">?</span>;
+<a href=#218 id=218 data-nosnippet>218</a>
+<a href=#219 id=219 data-nosnippet>219</a>        <span class="prelude-val">Ok</span>(Response {
+<a href=#220 id=220 data-nosnippet>220</a>            lifetime_seconds,
+<a href=#221 id=221 data-nosnippet>221</a>            epoch_time,
+<a href=#222 id=222 data-nosnippet>222</a>            data,
+<a href=#223 id=223 data-nosnippet>223</a>        })
+<a href=#224 id=224 data-nosnippet>224</a>    }
+<a href=#225 id=225 data-nosnippet>225</a>
+<a href=#226 id=226 data-nosnippet>226</a>    <span class="attr">#[cfg(test)]
+<a href=#227 id=227 data-nosnippet>227</a>    </span><span class="kw">fn </span>random&lt;R: rand::Rng&gt;(opcode: Opcode, rng: <span class="kw-2">&amp;mut </span>R) -&gt; <span class="self">Self </span>{
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw">let </span>data = OpcodeData::random(opcode, rng);
+<a href=#229 id=229 data-nosnippet>229</a>        <span class="self">Self </span>{
+<a href=#230 id=230 data-nosnippet>230</a>            lifetime_seconds: rng.random(),
+<a href=#231 id=231 data-nosnippet>231</a>            epoch_time: rng.random(),
+<a href=#232 id=232 data-nosnippet>232</a>            data,
+<a href=#233 id=233 data-nosnippet>233</a>        }
+<a href=#234 id=234 data-nosnippet>234</a>    }
+<a href=#235 id=235 data-nosnippet>235</a>
+<a href=#236 id=236 data-nosnippet>236</a>    <span class="attr">#[cfg(test)]
+<a href=#237 id=237 data-nosnippet>237</a>    </span><span class="kw">fn </span>encode(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
+<a href=#238 id=238 data-nosnippet>238</a>        <span class="kw">let </span>Response {
+<a href=#239 id=239 data-nosnippet>239</a>            lifetime_seconds,
+<a href=#240 id=240 data-nosnippet>240</a>            epoch_time,
+<a href=#241 id=241 data-nosnippet>241</a>            data,
+<a href=#242 id=242 data-nosnippet>242</a>        } = <span class="self">self</span>;
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span><span class="kw-2">mut </span>buf = Vec::with_capacity(<span class="self">Self</span>::MIN_SIZE);
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="comment">// version
+<a href=#245 id=245 data-nosnippet>245</a>        </span>buf.push(Version::Pcp.into());
+<a href=#246 id=246 data-nosnippet>246</a>        <span class="comment">// response indicator and opcode
+<a href=#247 id=247 data-nosnippet>247</a>        </span><span class="kw">let </span>opcode: u8 = data.opcode().into();
+<a href=#248 id=248 data-nosnippet>248</a>        buf.push(Response::RESPONSE_INDICATOR | opcode);
+<a href=#249 id=249 data-nosnippet>249</a>        <span class="comment">// reserved
+<a href=#250 id=250 data-nosnippet>250</a>        </span>buf.push(<span class="number">0</span>);
+<a href=#251 id=251 data-nosnippet>251</a>        <span class="comment">// result code
+<a href=#252 id=252 data-nosnippet>252</a>        </span>buf.push(ResultCode::Success.into());
+<a href=#253 id=253 data-nosnippet>253</a>        <span class="comment">// lifetime
+<a href=#254 id=254 data-nosnippet>254</a>        </span><span class="kw">for </span>b <span class="kw">in </span>lifetime_seconds.to_be_bytes() {
 <a href=#255 id=255 data-nosnippet>255</a>            buf.push(b);
 <a href=#256 id=256 data-nosnippet>256</a>        }
-<a href=#257 id=257 data-nosnippet>257</a>        <span class="comment">// reserved
-<a href=#258 id=258 data-nosnippet>258</a>        </span><span class="kw">for _ in </span><span class="number">12</span>..Response::MIN_SIZE {
-<a href=#259 id=259 data-nosnippet>259</a>            buf.push(<span class="number">0</span>)
+<a href=#257 id=257 data-nosnippet>257</a>        <span class="comment">// epoch
+<a href=#258 id=258 data-nosnippet>258</a>        </span><span class="kw">for </span>b <span class="kw">in </span>epoch_time.to_be_bytes() {
+<a href=#259 id=259 data-nosnippet>259</a>            buf.push(b);
 <a href=#260 id=260 data-nosnippet>260</a>        }
-<a href=#261 id=261 data-nosnippet>261</a>        data.encode_into(<span class="kw-2">&amp;mut </span>buf);
-<a href=#262 id=262 data-nosnippet>262</a>        buf
-<a href=#263 id=263 data-nosnippet>263</a>    }
-<a href=#264 id=264 data-nosnippet>264</a>}
-<a href=#265 id=265 data-nosnippet>265</a>
-<a href=#266 id=266 data-nosnippet>266</a><span class="attr">#[cfg(test)]
-<a href=#267 id=267 data-nosnippet>267</a></span><span class="kw">mod </span>tests {
-<a href=#268 id=268 data-nosnippet>268</a>    <span class="kw">use </span>rand::SeedableRng;
+<a href=#261 id=261 data-nosnippet>261</a>        <span class="comment">// reserved
+<a href=#262 id=262 data-nosnippet>262</a>        </span><span class="kw">for _ in </span><span class="number">12</span>..Response::MIN_SIZE {
+<a href=#263 id=263 data-nosnippet>263</a>            buf.push(<span class="number">0</span>)
+<a href=#264 id=264 data-nosnippet>264</a>        }
+<a href=#265 id=265 data-nosnippet>265</a>        data.encode_into(<span class="kw-2">&amp;mut </span>buf);
+<a href=#266 id=266 data-nosnippet>266</a>        buf
+<a href=#267 id=267 data-nosnippet>267</a>    }
+<a href=#268 id=268 data-nosnippet>268</a>}
 <a href=#269 id=269 data-nosnippet>269</a>
-<a href=#270 id=270 data-nosnippet>270</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#271 id=271 data-nosnippet>271</a>
-<a href=#272 id=272 data-nosnippet>272</a>    <span class="attr">#[test]
-<a href=#273 id=273 data-nosnippet>273</a>    </span><span class="kw">fn </span>test_decode_external_addr_response() {
-<a href=#274 id=274 data-nosnippet>274</a>        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+<a href=#270 id=270 data-nosnippet>270</a><span class="attr">#[cfg(test)]
+<a href=#271 id=271 data-nosnippet>271</a></span><span class="kw">mod </span>tests {
+<a href=#272 id=272 data-nosnippet>272</a>    <span class="kw">use </span>rand::SeedableRng;
+<a href=#273 id=273 data-nosnippet>273</a>
+<a href=#274 id=274 data-nosnippet>274</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
 <a href=#275 id=275 data-nosnippet>275</a>
-<a href=#276 id=276 data-nosnippet>276</a>        <span class="kw">let </span>response = Response::random(Opcode::Announce, <span class="kw-2">&amp;mut </span>rng);
-<a href=#277 id=277 data-nosnippet>277</a>        <span class="kw">let </span>encoded = response.encode();
-<a href=#278 id=278 data-nosnippet>278</a>        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
-<a href=#279 id=279 data-nosnippet>279</a>    }
-<a href=#280 id=280 data-nosnippet>280</a>
-<a href=#281 id=281 data-nosnippet>281</a>    <span class="attr">#[test]
-<a href=#282 id=282 data-nosnippet>282</a>    </span><span class="kw">fn </span>test_decode_known_response_vector() {
-<a href=#283 id=283 data-nosnippet>283</a>        <span class="comment">// only test vector in the tailscale impl: a map response
-<a href=#284 id=284 data-nosnippet>284</a>        </span><span class="kw">let </span>encoded = [
-<a href=#285 id=285 data-nosnippet>285</a>            <span class="number">2</span>, <span class="number">129</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">28</span>, <span class="number">32</span>, <span class="number">0</span>, <span class="number">2</span>, <span class="number">155</span>, <span class="number">237</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">129</span>,
-<a href=#286 id=286 data-nosnippet>286</a>            <span class="number">112</span>, <span class="number">9</span>, <span class="number">24</span>, <span class="number">241</span>, <span class="number">208</span>, <span class="number">251</span>, <span class="number">45</span>, <span class="number">157</span>, <span class="number">76</span>, <span class="number">10</span>, <span class="number">188</span>, <span class="number">17</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">4</span>, <span class="number">210</span>, <span class="number">4</span>, <span class="number">210</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>,
-<a href=#287 id=287 data-nosnippet>287</a>            <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">255</span>, <span class="number">255</span>, <span class="number">135</span>, <span class="number">180</span>, <span class="number">175</span>, <span class="number">246</span>,
-<a href=#288 id=288 data-nosnippet>288</a>        ];
-<a href=#289 id=289 data-nosnippet>289</a>        <span class="kw">let </span>response = Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap();
-<a href=#290 id=290 data-nosnippet>290</a>        <span class="macro">assert_eq!</span>(<span class="kw-2">&amp;</span>response.encode(), <span class="kw-2">&amp;</span>encoded);
-<a href=#291 id=291 data-nosnippet>291</a>    }
-<a href=#292 id=292 data-nosnippet>292</a>
-<a href=#293 id=293 data-nosnippet>293</a>    <span class="attr">#[test]
-<a href=#294 id=294 data-nosnippet>294</a>    </span><span class="kw">fn </span>test_encode_decode_map_response() {
-<a href=#295 id=295 data-nosnippet>295</a>        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+<a href=#276 id=276 data-nosnippet>276</a>    <span class="attr">#[test]
+<a href=#277 id=277 data-nosnippet>277</a>    </span><span class="kw">fn </span>test_decode_external_addr_response() {
+<a href=#278 id=278 data-nosnippet>278</a>        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+<a href=#279 id=279 data-nosnippet>279</a>
+<a href=#280 id=280 data-nosnippet>280</a>        <span class="kw">let </span>response = Response::random(Opcode::Announce, <span class="kw-2">&amp;mut </span>rng);
+<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">let </span>encoded = response.encode();
+<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
+<a href=#283 id=283 data-nosnippet>283</a>    }
+<a href=#284 id=284 data-nosnippet>284</a>
+<a href=#285 id=285 data-nosnippet>285</a>    <span class="attr">#[test]
+<a href=#286 id=286 data-nosnippet>286</a>    </span><span class="kw">fn </span>test_decode_known_response_vector() {
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="comment">// only test vector in the tailscale impl: a map response
+<a href=#288 id=288 data-nosnippet>288</a>        </span><span class="kw">let </span>encoded = [
+<a href=#289 id=289 data-nosnippet>289</a>            <span class="number">2</span>, <span class="number">129</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">28</span>, <span class="number">32</span>, <span class="number">0</span>, <span class="number">2</span>, <span class="number">155</span>, <span class="number">237</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">129</span>,
+<a href=#290 id=290 data-nosnippet>290</a>            <span class="number">112</span>, <span class="number">9</span>, <span class="number">24</span>, <span class="number">241</span>, <span class="number">208</span>, <span class="number">251</span>, <span class="number">45</span>, <span class="number">157</span>, <span class="number">76</span>, <span class="number">10</span>, <span class="number">188</span>, <span class="number">17</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">4</span>, <span class="number">210</span>, <span class="number">4</span>, <span class="number">210</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>,
+<a href=#291 id=291 data-nosnippet>291</a>            <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">255</span>, <span class="number">255</span>, <span class="number">135</span>, <span class="number">180</span>, <span class="number">175</span>, <span class="number">246</span>,
+<a href=#292 id=292 data-nosnippet>292</a>        ];
+<a href=#293 id=293 data-nosnippet>293</a>        <span class="kw">let </span>response = Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap();
+<a href=#294 id=294 data-nosnippet>294</a>        <span class="macro">assert_eq!</span>(<span class="kw-2">&amp;</span>response.encode(), <span class="kw-2">&amp;</span>encoded);
+<a href=#295 id=295 data-nosnippet>295</a>    }
 <a href=#296 id=296 data-nosnippet>296</a>
-<a href=#297 id=297 data-nosnippet>297</a>        <span class="kw">let </span>response = Response::random(Opcode::Map, <span class="kw-2">&amp;mut </span>rng);
-<a href=#298 id=298 data-nosnippet>298</a>        <span class="kw">let </span>encoded = response.encode();
-<a href=#299 id=299 data-nosnippet>299</a>        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
-<a href=#300 id=300 data-nosnippet>300</a>    }
-<a href=#301 id=301 data-nosnippet>301</a>}</code></pre></div></section></main></body></html>
+<a href=#297 id=297 data-nosnippet>297</a>    <span class="attr">#[test]
+<a href=#298 id=298 data-nosnippet>298</a>    </span><span class="kw">fn </span>test_encode_decode_map_response() {
+<a href=#299 id=299 data-nosnippet>299</a>        <span class="kw">let </span><span class="kw-2">mut </span>rng = rand_chacha::ChaCha8Rng::seed_from_u64(<span class="number">42</span>);
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a>        <span class="kw">let </span>response = Response::random(Opcode::Map, <span class="kw-2">&amp;mut </span>rng);
+<a href=#302 id=302 data-nosnippet>302</a>        <span class="kw">let </span>encoded = response.encode();
+<a href=#303 id=303 data-nosnippet>303</a>        <span class="macro">assert_eq!</span>(response, Response::decode(<span class="kw-2">&amp;</span>encoded).unwrap());
+<a href=#304 id=304 data-nosnippet>304</a>    }
+<a href=#305 id=305 data-nosnippet>305</a>}</code></pre></div></section></main></body></html>
