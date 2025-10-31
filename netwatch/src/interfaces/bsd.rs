@@ -834,7 +834,6 @@ fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
                     .get(2..4)
                     .and_then(|s| TryInto::<[u8; 2]>::try_into(s).ok())
                     .map(u16::from_be_bytes)
-                    .map(u16::from_be_bytes)
                     .ok_or_else(|| e!(RouteError::InvalidMessage))? as u32;
                 if id != 0 {
                     zone = id;
