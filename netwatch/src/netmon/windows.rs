@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use libc::c_void;
-use n0_error::{StdResultExt, e, stack_error};
+use n0_error::{e, stack_error};
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 use windows::Win32::{
