@@ -21,12 +21,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.100"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
-
-[[package]]
 name = "anymap2"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,41 +183,6 @@ name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
-
-[[package]]
-name = "darling"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cdf337090841a411e2a7f3deb9187445851f91b309c0c0a29e05f74a00a48c0"
-dependencies = [
- "darling_core",
- "darling_macro",
-]
-
-[[package]]
-name = "darling_core"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1247195ecd7e3c85f83c8d2a366e4210d588e802133e1e355180a9870b517ea4"
-dependencies = [
- "fnv",
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim",
- "syn 2.0.107",
-]
-
-[[package]]
-name = "darling_macro"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
-dependencies = [
- "darling_core",
- "quote",
- "syn 2.0.107",
-]
 
 [[package]]
 name = "deranged"
@@ -915,12 +874,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ident_case"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
-
-[[package]]
 name = "idna"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,9 +1073,9 @@ dependencies = [
 [[package]]
 name = "n0-error"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/n0-error#a00ff9bdf550f22d64a429a8b62d7bb9d90a861a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a4839a11b62f1fdd75be912ee20634053c734c2240e867ded41c7f50822c549"
 dependencies = [
- "anyhow",
  "derive_more 2.0.1",
  "n0-error-macros",
  "spez",
@@ -1131,9 +1084,9 @@ dependencies = [
 [[package]]
 name = "n0-error-macros"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/n0-error#a00ff9bdf550f22d64a429a8b62d7bb9d90a861a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ed2a7e5ca3cb5729d4a162d7bcab5b338bed299a2fee8457568d7e0a747ed89"
 dependencies = [
- "darling",
  "heck",
  "proc-macro2",
  "quote",
@@ -1796,12 +1749,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "strsim"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
