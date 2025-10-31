@@ -22,7 +22,7 @@ pub(super) struct RouteMonitor {
 #[stack_error(derive, add_meta, std_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[error(transparent)]
+    #[error("IO")]
     Io { source: std::io::Error },
     #[error("win32")]
     Win32 { source: windows_result::Error },

@@ -18,7 +18,7 @@ struct Win32_IP4RouteTable {
 #[non_exhaustive]
 pub enum Error {
     #[allow(dead_code)] // not sure why we have this here?
-    #[error(transparent)]
+    #[error("IO")]
     Io { source: std::io::Error },
     #[error("not route found")]
     NoRoute {},
