@@ -12,7 +12,10 @@ use super::DefaultRouteDetails;
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Io { #[error(std_err)] source: std::io::Error },
+    Io {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
     #[cfg(not(target_os = "android"))]
     #[error("no netlink response")]
     NoResponse {},
@@ -91,9 +94,7 @@ async fn default_route_proc() -> Result<Option<DefaultRouteDetails>, Error> {
         let destination = fields
             .next()
             .ok_or_else(|| e!(Error::MissingDestinationField))?;
-        let mask = fields
-            .nth(5)
-            .ok_or_else(|| e!(Error::MissingMaskField))?;
+        let mask = fields.nth(5).ok_or_else(|| e!(Error::MissingMaskField))?;
         // if iface.starts_with("tailscale") || iface.starts_with("wg") {
         //     continue;
         // }
@@ -122,7 +123,7 @@ mod android {
             .kill_on_drop(true)
             .output()
             .await
-            .context(IoSnafu)?;
+            .map_err(|err| e!(Error::Io, err))?;
         let stdout = std::string::String::from_utf8_lossy(&output.stdout);
         let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
             interface_name: iface.to_string(),
@@ -133,6 +134,7 @@ mod android {
 
 #[cfg(not(target_os = "android"))]
 mod sane {
+    use n0_error::e;
     use n0_future::{Either, StreamExt, TryStream};
     use netlink_packet_core::{NLM_F_DUMP, NLM_F_REQUEST, NetlinkMessage};
     use netlink_packet_route::{
@@ -141,7 +143,6 @@ mod sane {
         route::{RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope, RouteType},
     };
     use netlink_sys::protocols::NETLINK_ROUTE;
-    use n0_error::e;
     use tracing::{Instrument, info_span};
 
     use super::*;
@@ -165,10 +166,9 @@ mod sane {
     }
 
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
-        let (connection, handle, _receiver) = netlink_proto::new_connection::<RouteNetlinkMessage>(
-            NETLINK_ROUTE,
-        )
-        .map_err(|err| e!(Error::Io, err))?;
+        let (connection, handle, _receiver) =
+            netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE)
+                .map_err(|err| e!(Error::Io, err))?;
 
         let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
 
@@ -281,7 +281,10 @@ mod sane {
     async fn iface_by_index(handle: &Handle, index: u32) -> Result<String, Error> {
         let message = create_link_get_message(index);
         let mut links = get_link(handle.clone(), message);
-        let msg = links.try_next().await?.ok_or_else(|| e!(Error::NoResponse))?;
+        let msg = links
+            .try_next()
+            .await?
+            .ok_or_else(|| e!(Error::NoResponse))?;
 
         for nla in msg.attributes {
             if let LinkAttribute::IfName(name) = nla {

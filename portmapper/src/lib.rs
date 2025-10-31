@@ -67,10 +67,6 @@ impl ProbeOutput {
     }
 }
 
-// Cannot have backtrace due to Clone bound
-// #[nested_enum_utils::common_fields({
-//     backtrace: Option<snafu::Backtrace>,
-// })]
 #[allow(missing_docs)]
 #[stack_error(derive, add_meta)]
 #[derive(Clone)]
