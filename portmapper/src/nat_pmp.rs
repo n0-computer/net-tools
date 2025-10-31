@@ -33,7 +33,7 @@ pub struct Mapping {
 }
 
 #[allow(missing_docs)]
-#[stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[error("server returned unexpected response for mapping request")]
@@ -69,10 +69,8 @@ impl Mapping {
         external_port: Option<NonZeroU16>,
     ) -> Result<Self, Error> {
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-        socket
-            .connect((gateway, protocol::SERVER_PORT).into())
-            .map_err(|err| e!(Error::Io, err))?;
+        let socket = UdpSocket::bind_full((local_ip, 0))?;
+        socket.connect((gateway, protocol::SERVER_PORT).into())?;
 
         let proto = match protocol {
             Protocol::Udp => MapProtocol::Udp,
@@ -85,23 +83,16 @@ impl Mapping {
             lifetime_seconds: MAPPING_REQUESTED_LIFETIME_SECONDS,
         };
 
-        socket
-            .send(&req.encode())
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+        socket.send(&req.encode()).await?;
 
         // wait for the response and decode it
         let mut buffer = vec![0; Response::MAX_SIZE];
         let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
             .await
             .map_err(|_| {
-                e!(
-                    Error::Io,
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-                )
-            })?
-            .map_err(|err| e!(Error::Io, err))?;
-        let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??;
+        let response = Response::decode(&buffer[..read])?;
 
         let (external_port, lifetime_seconds) = match response {
             Response::PortMap {
@@ -132,12 +123,8 @@ impl Mapping {
         let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
             .await
             .map_err(|_| {
-                e!(
-                    Error::Io,
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-                )
-            })?
-            .map_err(|err| e!(Error::Io, err))?;
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+            })??;
         let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
 
         let external_addr = match response {
@@ -172,10 +159,8 @@ impl Mapping {
         } = self;
 
         // create the socket and send the request
-        let socket = UdpSocket::bind_full((local_ip, 0)).map_err(|err| e!(Error::Io, err))?;
-        socket
-            .connect((gateway, protocol::SERVER_PORT).into())
-            .map_err(|err| e!(Error::Io, err))?;
+        let socket = UdpSocket::bind_full((local_ip, 0))?;
+        socket.connect((gateway, protocol::SERVER_PORT).into())?;
 
         let req = Request::Mapping {
             proto: MapProtocol::Udp,
@@ -184,10 +169,7 @@ impl Mapping {
             lifetime_seconds: 0,
         };
 
-        socket
-            .send(&req.encode())
-            .await
-            .map_err(|err| e!(Error::Io, err))?;
+        socket.send(&req.encode()).await?;
 
         // mapping deletion is a notification, no point in waiting for the response
         Ok(())
@@ -235,13 +217,9 @@ async fn probe_available_fallible(
     let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
         .await
         .map_err(|_| {
-            e!(
-                Error::Io,
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            )
-        })?
-        .map_err(|err| e!(Error::Io, err))?;
-    let response = Response::decode(&buffer[..read]).map_err(|err| e!(Error::Protocol, err))?;
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+        })??;
+    let response = Response::decode(&buffer[..read])?;
 
     Ok(response)
 }
