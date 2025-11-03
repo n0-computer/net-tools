@@ -22,15 +22,14 @@ derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_
 futures-lite = "2.5"
 futures-util = "0.3.25"
 igd-next = { version = "0.16.1", features = ["aio_tokio"] }
-iroh-metrics = { version = "0.36", default-features = false }
+iroh-metrics = { version = "0.37", default-features = false }
 libc = "0.2.139"
-nested_enum_utils = "0.2.3"
 netwatch = { version = "0.11.0", path = "../netwatch" }
+n0-error = "0.1.0"
 num_enum = "0.7"
 rand = "0.9"
 serde = { version = "1", features = ["derive", "rc"] }
 smallvec = "1.11.1"
-snafu = { version = "0.8.5", features = ["rust_1_81"] }
 socket2 = "0.6"
 time = "0.3.20"
 tokio = { version = "1", features = ["io-util", "macros", "sync", "rt", "net", "fs", "io-std", "signal", "process"] }

@@ -6,8 +6,7 @@ use std::{
 };
 
 use igd_next::{AddAnyPortError, GetExternalIpError, RemovePortError, SearchError, aio as aigd};
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, ResultExt, Snafu};
+use n0_error::{e, stack_error};
 use tracing::debug;
 
 use super::Metrics;
@@ -39,26 +38,23 @@ pub struct Mapping {
     external_port: NonZeroU16,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Zero external port"))]
+    #[error("Zero external port")]
     ZeroExternalPort {},
-    #[snafu(display("igd device's external ip is ipv6"))]
+    #[error("igd device's external ip is ipv6")]
     NotIpv4 {},
-    #[snafu(display("Remove Port"))]
+    #[error("Remove Port")]
     RemovePort { source: RemovePortError },
-    #[snafu(display("Search"))]
+    #[error("Search")]
     Search { source: SearchError },
-    #[snafu(display("Get external IP"))]
+    #[error("Get external IP")]
     GetExternalIp { source: GetExternalIpError },
-    #[snafu(display("Add any port"))]
+    #[error("Add any port")]
     AddAnyPort { source: AddAnyPortError },
-    #[snafu(display("IO"))]
+    #[error("IO")]
     Io { source: std::io::Error },
 }
 
@@ -87,17 +83,11 @@ impl Mapping {
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })
-            .context(IoSnafu)?
-            .context(SearchSnafu)?
+            })??
         };
 
-        let std::net::IpAddr::V4(external_ip) = gateway
-            .get_external_ip()
-            .await
-            .context(GetExternalIpSnafu)?
-        else {
-            return Err(NotIpv4Snafu.build());
+        let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
+            return Err(e!(Error::NotIpv4));
         };
 
         let protocol = match protocol {
@@ -135,10 +125,9 @@ impl Mapping {
                 PORT_MAPPING_LEASE_DURATION_SECONDS,
                 PORT_MAPPING_DESCRIPTION,
             )
-            .await
-            .context(AddAnyPortSnafu)?
+            .await?
             .try_into()
-            .map_err(|_| ZeroExternalPortSnafu.build())?;
+            .map_err(|_| e!(Error::ZeroExternalPort))?;
 
         Ok(Mapping {
             protocol,
@@ -160,10 +149,7 @@ impl Mapping {
             protocol,
             ..
         } = self;
-        gateway
-            .remove_port(protocol, external_port.into())
-            .await
-            .context(RemovePortSnafu)?;
+        gateway.remove_port(protocol, external_port.into()).await?;
         Ok(())
     }
 

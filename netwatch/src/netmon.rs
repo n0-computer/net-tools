@@ -1,9 +1,8 @@
 //! Monitoring of networking interfaces and route changes.
 
+use n0_error::{e, stack_error};
 use n0_future::task::{self, AbortOnDropHandle};
 use n0_watcher::Watchable;
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::{mpsc, oneshot};
 
 mod actor;
@@ -38,34 +37,31 @@ pub struct Monitor {
     interface_state: Watchable<State>,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("channel closed"))]
+    #[error("channel closed")]
     ChannelClosed {},
-    #[snafu(display("actor error"))]
+    #[error("actor error")]
     Actor { source: actor::Error },
 }
 
 impl<T> From<mpsc::error::SendError<T>> for Error {
     fn from(_value: mpsc::error::SendError<T>) -> Self {
-        ChannelClosedSnafu.build()
+        e!(Error::ChannelClosed)
     }
 }
 
 impl From<oneshot::error::RecvError> for Error {
     fn from(_value: oneshot::error::RecvError) -> Self {
-        ChannelClosedSnafu.build()
+        e!(Error::ChannelClosed)
     }
 }
 
 impl Monitor {
     /// Create a new monitor.
     pub async fn new() -> Result<Self, Error> {
-        let actor = Actor::new().await.context(ActorSnafu)?;
+        let actor = Actor::new().await?;
         let actor_tx = actor.subscribe();
         let interface_state = actor.state().clone();
 

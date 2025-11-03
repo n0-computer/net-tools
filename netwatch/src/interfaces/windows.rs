@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use nested_enum_utils::common_fields;
+use n0_error::{e, stack_error};
 use serde::Deserialize;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use tracing::warn;
 use wmi::{COMLibrary, FilterValue, WMIConnection};
 
@@ -15,32 +14,28 @@ struct Win32_IP4RouteTable {
     Name: String,
 }
 
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
     #[allow(dead_code)] // not sure why we have this here?
-    #[snafu(display("IO"))]
+    #[error("IO")]
     Io { source: std::io::Error },
-    #[snafu(display("not route found"))]
+    #[error("not route found")]
     NoRoute {},
-    #[snafu(display("WMI"))]
+    #[error("WMI")]
     Wmi { source: wmi::WMIError },
 }
 
 fn get_default_route() -> Result<DefaultRouteDetails, Error> {
-    let com_con = COMLibrary::new().context(WmiSnafu)?;
-    let wmi_con = WMIConnection::new(com_con).context(WmiSnafu)?;
+    let com_con = COMLibrary::new()?;
+    let wmi_con = WMIConnection::new(com_con)?;
 
     let query: HashMap<_, _> = [("Destination".into(), FilterValue::Str("0.0.0.0"))].into();
     let route: Win32_IP4RouteTable = wmi_con
-        .filtered_query(&query)
-        .context(WmiSnafu)?
+        .filtered_query(&query)?
         .drain(..)
         .next()
-        .context(NoRouteSnafu)?;
+        .ok_or_else(|| e!(Error::NoRoute))?;
 
     Ok(DefaultRouteDetails {
         interface_name: route.Name,
