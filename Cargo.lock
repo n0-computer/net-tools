@@ -1111,13 +1111,13 @@ dependencies = [
 
 [[package]]
 name = "n0-watcher"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34c65e127e06e5a2781b28df6a33ea474a7bddc0ac0cfea888bd20c79a1b6516"
+checksum = "38acf13c1ddafc60eb7316d52213467f8ccb70b6f02b65e7d97f7799b1f50be4"
 dependencies = [
  "derive_more 2.0.1",
+ "n0-error",
  "n0-future",
- "snafu",
 ]
 
 [[package]]
