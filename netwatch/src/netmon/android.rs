@@ -1,8 +1,9 @@
+use n0_error::stack_error;
 use tokio::sync::mpsc;
 
 use super::actor::NetworkMessage;
 
-#[n0_error::stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta)]
 pub struct Error;
 
 #[derive(Debug)]

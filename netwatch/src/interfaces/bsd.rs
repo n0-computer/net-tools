@@ -272,9 +272,9 @@ impl WireFormat {
                 target_os = "ios"
             ))]
             MessageType::Route => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
                 let attrs: i32 = u32_from_ne_range(data, 12..16)?
                     .try_into()
                     .map_err(|_| e!(RouteError::InvalidMessage))?;
@@ -299,11 +299,11 @@ impl WireFormat {
             }
             #[cfg(target_os = "openbsd")]
             MessageType::Route => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
                 let ll = u16_from_ne_range(data, 4..6)? as usize;
-                n0_error::ensure!(data.len() >= ll as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= ll as usize, RouteError::InvalidMessage);
 
                 let addrs = parse_addrs(
                     u32_from_ne_range(data, 12..16)? as _,
@@ -330,9 +330,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::Route(m)))
             }
             MessageType::Interface => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, 0..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let attrs = u32_from_ne_range(data, 4..8)?;
                 if attrs as c_int & RTA_IFP == 0 {
@@ -353,9 +353,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::Interface(m)))
             }
             MessageType::InterfaceAddr => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 #[cfg(target_os = "netbsd")]
                 let index = u16_from_ne_range(data, 16..18)?;
@@ -378,9 +378,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::InterfaceAddr(m)))
             }
             MessageType::InterfaceMulticastAddr => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let addrs = parse_addrs(
                     u32_from_ne_range(data, 4..8)? as _,
@@ -397,9 +397,9 @@ impl WireFormat {
                 Ok(Some(WireMessage::InterfaceMulticastAddr(m)))
             }
             MessageType::InterfaceAnnounce => {
-                n0_error::ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
+                ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
-                n0_error::ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
+                ensure!(data.len() >= l as usize, RouteError::InvalidMessage);
 
                 let mut name = String::new();
                 for i in 0..16 {
@@ -445,7 +445,7 @@ struct RoutingStack {
 
 /// Parses b as a routing information base and returns a list of routing messages.
 pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteError> {
-    n0_error::ensure!(
+    ensure!(
         is_valid_rib_type(typ),
         RouteError::InvalidRibType { rib_type: typ }
     );
@@ -458,8 +458,8 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
     while b.len() > 4 {
         nmsgs += 1;
         let l = u16_from_ne_range(b, ..2)?;
-        n0_error::ensure!(l != 0, RouteError::InvalidMessage);
-        n0_error::ensure!(b.len() >= l as usize, RouteError::MessageTooShort);
+        ensure!(l != 0, RouteError::InvalidMessage);
+        ensure!(b.len() >= l as usize, RouteError::MessageTooShort);
         if b[2] as i32 != ROUTING_STACK.rtm_version {
             // b = b[l:];
             continue;
@@ -484,7 +484,7 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
     }
 
     // We failed to parse any of the messages - version mismatch?
-    n0_error::ensure!(nmsgs == msgs.len() + nskips, RouteError::MessageMismatch);
+    ensure!(nmsgs == msgs.len() + nskips, RouteError::MessageMismatch);
 
     Ok(msgs)
 }
@@ -768,7 +768,7 @@ where
                     let a = parse_link_addr(b)?;
                     addrs.push(a);
                     let l = roundup(b[0] as usize);
-                    n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
+                    ensure!(b.len() >= l, RouteError::MessageTooShort);
                     b = &b[l..];
                 }
                 AF_INET | AF_INET6 => {
@@ -776,7 +776,7 @@ where
                     let a = parse_inet_addr(af, b)?;
                     addrs.push(a);
                     let l = roundup(b[0] as usize);
-                    n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
+                    ensure!(b.len() >= l, RouteError::MessageTooShort);
                     b = &b[l..];
                 }
                 _ => {
@@ -794,7 +794,7 @@ where
             let a = parse_default_addr(b)?;
             addrs.push(a);
             let l = roundup(b[0] as usize);
-            n0_error::ensure!(b.len() >= l, RouteError::MessageTooShort);
+            ensure!(b.len() >= l, RouteError::MessageTooShort);
             b = &b[l..];
         }
     }
@@ -809,13 +809,13 @@ where
 fn parse_inet_addr(af: i32, b: &[u8]) -> Result<Addr, RouteError> {
     match af {
         AF_INET => {
-            n0_error::ensure!(b.len() >= SIZEOF_SOCKADDR_INET, RouteError::InvalidAddress);
+            ensure!(b.len() >= SIZEOF_SOCKADDR_INET, RouteError::InvalidAddress);
 
             let ip = Ipv4Addr::new(b[4], b[5], b[6], b[7]);
             Ok(Addr::Inet4 { ip })
         }
         AF_INET6 => {
-            n0_error::ensure!(b.len() >= SIZEOF_SOCKADDR_INET6, RouteError::InvalidAddress);
+            ensure!(b.len() >= SIZEOF_SOCKADDR_INET6, RouteError::InvalidAddress);
 
             let mut zone = u32_from_ne_range(b, 24..28)?;
             let mut oc: [u8; 16] = b
@@ -885,7 +885,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
         l = roundup(l);
     }
 
-    n0_error::ensure!(b.len() >= l, RouteError::InvalidAddress);
+    ensure!(b.len() >= l, RouteError::InvalidAddress);
     // Don't reorder case expressions.
     // The case expressions for IPv6 must come first.
     const OFF4: usize = 4; // offset of in_addr
@@ -930,7 +930,7 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
 }
 
 fn parse_link_addr(b: &[u8]) -> Result<Addr, RouteError> {
-    n0_error::ensure!(b.len() >= 8, RouteError::InvalidAddress);
+    ensure!(b.len() >= 8, RouteError::InvalidAddress);
     let (_, mut a) = parse_kernel_link_addr(AF_LINK, &b[4..])?;
 
     if let Addr::Link { index, .. } = &mut a {
@@ -972,7 +972,7 @@ fn parse_kernel_link_addr(_: i32, b: &[u8]) -> Result<(usize, Addr), RouteError>
     }
 
     let l = 4 + nlen + alen + slen;
-    n0_error::ensure!(b.len() >= l, RouteError::InvalidAddress);
+    ensure!(b.len() >= l, RouteError::InvalidAddress);
     let mut data = &b[4..];
 
     let name = if nlen > 0 {
@@ -1001,7 +1001,7 @@ fn parse_kernel_link_addr(_: i32, b: &[u8]) -> Result<(usize, Addr), RouteError>
 }
 
 fn parse_default_addr(b: &[u8]) -> Result<Addr, RouteError> {
-    n0_error::ensure!(
+    ensure!(
         b.len() >= 2 && b.len() >= b[0] as usize,
         RouteError::InvalidAddress
     );

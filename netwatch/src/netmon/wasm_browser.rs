@@ -2,13 +2,14 @@ use js_sys::{
     Function,
     wasm_bindgen::{JsCast, prelude::Closure},
 };
+use n0_error::stack_error;
 use n0_future::task;
 use tokio::sync::mpsc;
 use web_sys::{EventListener, EventTarget};
 
 use super::actor::NetworkMessage;
 
-#[n0_error::stack_error(derive, add_meta)]
+#[stack_error(derive, add_meta)]
 pub struct Error;
 
 #[derive(Debug)]

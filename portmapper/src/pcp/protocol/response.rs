@@ -1,7 +1,7 @@
 //! A PCP response encoding and decoding.
 
 use derive_more::Display;
-use n0_error::{e, stack_error};
+use n0_error::{e, ensure, stack_error};
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 
 use super::{Opcode, Version, opcode_data::OpcodeData};
@@ -176,7 +176,7 @@ impl Response {
 
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
-        n0_error::ensure!(
+        ensure!(
             Self::MIN_SIZE <= buf.len() && buf.len() <= Self::MAX_SIZE,
             DecodeError::Malformed
         );
@@ -186,7 +186,7 @@ impl Response {
             .map_err(|_| e!(DecodeError::InvalidVersion))?;
 
         let opcode = buf[1];
-        n0_error::ensure!(
+        ensure!(
             opcode & Self::RESPONSE_INDICATOR == Self::RESPONSE_INDICATOR,
             DecodeError::NotAResponse
         );
