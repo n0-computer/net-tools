@@ -1,9 +1,8 @@
 //! A PCP response encoding and decoding.
 
 use derive_more::Display;
-use nested_enum_utils::common_fields;
+use n0_error::{e, ensure, stack_error};
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
-use snafu::{Backtrace, Snafu};
 
 use super::{Opcode, Version, opcode_data::OpcodeData};
 
@@ -124,37 +123,37 @@ pub struct Response {
 /// Errors that can occur when decoding a [`Response`] from a server.
 #[allow(missing_docs)]
 #[non_exhaustive]
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta)]
 pub enum DecodeError {
     /// Request is too short or is otherwise malformed.
-    #[snafu(display("Response is malformed"))]
+    #[error("Response is malformed")]
     Malformed {},
     /// The [`Response::RESPONSE_INDICATOR`] is not present.
-    #[snafu(display("Packet does not appear to be a response"))]
+    #[error("Packet does not appear to be a response")]
     NotAResponse {},
     /// The received opcode is not recognized.
-    #[snafu(display("Invalid Opcode received"))]
+    #[error("Invalid Opcode received")]
     InvalidOpcode {},
     /// The received version is not recognized.
-    #[snafu(display("Invalid version received"))]
+    #[error("Invalid version received")]
     InvalidVersion {},
     /// The received result code is not recognized.
-    #[snafu(display("Invalid result code received"))]
+    #[error("Invalid result code received")]
     InvalidResultCode {},
     /// The received opcode data could not be decoded.
-    #[snafu(display("Invalid opcode data received"))]
+    #[error("Invalid opcode data received")]
     InvalidOpcodeData {},
 }
 
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, from_sources)]
 pub enum Error {
-    #[snafu(transparent)]
+    #[error(transparent)]
     DecodeError { source: DecodeError },
-    #[snafu(transparent)]
-    ErrorCode { source: ErrorCode },
+    #[error("PCP error code")]
+    ErrorCode {
+        #[error(std_err)]
+        source: ErrorCode,
+    },
 }
 
 impl Response {
@@ -177,28 +176,30 @@ impl Response {
 
     /// Decode a response.
     pub fn decode(buf: &[u8]) -> Result<Self, Error> {
-        snafu::ensure!(
+        ensure!(
             Self::MIN_SIZE <= buf.len() && buf.len() <= Self::MAX_SIZE,
-            MalformedSnafu
+            DecodeError::Malformed
         );
 
-        let _version: Version = buf[0].try_into().map_err(|_| InvalidVersionSnafu.build())?;
+        let _version: Version = buf[0]
+            .try_into()
+            .map_err(|_| e!(DecodeError::InvalidVersion))?;
 
         let opcode = buf[1];
-        snafu::ensure!(
+        ensure!(
             opcode & Self::RESPONSE_INDICATOR == Self::RESPONSE_INDICATOR,
-            NotAResponseSnafu
+            DecodeError::NotAResponse
         );
         let opcode: Opcode = (opcode & !Self::RESPONSE_INDICATOR)
             .try_into()
-            .map_err(|_| InvalidOpcodeSnafu.build())?;
+            .map_err(|_| e!(DecodeError::InvalidOpcode))?;
 
         // buf[2] reserved
 
         // return early if the result code is an error
         let result_code: ResultCode = buf[3]
             .try_into()
-            .map_err(|_| InvalidResultCodeSnafu.build())?;
+            .map_err(|_| e!(DecodeError::InvalidResultCode))?;
         match result_code {
             ResultCode::Success => {}
             ResultCode::Error(error_code) => return Err(error_code.into()),
@@ -212,8 +213,8 @@ impl Response {
 
         // buf[12..24] reserved
 
-        let data =
-            OpcodeData::decode(opcode, &buf[24..]).map_err(|_| InvalidOpcodeDataSnafu.build())?;
+        let data = OpcodeData::decode(opcode, &buf[24..])
+            .map_err(|_| e!(DecodeError::InvalidOpcodeData))?;
 
         Ok(Response {
             lifetime_seconds,
