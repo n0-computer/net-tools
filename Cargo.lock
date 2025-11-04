@@ -929,8 +929,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 [[package]]
 name = "iroh-metrics"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79e3381da7c93c12d353230c74bba26131d1c8bf3a4d8af0fec041546454582e"
+source = "git+https://github.com/n0-computer/iroh-metrics#b8f18760e5560f2329ee551da6fa38fabc1cc92d"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
@@ -944,8 +943,7 @@ dependencies = [
 [[package]]
 name = "iroh-metrics-derive"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4e12bd0763fd16062f5cc5e8db15dd52d26e75a8af4c7fb57ccee3589b344b8"
+source = "git+https://github.com/n0-computer/iroh-metrics#b8f18760e5560f2329ee551da6fa38fabc1cc92d"
 dependencies = [
  "heck",
  "proc-macro2",
