@@ -447,7 +447,7 @@ impl UdpSocket {
 
     /// Creates a [`UdpSender`] sender.
     pub fn create_sender(self: Arc<Self>) -> UdpSender {
-        UdpSender::new(self.clone())
+        UdpSender::new(self)
     }
 
     /// Whether transmitted datagrams might get fragmented by the IP layer
@@ -860,6 +860,12 @@ pin_project_lite::pin_project! {
         socket: Arc<UdpSocket>,
         #[pin]
         fut: Option<Pin<Box<dyn Future<Output = io::Result<()>> + Send + Sync + 'static>>>,
+    }
+}
+
+impl Clone for UdpSender {
+    fn clone(&self) -> Self {
+        self.socket.clone().create_sender()
     }
 }
 
