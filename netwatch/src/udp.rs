@@ -863,6 +863,12 @@ pin_project_lite::pin_project! {
     }
 }
 
+impl Clone for UdpSender {
+    fn clone(&self) -> Self {
+        self.socket.clone().create_sender()
+    }
+}
+
 impl std::fmt::Debug for UdpSender {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("UdpSender")
