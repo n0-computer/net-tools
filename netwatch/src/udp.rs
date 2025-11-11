@@ -447,7 +447,7 @@ impl UdpSocket {
 
     /// Creates a [`UdpSender`] sender.
     pub fn create_sender(self: Arc<Self>) -> UdpSender {
-        UdpSender::new(self.clone())
+        UdpSender::new(self)
     }
 
     /// Whether transmitted datagrams might get fragmented by the IP layer
