@@ -38,7 +38,7 @@ tracing = "0.1"
 url = { version = "2.5", features = ["serde"] }
 
 # fix minimal crates
-hyper-util = "0.1.11"
+hyper-util = "0.1.18"
 tower-layer = "0.3.3"
 
 [dev-dependencies]
