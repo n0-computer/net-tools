@@ -70,8 +70,8 @@ derive_more = { version = "2.0.1", features = ["debug"] }
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 derive_more = { version = "2.0.1", features = ["display"] }
-js-sys = "0.3"
-web-sys = { version = "0.3.70", features = ["EventListener", "EventTarget"] }
+js-sys = "0.3.83"
+web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 
 [dev-dependencies]
 testresult = "0.4.1"
