@@ -962,13 +962,13 @@ dependencies = [
 [[package]]
 name = "iroh-quinn-udp"
 version = "0.6.0"
-source = "git+https://github.com/n0-computer/quinn?branch=Frando%2Fqlog-latest-multipath#55feda826c1275519eab32053ec1613f06fb5749"
+source = "git+https://github.com/n0-computer/quinn?branch=Frando%2Fqlog-latest-multipath#8e4ecbc6372485e99af1598e5191ea0772ea4d61"
 dependencies = [
  "cfg_aliases",
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
