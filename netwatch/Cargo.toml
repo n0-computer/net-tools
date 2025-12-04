@@ -58,7 +58,7 @@ netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
-derive_more = { version = "2.0.1", features = ["display"] }
+derive_more = { version = "2.1.0", features = ["display"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.17"
@@ -69,7 +69,7 @@ derive_more = { version = "2.0.1", features = ["debug"] }
 
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-derive_more = { version = "2.0.1", features = ["display"] }
+derive_more = { version = "2.1.0", features = ["display"] }
 js-sys = "0.3.83"
 web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 
