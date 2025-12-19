@@ -2,6 +2,7 @@ use std::{
     future::Future,
     io,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
     task::{Context, Poll},
@@ -463,7 +464,7 @@ impl UdpSocket {
     ///
     /// This is 1 if the platform doesn't support GSO. Subject to change if errors are detected
     /// while using GSO.
-    pub fn max_gso_segments(&self) -> usize {
+    pub fn max_gso_segments(&self) -> NonZeroUsize {
         let guard = self.socket.read().unwrap();
         guard.max_gso_segments()
     }
@@ -472,7 +473,7 @@ impl UdpSocket {
     /// compute the receive buffer size.
     ///
     /// Returns 1 if the platform doesn't support GRO.
-    pub fn gro_segments(&self) -> usize {
+    pub fn gro_segments(&self) -> NonZeroUsize {
         let guard = self.socket.read().unwrap();
         guard.gro_segments()
     }
@@ -687,8 +688,8 @@ enum SocketState {
         addr: SocketAddr,
     },
     Closed {
-        last_max_gso_segments: usize,
-        last_gro_segments: usize,
+        last_max_gso_segments: NonZeroUsize,
+        last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
     },
 }
@@ -818,7 +819,7 @@ impl SocketState {
         }
     }
 
-    fn max_gso_segments(&self) -> usize {
+    fn max_gso_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.max_gso_segments(),
             Self::Closed {
@@ -828,7 +829,7 @@ impl SocketState {
         }
     }
 
-    fn gro_segments(&self) -> usize {
+    fn gro_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.gro_segments(),
             Self::Closed {
@@ -840,7 +841,6 @@ impl SocketState {
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
-        trace!("dropping UdpSocket");
         if let Some((socket, _)) = self.socket.write().unwrap().close() {
             if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 // No wakeup after dropping write lock here, since we're getting dropped.
