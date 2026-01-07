@@ -1255,6 +1255,8 @@ dependencies = [
  "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
+ "objc2-core-foundation",
+ "objc2-system-configuration",
  "pin-project-lite",
  "serde",
  "socket2",
