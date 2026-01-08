@@ -57,7 +57,7 @@ objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-netlink-packet-route = "0.25.1"
+netlink-packet-route = "0.28.0"
 netlink-packet-core = "0.8.1"
 netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
@@ -66,15 +66,15 @@ netlink-sys = "0.8.7"
 derive_more = { version = "2.0.1", features = ["display"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-wmi = "0.17"
+wmi = "0.18"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 windows-result = "0.4"
 serde = { version = "1", features = ["derive"] }
-derive_more = { version = "2.0.1", features = ["debug"] }
+derive_more = { version = "2.1", features = ["debug"] }
 
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-derive_more = { version = "2.0.1", features = ["display"] }
+derive_more = { version = "2.1", features = ["display"] }
 js-sys = "0.3.83"
 web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 
