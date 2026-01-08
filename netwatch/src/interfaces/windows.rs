@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use n0_error::{e, stack_error};
 use serde::Deserialize;
 use tracing::warn;
-use wmi::{COMLibrary, FilterValue, WMIConnection};
+use wmi::{FilterValue, WMIConnection};
 
 use super::DefaultRouteDetails;
 
@@ -27,8 +27,7 @@ pub enum Error {
 }
 
 fn get_default_route() -> Result<DefaultRouteDetails, Error> {
-    let com_con = COMLibrary::new()?;
-    let wmi_con = WMIConnection::new(com_con)?;
+    let wmi_con = WMIConnection::new()?;
 
     let query: HashMap<_, _> = [("Destination".into(), FilterValue::Str("0.0.0.0"))].into();
     let route: Win32_IP4RouteTable = wmi_con
