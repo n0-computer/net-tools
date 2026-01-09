@@ -753,9 +753,9 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
 name = "iroh-metrics"
-version = "0.37.0"
+version = "0.38.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79e3381da7c93c12d353230c74bba26131d1c8bf3a4d8af0fec041546454582e"
+checksum = "5828152c482cf9d95f3039848ac2be5e6e47c41dbf3695a453e6c02739c50d2c"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
@@ -780,8 +780,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-quinn-udp"
-version = "0.6.0"
-source = "git+https://github.com/n0-computer/quinn?branch=main#7ce0396198789ff7b66b5d71bfc12fbd162589df"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a91fe9ec3db6615d7ab1b303717f3b98fc40b96955a4ea25b113b1b879f7481f"
 dependencies = [
  "cfg_aliases",
  "libc",
