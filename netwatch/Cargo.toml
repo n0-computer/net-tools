@@ -1,6 +1,6 @@
 [package]
 name = "netwatch"
-version = "0.12.0"
+version = "0.13.0"
 readme = "README.md"
 description = "Cross-platform monitoring for network interface changes"
 license = "MIT OR Apache-2.0"
