@@ -841,16 +841,16 @@
 <a href=#841 id=841 data-nosnippet>841</a>
 <a href=#842 id=842 data-nosnippet>842</a><span class="kw">impl </span>Drop <span class="kw">for </span>UdpSocket {
 <a href=#843 id=843 data-nosnippet>843</a>    <span class="kw">fn </span>drop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-<a href=#844 id=844 data-nosnippet>844</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>((socket, <span class="kw">_</span>)) = <span class="self">self</span>.socket.write().unwrap().close() {
-<a href=#845 id=845 data-nosnippet>845</a>            <span class="kw">if let </span><span class="prelude-val">Ok</span>(handle) = tokio::runtime::Handle::try_current() {
-<a href=#846 id=846 data-nosnippet>846</a>                <span class="comment">// No wakeup after dropping write lock here, since we're getting dropped.
-<a href=#847 id=847 data-nosnippet>847</a>                // this will be empty if `close` was called before
-<a href=#848 id=848 data-nosnippet>848</a>                </span><span class="kw">let </span>std_sock = socket.into_std();
-<a href=#849 id=849 data-nosnippet>849</a>                handle.spawn_blocking(<span class="kw">move </span>|| {
-<a href=#850 id=850 data-nosnippet>850</a>                    <span class="comment">// Calls libc::close, which can block
-<a href=#851 id=851 data-nosnippet>851</a>                    </span>drop(std_sock);
-<a href=#852 id=852 data-nosnippet>852</a>                });
-<a href=#853 id=853 data-nosnippet>853</a>            }
+<a href=#844 id=844 data-nosnippet>844</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>((socket, <span class="kw">_</span>)) = <span class="self">self</span>.socket.write().unwrap().close()
+<a href=#845 id=845 data-nosnippet>845</a>            &amp;&amp; <span class="kw">let </span><span class="prelude-val">Ok</span>(handle) = tokio::runtime::Handle::try_current()
+<a href=#846 id=846 data-nosnippet>846</a>        {
+<a href=#847 id=847 data-nosnippet>847</a>            <span class="comment">// No wakeup after dropping write lock here, since we're getting dropped.
+<a href=#848 id=848 data-nosnippet>848</a>            // this will be empty if `close` was called before
+<a href=#849 id=849 data-nosnippet>849</a>            </span><span class="kw">let </span>std_sock = socket.into_std();
+<a href=#850 id=850 data-nosnippet>850</a>            handle.spawn_blocking(<span class="kw">move </span>|| {
+<a href=#851 id=851 data-nosnippet>851</a>                <span class="comment">// Calls libc::close, which can block
+<a href=#852 id=852 data-nosnippet>852</a>                </span>drop(std_sock);
+<a href=#853 id=853 data-nosnippet>853</a>            });
 <a href=#854 id=854 data-nosnippet>854</a>        }
 <a href=#855 id=855 data-nosnippet>855</a>    }
 <a href=#856 id=856 data-nosnippet>856</a>}

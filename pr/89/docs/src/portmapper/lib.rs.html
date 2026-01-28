@@ -488,10 +488,10 @@
 <a href=#488 id=488 data-nosnippet>488</a>
 <a href=#489 id=489 data-nosnippet>489</a>    <span class="doccomment">/// Clears the current mapping and releases it.
 <a href=#490 id=490 data-nosnippet>490</a>    </span><span class="kw">async fn </span>invalidate_mapping(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(old_mapping) = <span class="self">self</span>.current_mapping.update(<span class="prelude-val">None</span>) {
-<a href=#492 id=492 data-nosnippet>492</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(e) = old_mapping.release().<span class="kw">await </span>{
-<a href=#493 id=493 data-nosnippet>493</a>                <span class="macro">debug!</span>(<span class="string">"failed to release mapping {e}"</span>);
-<a href=#494 id=494 data-nosnippet>494</a>            }
+<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(old_mapping) = <span class="self">self</span>.current_mapping.update(<span class="prelude-val">None</span>)
+<a href=#492 id=492 data-nosnippet>492</a>            &amp;&amp; <span class="kw">let </span><span class="prelude-val">Err</span>(e) = old_mapping.release().<span class="kw">await
+<a href=#493 id=493 data-nosnippet>493</a>        </span>{
+<a href=#494 id=494 data-nosnippet>494</a>            <span class="macro">debug!</span>(<span class="string">"failed to release mapping {e}"</span>);
 <a href=#495 id=495 data-nosnippet>495</a>        }
 <a href=#496 id=496 data-nosnippet>496</a>    }
 <a href=#497 id=497 data-nosnippet>497</a>
