@@ -488,10 +488,10 @@ impl Service {
 
     /// Clears the current mapping and releases it.
     async fn invalidate_mapping(&mut self) {
-        if let Some(old_mapping) = self.current_mapping.update(None) {
-            if let Err(e) = old_mapping.release().await {
-                debug!("failed to release mapping {e}");
-            }
+        if let Some(old_mapping) = self.current_mapping.update(None)
+            && let Err(e) = old_mapping.release().await
+        {
+            debug!("failed to release mapping {e}");
         }
     }
 

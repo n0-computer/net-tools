@@ -97,8 +97,8 @@ impl Mapping {
 
         // if we are trying to get a specific external port, try this first. If this fails, default
         // to try to get any port
-        if let Some(external_port) = preferred_port {
-            if gateway
+        if let Some(external_port) = preferred_port
+            && gateway
                 .add_port(
                     protocol,
                     external_port.into(),
@@ -108,14 +108,13 @@ impl Mapping {
                 )
                 .await
                 .is_ok()
-            {
-                return Ok(Mapping {
-                    protocol,
-                    gateway,
-                    external_ip,
-                    external_port,
-                });
-            }
+        {
+            return Ok(Mapping {
+                protocol,
+                gateway,
+                external_ip,
+                external_port,
+            });
         }
 
         let external_port = gateway

@@ -92,23 +92,21 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
         WireMessage::InterfaceMulticastAddr(_) => true,
         WireMessage::Interface(_) => false,
         WireMessage::InterfaceAddr(msg) => {
-            if let Some(addr) = msg.addrs.get(RTAX_IFP as usize) {
-                if let Some(name) = addr.name() {
-                    if !is_interesting_interface(name) {
-                        return false;
-                    }
-                }
+            if let Some(addr) = msg.addrs.get(RTAX_IFP as usize)
+                && let Some(name) = addr.name()
+                && !is_interesting_interface(name)
+            {
+                return false;
             }
             true
         }
         WireMessage::Route(msg) => {
             // Ignore local unicast
-            if let Some(addr) = msg.addrs.get(RTAX_DST as usize) {
-                if let Some(ip) = addr.ip() {
-                    if is_link_local(ip) {
-                        return false;
-                    }
-                }
+            if let Some(addr) = msg.addrs.get(RTAX_DST as usize)
+                && let Some(ip) = addr.ip()
+                && is_link_local(ip)
+            {
+                return false;
             }
 
             true

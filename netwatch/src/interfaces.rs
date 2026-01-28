@@ -196,10 +196,10 @@ impl fmt::Display for State {
         ifaces.sort_by_key(|iface| iface.iface.index);
         for iface in ifaces {
             write!(f, "{iface}")?;
-            if let Some(ref default_if) = self.default_route_interface {
-                if iface.name() == default_if {
-                    write!(f, " (default)")?;
-                }
+            if let Some(ref default_if) = self.default_route_interface
+                && iface.name() == default_if
+            {
+                write!(f, " (default)")?;
             }
             if f.alternate() {
                 writeln!(f)?;
