@@ -781,8 +781,7 @@ dependencies = [
 [[package]]
 name = "iroh-quinn-udp"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f981dadd5a072a9e0efcd24bdcc388e570073f7e51b33505ceb1ef4668c80c86"
+source = "git+https://github.com/n0-computer/quinn?branch=max-transmit-per-path#01a7654ddebbc032d43717d175fff3c113ed1303"
 dependencies = [
  "cfg_aliases",
  "libc",

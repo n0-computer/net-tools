@@ -464,9 +464,9 @@ impl UdpSocket {
     ///
     /// This is 1 if the platform doesn't support GSO. Subject to change if errors are detected
     /// while using GSO.
-    pub fn max_gso_segments(&self) -> NonZeroUsize {
+    pub fn max_gso_segments(&self, destination: &SocketAddr) -> NonZeroUsize {
         let guard = self.socket.read().unwrap();
-        guard.max_gso_segments()
+        guard.max_gso_segments(destination)
     }
 
     /// The number of segments to read when GRO is enabled. Used as a factor to
@@ -688,7 +688,6 @@ enum SocketState {
         addr: SocketAddr,
     },
     Closed {
-        last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
     },
@@ -771,7 +770,6 @@ impl SocketState {
         let (addr, closed_state) = match self {
             Self::Connected { state, addr, .. } => {
                 let s = SocketState::Closed {
-                    last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
                 };
@@ -797,7 +795,6 @@ impl SocketState {
         match self {
             Self::Connected { state, .. } => {
                 let s = SocketState::Closed {
-                    last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
                 };
@@ -819,13 +816,10 @@ impl SocketState {
         }
     }
 
-    fn max_gso_segments(&self) -> NonZeroUsize {
+    fn max_gso_segments(&self, destination: &SocketAddr) -> NonZeroUsize {
         match self {
-            Self::Connected { state, .. } => state.max_gso_segments(),
-            Self::Closed {
-                last_max_gso_segments,
-                ..
-            } => *last_max_gso_segments,
+            Self::Connected { state, .. } => state.max_gso_segments(destination),
+            Self::Closed { .. } => NonZeroUsize::MIN,
         }
     }
 
