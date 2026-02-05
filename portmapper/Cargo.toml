@@ -43,7 +43,7 @@ tower-layer = "0.3.3"
 
 [dev-dependencies]
 ntest = "0.9"
-rand_chacha = "0.9"
+rand_chacha = "0.10"
 tokio = { version = "1", features = ["io-util", "sync", "rt", "net", "fs", "macros", "time", "test-util"] }
 
 [features]
