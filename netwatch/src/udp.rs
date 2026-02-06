@@ -738,10 +738,6 @@ impl SocketState {
             socket.set_only_v6(true)?;
         }
 
-        // Allow rebinding to the same port if the previous socket hasn't fully closed yet.
-        // This is particularly needed under Wine where socket close may not be instantaneous.
-        socket.set_reuse_address(true)?;
-
         // Binding must happen before calling quinn, otherwise `local_addr`
         // is not yet available on all OSes.
         socket.bind(&addr.into())?;
