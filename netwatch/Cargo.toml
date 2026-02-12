@@ -35,7 +35,7 @@ tracing = "0.1"
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 quinn-udp = { package = "iroh-quinn-udp", version = "0.8" }
-libc = "0.2.139"
+libc = "0.2.181"
 netdev = "0.40.0"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = [
