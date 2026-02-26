@@ -292,6 +292,16 @@ impl State {
             }
         }
 
+        // Check for new interesting interfaces not present in old state
+        for (iname, i) in &self.interfaces {
+            if !is_interesting_interface(i.name()) {
+                continue;
+            }
+            if !old.interfaces.contains_key(iname) {
+                return true;
+            }
+        }
+
         false
     }
 }
@@ -428,6 +438,33 @@ mod tests {
     use std::net::Ipv6Addr;
 
     use super::*;
+
+    #[test]
+    fn test_is_major_change_identical() {
+        let a = State::fake();
+        let b = State::fake();
+        assert!(!a.is_major_change(&b));
+    }
+
+    #[test]
+    fn test_is_major_change_new_interface_added() {
+        let old = State::fake();
+        let mut new = State::fake();
+        // Add a new interesting interface to new state
+        let mut iface = Interface::fake();
+        iface.iface.index = 10;
+        iface.iface.name = "eth1".to_string();
+        new.interfaces.insert("eth1".to_string(), iface);
+        assert!(new.is_major_change(&old));
+    }
+
+    #[test]
+    fn test_is_major_change_interface_removed() {
+        let old = State::fake();
+        let mut new = State::fake();
+        new.interfaces.clear();
+        assert!(new.is_major_change(&old));
+    }
 
     #[tokio::test]
     async fn test_default_route() {
