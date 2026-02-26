@@ -279,9 +279,23 @@ impl UdpSocket {
     ///
     /// Returns an error if the rebind is needed, but failed.
     fn maybe_rebind(&self) -> io::Result<()> {
-        if self.is_broken() {
-            self.rebind()?;
+        if !self.is_broken() {
+            return Ok(());
         }
+
+        let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
+
+        // Re-check after acquiring the write lock — another caller may have
+        // already completed the rebind while we were waiting.
+        if !self.is_broken() {
+            return Ok(());
+        }
+
+        guard.rebind()?;
+        self.is_broken
+            .store(false, std::sync::atomic::Ordering::Release);
+        drop(guard);
+        self.wake_all();
         Ok(())
     }
 
