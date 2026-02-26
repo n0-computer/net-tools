@@ -427,10 +427,16 @@ fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = 
         true
     }
 
-    let a: Vec<_> = a.filter(is_interesting).collect();
-    let b: Vec<_> = b.filter(is_interesting).collect();
+    let mut a = a.filter(is_interesting);
+    let mut b = b.filter(is_interesting);
 
-    a == b
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a == b => continue,
+            _ => return false,
+        }
+    }
 }
 
 #[cfg(test)]
