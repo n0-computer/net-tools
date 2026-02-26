@@ -50,11 +50,8 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
     let res = android::default_route().await;
 
     #[cfg(not(target_os = "android"))]
-    let res = match tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        sane::default_route(),
-    )
-    .await
+    let res = match tokio::time::timeout(std::time::Duration::from_secs(5), sane::default_route())
+        .await
     {
         Ok(res) => res,
         Err(_) => {

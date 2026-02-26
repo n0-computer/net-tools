@@ -191,7 +191,11 @@ impl UdpSocket {
 
     /// Closes the socket, and waits for the underlying `libc::close` call to be finished.
     pub async fn close(&self) {
-        let socket = self.socket.write().unwrap_or_else(|e| e.into_inner()).close();
+        let socket = self
+            .socket
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .close();
         self.wake_all();
         if let Some((sock, _)) = socket {
             let std_sock = sock.into_std();
@@ -209,7 +213,10 @@ impl UdpSocket {
 
     /// Check if this socket is closed.
     pub fn is_closed(&self) -> bool {
-        self.socket.read().unwrap_or_else(|e| e.into_inner()).is_closed()
+        self.socket
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_closed()
     }
 
     /// Handle potential read errors, updating internal state.
@@ -867,7 +874,11 @@ impl SocketState {
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
-        if let Some((socket, _)) = self.socket.write().unwrap_or_else(|e| e.into_inner()).close()
+        if let Some((socket, _)) = self
+            .socket
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .close()
             && let Ok(handle) = tokio::runtime::Handle::try_current()
         {
             // No wakeup after dropping write lock here, since we're getting dropped.
