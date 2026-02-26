@@ -188,6 +188,9 @@ pub struct State {
     ///
     /// When set, its value is the map key into `interface` and `interface_ips`.
     pub default_route_interface: Option<String>,
+
+    /// Monotonic timestamp used to force [`n0_watcher::Watchable`] notifications.
+    pub last_updated: n0_future::time::Instant,
 }
 
 impl fmt::Display for State {
@@ -251,6 +254,7 @@ impl State {
             have_v6,
             is_expensive: false,
             default_route_interface,
+            last_updated: n0_future::time::Instant::now(),
         }
     }
 
@@ -267,7 +271,18 @@ impl State {
             have_v4: true,
             is_expensive: false,
             default_route_interface: Some(ifname),
+            last_updated: n0_future::time::Instant::now(),
         }
+    }
+
+    /// Compares network state ignoring `last_updated`.
+    pub fn eq_ignoring_timestamp(&self, other: &State) -> bool {
+        self.interfaces == other.interfaces
+            && self.local_addresses == other.local_addresses
+            && self.have_v6 == other.have_v6
+            && self.have_v4 == other.have_v4
+            && self.is_expensive == other.is_expensive
+            && self.default_route_interface == other.default_route_interface
     }
 
     /// Is this a major change compared to the `old` one?.
