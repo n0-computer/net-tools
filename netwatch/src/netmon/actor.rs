@@ -147,7 +147,7 @@ impl Actor {
         let old_state = &self.interface_state.get();
 
         // No major changes, continue on
-        if !time_jumped && old_state == &new_state {
+        if !time_jumped && old_state.eq_ignoring_timestamp(&new_state) {
             debug!("no changes detected");
             return;
         }
