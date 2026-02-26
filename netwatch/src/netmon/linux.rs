@@ -8,6 +8,7 @@ use libc::{
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
 use n0_error::stack_error;
+use n0_future::task::AbortOnDropHandle;
 use n0_future::{
     Stream, StreamExt,
     time::{self, Duration},
@@ -16,7 +17,6 @@ use netlink_packet_core::{NetlinkMessage, NetlinkPayload};
 use netlink_packet_route::{RouteNetlinkMessage, address, route};
 use netlink_sys::{AsyncSocket, SocketAddr};
 use tokio::sync::mpsc;
-use n0_future::task::AbortOnDropHandle;
 use tracing::{trace, warn};
 
 use super::actor::NetworkMessage;
@@ -125,16 +125,14 @@ async fn process_messages(
                         match dst {
                             route::RouteAddress::Inet(addr) => {
                                 if (table == 255 || table == 254)
-                                    && (addr.is_multicast()
-                                        || is_link_local(IpAddr::V4(*addr)))
+                                    && (addr.is_multicast() || is_link_local(IpAddr::V4(*addr)))
                                 {
                                     continue;
                                 }
                             }
                             route::RouteAddress::Inet6(addr) => {
                                 if (table == 255 || table == 254)
-                                    && (addr.is_multicast()
-                                        || is_link_local(IpAddr::V6(*addr)))
+                                    && (addr.is_multicast() || is_link_local(IpAddr::V6(*addr)))
                                 {
                                     continue;
                                 }
@@ -186,8 +184,7 @@ impl RouteMonitor {
                 match setup_netlink() {
                     Ok((_conn_handle, mut messages)) => {
                         backoff = Duration::from_secs(1);
-                        let should_reconnect =
-                            process_messages(&sender, &mut messages).await;
+                        let should_reconnect = process_messages(&sender, &mut messages).await;
                         // _conn_handle dropped here, aborting the connection task
                         if !should_reconnect {
                             break;
