@@ -40,7 +40,7 @@ impl RouteMonitor {
             trace!("AF_ROUTE monitor started");
 
             // TODO: cleaner shutdown
-            let mut buffer = vec![0u8; 2048];
+            let mut buffer = vec![0u8; 8192];
             loop {
                 match socket.read(&mut buffer).await {
                     Ok(read) => {
