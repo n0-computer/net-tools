@@ -80,7 +80,7 @@ impl UdpSocket {
     /// Rebind the underlying socket.
     pub fn rebind(&self) -> io::Result<()> {
         {
-            let mut guard = self.socket.write().unwrap();
+            let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
             guard.rebind()?;
 
             // Clear errors
@@ -172,7 +172,7 @@ impl UdpSocket {
     /// `addr`.
     pub fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         trace!(%addr, "connecting");
-        let guard = self.socket.read().unwrap();
+        let guard = self.socket.read().unwrap_or_else(|e| e.into_inner());
         let (socket_tokio, _state) = guard.try_get_connected()?;
 
         let sock_ref = socket2::SockRef::from(&socket_tokio);
@@ -183,7 +183,7 @@ impl UdpSocket {
 
     /// Returns the local address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        let guard = self.socket.read().unwrap();
+        let guard = self.socket.read().unwrap_or_else(|e| e.into_inner());
         let (socket, _state) = guard.try_get_connected()?;
 
         socket.local_addr()
@@ -191,7 +191,11 @@ impl UdpSocket {
 
     /// Closes the socket, and waits for the underlying `libc::close` call to be finished.
     pub async fn close(&self) {
-        let socket = self.socket.write().unwrap().close();
+        let socket = self
+            .socket
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .close();
         self.wake_all();
         if let Some((sock, _)) = socket {
             let std_sock = sock.into_std();
@@ -209,7 +213,10 @@ impl UdpSocket {
 
     /// Check if this socket is closed.
     pub fn is_closed(&self) -> bool {
-        self.socket.read().unwrap().is_closed()
+        self.socket
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_closed()
     }
 
     /// Handle potential read errors, updating internal state.
@@ -279,9 +286,23 @@ impl UdpSocket {
     ///
     /// Returns an error if the rebind is needed, but failed.
     fn maybe_rebind(&self) -> io::Result<()> {
-        if self.is_broken() {
-            self.rebind()?;
+        if !self.is_broken() {
+            return Ok(());
         }
+
+        let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
+
+        // Re-check after acquiring the write lock — another caller may have
+        // already completed the rebind while we were waiting.
+        if !self.is_broken() {
+            return Ok(());
+        }
+
+        guard.rebind()?;
+        self.is_broken
+            .store(false, std::sync::atomic::Ordering::Release);
+        drop(guard);
+        self.wake_all();
         Ok(())
     }
 
@@ -455,7 +476,7 @@ impl UdpSocket {
     ///
     /// Returns `false` on targets which employ e.g. the `IPV6_DONTFRAG` socket option.
     pub fn may_fragment(&self) -> bool {
-        let guard = self.socket.read().unwrap();
+        let guard = self.socket.read().unwrap_or_else(|e| e.into_inner());
         guard.may_fragment()
     }
 
@@ -465,7 +486,7 @@ impl UdpSocket {
     /// This is 1 if the platform doesn't support GSO. Subject to change if errors are detected
     /// while using GSO.
     pub fn max_gso_segments(&self) -> NonZeroUsize {
-        let guard = self.socket.read().unwrap();
+        let guard = self.socket.read().unwrap_or_else(|e| e.into_inner());
         guard.max_gso_segments()
     }
 
@@ -474,7 +495,7 @@ impl UdpSocket {
     ///
     /// Returns 1 if the platform doesn't support GRO.
     pub fn gro_segments(&self) -> NonZeroUsize {
-        let guard = self.socket.read().unwrap();
+        let guard = self.socket.read().unwrap_or_else(|e| e.into_inner());
         guard.gro_segments()
     }
 }
@@ -853,7 +874,11 @@ impl SocketState {
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
-        if let Some((socket, _)) = self.socket.write().unwrap().close()
+        if let Some((socket, _)) = self
+            .socket
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .close()
             && let Ok(handle) = tokio::runtime::Handle::try_current()
         {
             // No wakeup after dropping write lock here, since we're getting dropped.
