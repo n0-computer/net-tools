@@ -495,10 +495,7 @@ mod tests {
         ));
 
         // both empty
-        assert!(prefixes_major_equal(
-            std::iter::empty(),
-            std::iter::empty(),
-        ));
+        assert!(prefixes_major_equal(std::iter::empty(), std::iter::empty(),));
 
         // different prefixes
         assert!(!prefixes_major_equal(

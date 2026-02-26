@@ -1033,7 +1033,10 @@ mod tests {
         let rib_type = libc::NET_RT_IFLIST;
 
         let msgs = parse_rib(rib_type, &buf).unwrap();
-        assert!(msgs.is_empty(), "version-mismatched message should be skipped");
+        assert!(
+            msgs.is_empty(),
+            "version-mismatched message should be skipped"
+        );
     }
 
     #[test]
