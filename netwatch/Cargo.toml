@@ -57,7 +57,7 @@ objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-netlink-packet-route = "0.28.0"
+netlink-packet-route = "0.29.0"
 netlink-packet-core = "0.8.1"
 netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
