@@ -129,15 +129,15 @@ impl CallbackHandler {
         handle: UnicastCallbackHandle,
     ) -> Result<(), Error> {
         trace!("unregistering unicast callback");
-        if self
-            .unicast_callbacks
-            .remove(&(handle.0.0 as isize))
-            .is_some()
-        {
+        let key = handle.0.0 as isize;
+        if self.unicast_callbacks.contains_key(&key) {
+            // Cancel first to ensure no in-flight callbacks reference the Arc,
+            // then remove the Arc from the map.
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
                     .ok()?;
             }
+            self.unicast_callbacks.remove(&key);
         }
 
         Ok(())
@@ -171,15 +171,15 @@ impl CallbackHandler {
         handle: RouteCallbackHandle,
     ) -> Result<(), Error> {
         trace!("unregistering route callback");
-        if self
-            .route_callbacks
-            .remove(&(handle.0.0 as isize))
-            .is_some()
-        {
+        let key = handle.0.0 as isize;
+        if self.route_callbacks.contains_key(&key) {
+            // Cancel first to ensure no in-flight callbacks reference the Arc,
+            // then remove the Arc from the map.
             unsafe {
                 windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
                     .ok()?;
             }
+            self.route_callbacks.remove(&key);
         }
 
         Ok(())

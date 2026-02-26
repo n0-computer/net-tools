@@ -461,7 +461,8 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
         ensure!(l != 0, RouteError::InvalidMessage);
         ensure!(b.len() >= l as usize, RouteError::MessageTooShort);
         if b[2] as i32 != ROUTING_STACK.rtm_version {
-            // b = b[l:];
+            b = &b[l as usize..];
+            nskips += 1;
             continue;
         }
         match ROUTING_STACK.wire_formats.get(&(b[3] as i32)) {
@@ -1014,6 +1015,29 @@ fn parse_default_addr(b: &[u8]) -> Result<Addr, RouteError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_rib_skips_version_mismatch() {
+        let wrong_version = (ROUTING_STACK.rtm_version as u8).wrapping_add(1);
+        let msg_len: u16 = 8;
+        let mut buf = vec![0u8; msg_len as usize];
+        buf[..2].copy_from_slice(&msg_len.to_ne_bytes());
+        buf[2] = wrong_version;
+        buf[3] = 0; // arbitrary type
+
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let rib_type = libc::NET_RT_IFLIST2;
+        #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
+        let rib_type = libc::NET_RT_IFLIST;
+        #[cfg(target_os = "openbsd")]
+        let rib_type = libc::NET_RT_IFLIST;
+
+        let msgs = parse_rib(rib_type, &buf).unwrap();
+        assert!(
+            msgs.is_empty(),
+            "version-mismatched message should be skipped"
+        );
+    }
 
     #[test]
     fn test_fetch_parse_routing_table() {

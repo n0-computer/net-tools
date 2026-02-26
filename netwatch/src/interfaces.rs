@@ -292,6 +292,16 @@ impl State {
             }
         }
 
+        // Check for new interesting interfaces not present in old state
+        for (iname, i) in &self.interfaces {
+            if !is_interesting_interface(i.name()) {
+                continue;
+            }
+            if !old.interfaces.contains_key(iname) {
+                return true;
+            }
+        }
+
         false
     }
 }
@@ -417,16 +427,16 @@ fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = 
         true
     }
 
-    let a = a.filter(is_interesting);
-    let b = b.filter(is_interesting);
+    let mut a = a.filter(is_interesting);
+    let mut b = b.filter(is_interesting);
 
-    for (a, b) in a.zip(b) {
-        if a != b {
-            return false;
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a == b => continue,
+            _ => return false,
         }
     }
-
-    true
 }
 
 #[cfg(test)]
@@ -434,6 +444,33 @@ mod tests {
     use std::net::Ipv6Addr;
 
     use super::*;
+
+    #[test]
+    fn test_is_major_change_identical() {
+        let a = State::fake();
+        let b = State::fake();
+        assert!(!a.is_major_change(&b));
+    }
+
+    #[test]
+    fn test_is_major_change_new_interface_added() {
+        let old = State::fake();
+        let mut new = State::fake();
+        // Add a new interesting interface to new state
+        let mut iface = Interface::fake();
+        iface.iface.index = 10;
+        iface.iface.name = "eth1".to_string();
+        new.interfaces.insert("eth1".to_string(), iface);
+        assert!(new.is_major_change(&old));
+    }
+
+    #[test]
+    fn test_is_major_change_interface_removed() {
+        let old = State::fake();
+        let mut new = State::fake();
+        new.interfaces.clear();
+        assert!(new.is_major_change(&old));
+    }
 
     #[tokio::test]
     async fn test_default_route() {
@@ -447,6 +484,42 @@ mod tests {
     async fn test_likely_home_router() {
         let home_router = HomeRouter::new().expect("missing home router");
         println!("home router: {home_router:#?}");
+    }
+
+    #[test]
+    fn test_prefixes_major_equal() {
+        use std::net::Ipv4Addr;
+
+        let a1 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(192, 168, 0, 1), 24).unwrap());
+        let a2 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(10, 0, 0, 1), 8).unwrap());
+        let a3 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(172, 16, 0, 1), 16).unwrap());
+
+        // equal lists
+        assert!(prefixes_major_equal(
+            vec![a1.clone(), a2.clone()].into_iter(),
+            vec![a1.clone(), a2.clone()].into_iter(),
+        ));
+
+        // both empty
+        assert!(prefixes_major_equal(std::iter::empty(), std::iter::empty(),));
+
+        // different prefixes
+        assert!(!prefixes_major_equal(
+            vec![a1.clone()].into_iter(),
+            vec![a2.clone()].into_iter(),
+        ));
+
+        // a has extra prefix
+        assert!(!prefixes_major_equal(
+            vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
+            vec![a1.clone(), a2.clone()].into_iter(),
+        ));
+
+        // b has extra prefix
+        assert!(!prefixes_major_equal(
+            vec![a1.clone(), a2.clone()].into_iter(),
+            vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
+        ));
     }
 
     #[test]

@@ -90,33 +90,32 @@ impl Actor {
     pub(super) async fn run(mut self) {
         const DEBOUNCE: Duration = Duration::from_millis(250);
 
-        let mut last_event = None;
-        let mut debounce_interval = time::interval(DEBOUNCE);
+        let mut pending_change = false;
+        let mut pending_time_jump = false;
+        let debounce = time::sleep(DEBOUNCE);
+        tokio::pin!(debounce);
         let mut wall_time_interval = time::interval(POLL_WALL_TIME_INTERVAL);
 
         loop {
             tokio::select! {
-                biased;
-
-                _ = debounce_interval.tick() => {
-                    if let Some(time_jumped) = last_event.take() {
-                        self.handle_potential_change(time_jumped).await;
-                    }
+                _ = &mut debounce, if pending_change || pending_time_jump => {
+                    self.handle_potential_change(pending_time_jump).await;
+                    pending_change = false;
+                    pending_time_jump = false;
                 }
                 _ = wall_time_interval.tick() => {
                     trace!("tick: wall_time_interval");
                     if self.check_wall_time_advance() {
-                        // Trigger potential change
-                        last_event.replace(true);
-                        debounce_interval.reset_immediately();
+                        pending_time_jump = true;
+                        debounce.as_mut().reset(Instant::now() + DEBOUNCE);
                     }
                 }
                 event = self.mon_receiver.recv() => {
                     match event {
                         Some(NetworkMessage::Change) => {
                             trace!("network activity detected");
-                            last_event.replace(false);
-                            debounce_interval.reset_immediately();
+                            pending_change = true;
+                            debounce.as_mut().reset(Instant::now() + DEBOUNCE);
                         }
                         None => {
                             debug!("shutting down, network monitor receiver gone");
@@ -128,8 +127,8 @@ impl Actor {
                     match msg {
                         Some(ActorMessage::NetworkChange) => {
                             trace!("external network activity detected");
-                            last_event.replace(false);
-                            debounce_interval.reset_immediately();
+                            pending_change = true;
+                            debounce.as_mut().reset(Instant::now() + DEBOUNCE);
                         }
                         None => {
                             debug!("shutting down, actor receiver gone");
