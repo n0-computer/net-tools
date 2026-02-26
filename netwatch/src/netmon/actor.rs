@@ -90,7 +90,8 @@ impl Actor {
     pub(super) async fn run(mut self) {
         const DEBOUNCE: Duration = Duration::from_millis(250);
 
-        let mut last_event = None;
+        let mut pending_change = false;
+        let mut pending_time_jump = false;
         let mut debounce_interval = time::interval(DEBOUNCE);
         let mut wall_time_interval = time::interval(POLL_WALL_TIME_INTERVAL);
 
@@ -99,15 +100,16 @@ impl Actor {
                 biased;
 
                 _ = debounce_interval.tick() => {
-                    if let Some(time_jumped) = last_event.take() {
-                        self.handle_potential_change(time_jumped).await;
+                    if pending_change || pending_time_jump {
+                        self.handle_potential_change(pending_time_jump).await;
+                        pending_change = false;
+                        pending_time_jump = false;
                     }
                 }
                 _ = wall_time_interval.tick() => {
                     trace!("tick: wall_time_interval");
                     if self.check_wall_time_advance() {
-                        // Trigger potential change
-                        last_event.replace(true);
+                        pending_time_jump = true;
                         debounce_interval.reset_immediately();
                     }
                 }
@@ -115,7 +117,7 @@ impl Actor {
                     match event {
                         Some(NetworkMessage::Change) => {
                             trace!("network activity detected");
-                            last_event.replace(false);
+                            pending_change = true;
                             debounce_interval.reset_immediately();
                         }
                         None => {
@@ -128,7 +130,7 @@ impl Actor {
                     match msg {
                         Some(ActorMessage::NetworkChange) => {
                             trace!("external network activity detected");
-                            last_event.replace(false);
+                            pending_change = true;
                             debounce_interval.reset_immediately();
                         }
                         None => {
