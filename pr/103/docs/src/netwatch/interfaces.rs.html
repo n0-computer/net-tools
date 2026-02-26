@@ -495,42 +495,39 @@
 <a href=#495 id=495 data-nosnippet>495</a>        ));
 <a href=#496 id=496 data-nosnippet>496</a>
 <a href=#497 id=497 data-nosnippet>497</a>        <span class="comment">// both empty
-<a href=#498 id=498 data-nosnippet>498</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(
-<a href=#499 id=499 data-nosnippet>499</a>            std::iter::empty(),
-<a href=#500 id=500 data-nosnippet>500</a>            std::iter::empty(),
-<a href=#501 id=501 data-nosnippet>501</a>        ));
-<a href=#502 id=502 data-nosnippet>502</a>
-<a href=#503 id=503 data-nosnippet>503</a>        <span class="comment">// different prefixes
-<a href=#504 id=504 data-nosnippet>504</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#505 id=505 data-nosnippet>505</a>            <span class="macro">vec!</span>[a1.clone()].into_iter(),
-<a href=#506 id=506 data-nosnippet>506</a>            <span class="macro">vec!</span>[a2.clone()].into_iter(),
-<a href=#507 id=507 data-nosnippet>507</a>        ));
-<a href=#508 id=508 data-nosnippet>508</a>
-<a href=#509 id=509 data-nosnippet>509</a>        <span class="comment">// a has extra prefix
-<a href=#510 id=510 data-nosnippet>510</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#511 id=511 data-nosnippet>511</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
-<a href=#512 id=512 data-nosnippet>512</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#513 id=513 data-nosnippet>513</a>        ));
-<a href=#514 id=514 data-nosnippet>514</a>
-<a href=#515 id=515 data-nosnippet>515</a>        <span class="comment">// b has extra prefix
-<a href=#516 id=516 data-nosnippet>516</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#517 id=517 data-nosnippet>517</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#518 id=518 data-nosnippet>518</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
-<a href=#519 id=519 data-nosnippet>519</a>        ));
-<a href=#520 id=520 data-nosnippet>520</a>    }
-<a href=#521 id=521 data-nosnippet>521</a>
-<a href=#522 id=522 data-nosnippet>522</a>    <span class="attr">#[test]
-<a href=#523 id=523 data-nosnippet>523</a>    </span><span class="kw">fn </span>test_is_usable_v6() {
-<a href=#524 id=524 data-nosnippet>524</a>        <span class="kw">let </span>loopback = Ipv6Addr::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0x1</span>);
-<a href=#525 id=525 data-nosnippet>525</a>        <span class="macro">assert!</span>(!is_usable_v6(<span class="kw-2">&amp;</span>loopback.into()));
+<a href=#498 id=498 data-nosnippet>498</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(std::iter::empty(), std::iter::empty(),));
+<a href=#499 id=499 data-nosnippet>499</a>
+<a href=#500 id=500 data-nosnippet>500</a>        <span class="comment">// different prefixes
+<a href=#501 id=501 data-nosnippet>501</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#502 id=502 data-nosnippet>502</a>            <span class="macro">vec!</span>[a1.clone()].into_iter(),
+<a href=#503 id=503 data-nosnippet>503</a>            <span class="macro">vec!</span>[a2.clone()].into_iter(),
+<a href=#504 id=504 data-nosnippet>504</a>        ));
+<a href=#505 id=505 data-nosnippet>505</a>
+<a href=#506 id=506 data-nosnippet>506</a>        <span class="comment">// a has extra prefix
+<a href=#507 id=507 data-nosnippet>507</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#508 id=508 data-nosnippet>508</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
+<a href=#509 id=509 data-nosnippet>509</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#510 id=510 data-nosnippet>510</a>        ));
+<a href=#511 id=511 data-nosnippet>511</a>
+<a href=#512 id=512 data-nosnippet>512</a>        <span class="comment">// b has extra prefix
+<a href=#513 id=513 data-nosnippet>513</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#514 id=514 data-nosnippet>514</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#515 id=515 data-nosnippet>515</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
+<a href=#516 id=516 data-nosnippet>516</a>        ));
+<a href=#517 id=517 data-nosnippet>517</a>    }
+<a href=#518 id=518 data-nosnippet>518</a>
+<a href=#519 id=519 data-nosnippet>519</a>    <span class="attr">#[test]
+<a href=#520 id=520 data-nosnippet>520</a>    </span><span class="kw">fn </span>test_is_usable_v6() {
+<a href=#521 id=521 data-nosnippet>521</a>        <span class="kw">let </span>loopback = Ipv6Addr::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0x1</span>);
+<a href=#522 id=522 data-nosnippet>522</a>        <span class="macro">assert!</span>(!is_usable_v6(<span class="kw-2">&amp;</span>loopback.into()));
+<a href=#523 id=523 data-nosnippet>523</a>
+<a href=#524 id=524 data-nosnippet>524</a>        <span class="kw">let </span>link_local = Ipv6Addr::new(<span class="number">0xfe80</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0xcbc9</span>, <span class="number">0x6aff</span>, <span class="number">0x5b07</span>, <span class="number">0x4a9e</span>);
+<a href=#525 id=525 data-nosnippet>525</a>        <span class="macro">assert!</span>(!is_usable_v6(<span class="kw-2">&amp;</span>link_local.into()));
 <a href=#526 id=526 data-nosnippet>526</a>
-<a href=#527 id=527 data-nosnippet>527</a>        <span class="kw">let </span>link_local = Ipv6Addr::new(<span class="number">0xfe80</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0xcbc9</span>, <span class="number">0x6aff</span>, <span class="number">0x5b07</span>, <span class="number">0x4a9e</span>);
-<a href=#528 id=528 data-nosnippet>528</a>        <span class="macro">assert!</span>(!is_usable_v6(<span class="kw-2">&amp;</span>link_local.into()));
+<a href=#527 id=527 data-nosnippet>527</a>        <span class="kw">let </span>relay_use1 = Ipv6Addr::new(<span class="number">0x2a01</span>, <span class="number">0x4ff</span>, <span class="number">0xf0</span>, <span class="number">0xc4a1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0x1</span>);
+<a href=#528 id=528 data-nosnippet>528</a>        <span class="macro">assert!</span>(is_usable_v6(<span class="kw-2">&amp;</span>relay_use1.into()));
 <a href=#529 id=529 data-nosnippet>529</a>
-<a href=#530 id=530 data-nosnippet>530</a>        <span class="kw">let </span>relay_use1 = Ipv6Addr::new(<span class="number">0x2a01</span>, <span class="number">0x4ff</span>, <span class="number">0xf0</span>, <span class="number">0xc4a1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0x1</span>);
-<a href=#531 id=531 data-nosnippet>531</a>        <span class="macro">assert!</span>(is_usable_v6(<span class="kw-2">&amp;</span>relay_use1.into()));
-<a href=#532 id=532 data-nosnippet>532</a>
-<a href=#533 id=533 data-nosnippet>533</a>        <span class="kw">let </span>random_2603 = Ipv6Addr::new(<span class="number">0x2603</span>, <span class="number">0x3ff</span>, <span class="number">0xf1</span>, <span class="number">0xc3aa</span>, <span class="number">0x1</span>, <span class="number">0x2</span>, <span class="number">0x3</span>, <span class="number">0x1</span>);
-<a href=#534 id=534 data-nosnippet>534</a>        <span class="macro">assert!</span>(is_usable_v6(<span class="kw-2">&amp;</span>random_2603.into()));
-<a href=#535 id=535 data-nosnippet>535</a>    }
-<a href=#536 id=536 data-nosnippet>536</a>}</code></pre></div></section></main></body></html>
+<a href=#530 id=530 data-nosnippet>530</a>        <span class="kw">let </span>random_2603 = Ipv6Addr::new(<span class="number">0x2603</span>, <span class="number">0x3ff</span>, <span class="number">0xf1</span>, <span class="number">0xc3aa</span>, <span class="number">0x1</span>, <span class="number">0x2</span>, <span class="number">0x3</span>, <span class="number">0x1</span>);
+<a href=#531 id=531 data-nosnippet>531</a>        <span class="macro">assert!</span>(is_usable_v6(<span class="kw-2">&amp;</span>random_2603.into()));
+<a href=#532 id=532 data-nosnippet>532</a>    }
+<a href=#533 id=533 data-nosnippet>533</a>}</code></pre></div></section></main></body></html>
