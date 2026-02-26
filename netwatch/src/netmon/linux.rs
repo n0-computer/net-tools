@@ -49,6 +49,7 @@ macro_rules! get_nla {
     };
 }
 
+#[allow(clippy::type_complexity)]
 fn setup_netlink() -> std::io::Result<(
     AbortOnDropHandle<()>,
     impl Stream<Item = (NetlinkMessage<RouteNetlinkMessage>, SocketAddr)>,

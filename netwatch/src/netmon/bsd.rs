@@ -54,10 +54,10 @@ impl RouteMonitor {
                             &buffer[..read],
                         ) {
                             Ok(msgs) => {
-                                if contains_interesting_message(&msgs) {
-                                    if sender.send(NetworkMessage::Change).await.is_err() {
-                                        break;
-                                    }
+                                if contains_interesting_message(&msgs)
+                                    && sender.send(NetworkMessage::Change).await.is_err()
+                                {
+                                    break;
                                 }
                             }
                             Err(err) => {
