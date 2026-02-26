@@ -18,11 +18,15 @@ impl fmt::Display for Interface {
 
 impl Interface {
     async fn new() -> Self {
-        let is_up = Self::is_up();
+        let is_up = match Self::is_up() {
+            Some(v) => v,
+            None => {
+                tracing::warn!("navigator.onLine unavailable, assuming up");
+                true
+            }
+        };
         tracing::debug!(onLine = is_up, "Fetched globalThis.navigator.onLine");
-        Self {
-            is_up: is_up.unwrap_or(true),
-        }
+        Self { is_up }
     }
 
     fn is_up() -> Option<bool> {
