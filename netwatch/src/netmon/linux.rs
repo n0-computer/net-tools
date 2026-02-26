@@ -116,16 +116,12 @@ impl RouteMonitor {
                             if let Some(dst) = get_nla!(msg, route::RouteAttribute::Destination) {
                                 match dst {
                                     route::RouteAddress::Inet(addr) => {
-                                        if addr.is_multicast()
-                                            || is_link_local(IpAddr::V4(*addr))
-                                        {
+                                        if addr.is_multicast() || is_link_local(IpAddr::V4(*addr)) {
                                             continue;
                                         }
                                     }
                                     route::RouteAddress::Inet6(addr) => {
-                                        if addr.is_multicast()
-                                            || is_link_local(IpAddr::V6(*addr))
-                                        {
+                                        if addr.is_multicast() || is_link_local(IpAddr::V6(*addr)) {
                                             continue;
                                         }
                                     }
