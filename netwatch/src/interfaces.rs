@@ -417,16 +417,10 @@ fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = 
         true
     }
 
-    let a = a.filter(is_interesting);
-    let b = b.filter(is_interesting);
+    let a: Vec<_> = a.filter(is_interesting).collect();
+    let b: Vec<_> = b.filter(is_interesting).collect();
 
-    for (a, b) in a.zip(b) {
-        if a != b {
-            return false;
-        }
-    }
-
-    true
+    a == b
 }
 
 #[cfg(test)]
@@ -447,6 +441,45 @@ mod tests {
     async fn test_likely_home_router() {
         let home_router = HomeRouter::new().expect("missing home router");
         println!("home router: {home_router:#?}");
+    }
+
+    #[test]
+    fn test_prefixes_major_equal() {
+        use std::net::Ipv4Addr;
+
+        let a1 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(192, 168, 0, 1), 24).unwrap());
+        let a2 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(10, 0, 0, 1), 8).unwrap());
+        let a3 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(172, 16, 0, 1), 16).unwrap());
+
+        // equal lists
+        assert!(prefixes_major_equal(
+            vec![a1.clone(), a2.clone()].into_iter(),
+            vec![a1.clone(), a2.clone()].into_iter(),
+        ));
+
+        // both empty
+        assert!(prefixes_major_equal(
+            std::iter::empty(),
+            std::iter::empty(),
+        ));
+
+        // different prefixes
+        assert!(!prefixes_major_equal(
+            vec![a1.clone()].into_iter(),
+            vec![a2.clone()].into_iter(),
+        ));
+
+        // a has extra prefix
+        assert!(!prefixes_major_equal(
+            vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
+            vec![a1.clone(), a2.clone()].into_iter(),
+        ));
+
+        // b has extra prefix
+        assert!(!prefixes_major_equal(
+            vec![a1.clone(), a2.clone()].into_iter(),
+            vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
+        ));
     }
 
     #[test]
