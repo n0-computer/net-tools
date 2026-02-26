@@ -8,9 +8,9 @@ use libc::{
     RTNLGRP_IPV6_ROUTE, RTNLGRP_IPV6_RULE,
 };
 use n0_error::stack_error;
-use n0_future::task::AbortOnDropHandle;
 use n0_future::{
     Stream, StreamExt,
+    task::AbortOnDropHandle,
     time::{self, Duration},
 };
 use netlink_packet_core::{NetlinkMessage, NetlinkPayload};
