@@ -1,8 +1,10 @@
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{RTAX_DST, RTAX_IFP};
 use n0_error::stack_error;
-use n0_future::task::AbortOnDropHandle;
-use n0_future::time::{self, Duration};
+use n0_future::{
+    task::AbortOnDropHandle,
+    time::{self, Duration},
+};
 use tokio::{io::AsyncReadExt, sync::mpsc};
 use tracing::{trace, warn};
 
