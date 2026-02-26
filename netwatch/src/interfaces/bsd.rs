@@ -916,7 +916,10 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
         let ip = Ipv4Addr::from(octets);
         Addr::Inet4 { ip }
     } else {
-        // an old fashion, AF_UNSPEC or unknown means AF_INET
+        // BSD convention: AF_UNSPEC or unknown address family is treated as IPv4
+        if af != AF_UNSPEC && af != AF_INET {
+            tracing::warn!("unexpected address family {af} in routing message, treating as IPv4");
+        }
         let mut octets = [0u8; 4];
         if l - 1 < OFF4 {
             octets[..l - 1].copy_from_slice(&b[1..l]);

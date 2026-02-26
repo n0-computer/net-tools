@@ -40,10 +40,14 @@ impl RouteMonitor {
             trace!("AF_ROUTE monitor started");
 
             // TODO: cleaner shutdown
-            let mut buffer = vec![0u8; 8192];
+            let mut buffer = vec![0u8; 2048];
             loop {
                 match socket.read(&mut buffer).await {
                     Ok(read) => {
+                        // Grow buffer if the read filled it, up to 64KiB
+                        if read == buffer.len() && buffer.len() < 65536 {
+                            buffer.resize(buffer.len() * 2, 0);
+                        }
                         trace!("AF_ROUTE: read {} bytes", read);
                         match super::super::interfaces::bsd::parse_rib(
                             libc::NET_RT_DUMP,
