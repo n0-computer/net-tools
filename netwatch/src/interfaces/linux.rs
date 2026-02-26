@@ -119,16 +119,32 @@ mod android {
     /// We use this on Android where /proc/net/route can be missing entries or have locked-down
     /// permissions.  See also comments in <https://github.com/tailscale/tailscale/pull/666>.
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
-        let output = Command::new("/system/bin/ip")
-            .args(["route", "show", "table", "0"])
-            .kill_on_drop(true)
-            .output()
-            .await?;
-        let stdout = std::string::String::from_utf8_lossy(&output.stdout);
-        let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
-            interface_name: iface.to_string(),
-        });
-        Ok(details)
+        const IP_PATHS: &[&str] = &["/system/bin/ip", "/system/xbin/ip", "ip"];
+        for path in IP_PATHS {
+            let output = match Command::new(path)
+                .args(["route", "show", "table", "0"])
+                .kill_on_drop(true)
+                .output()
+                .await
+            {
+                Ok(output) => output,
+                Err(err) => {
+                    tracing::debug!(%path, ?err, "ip command not available, trying next");
+                    continue;
+                }
+            };
+            let stdout = std::string::String::from_utf8_lossy(&output.stdout);
+            let details = parse_android_ip_route(&stdout).map(|iface| DefaultRouteDetails {
+                interface_name: iface.to_string(),
+            });
+            return Ok(details);
+        }
+        Err(e!(Error::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "ip command not found at any known path"
+            )
+        }))
     }
 }
 
