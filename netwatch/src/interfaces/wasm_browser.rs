@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use js_sys::{JsString, Reflect};
+use n0_future::time::Instant;
 
 pub const BROWSER_INTERFACE: &str = "browserif";
 
@@ -73,6 +74,9 @@ pub struct State {
 
     /// The URL to the Proxy Autoconfig URL, if applicable.
     pub(crate) pac: Option<String>,
+
+    /// Monotonic timestamp used to force [`n0_watcher::Watchable`] notifications.
+    pub last_updated: Instant,
 }
 
 impl fmt::Display for State {
@@ -113,7 +117,19 @@ impl State {
             default_route_interface: Some(BROWSER_INTERFACE.to_string()),
             http_proxy: None,
             pac: None,
+            last_updated: Instant::now(),
         }
+    }
+
+    /// Compares network state ignoring `last_updated`.
+    pub fn eq_ignoring_timestamp(&self, other: &State) -> bool {
+        self.interfaces == other.interfaces
+            && self.have_v6 == other.have_v6
+            && self.have_v4 == other.have_v4
+            && self.is_expensive == other.is_expensive
+            && self.default_route_interface == other.default_route_interface
+            && self.http_proxy == other.http_proxy
+            && self.pac == other.pac
     }
 
     /// Is this a major change compared to the `old` one?.
