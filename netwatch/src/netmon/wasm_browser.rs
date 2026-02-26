@@ -47,7 +47,7 @@ fn add_event_listeners(f: &Function) -> Option<Listeners> {
     offline_listener.set_handle_event(f);
 
     // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/onLine#listening_for_changes_in_network_status
-    let window: EventTarget = js_sys::global().unchecked_into();
+    let window: EventTarget = js_sys::global().dyn_into().ok()?;
     window
         .add_event_listener_with_event_listener("online", &online_listener)
         .inspect_err(|err| tracing::debug!(?err, "failed adding event listener"))
@@ -73,7 +73,9 @@ struct Listeners {
 impl Drop for Listeners {
     fn drop(&mut self) {
         tracing::trace!("Removing online/offline event listeners");
-        let window: EventTarget = js_sys::global().unchecked_into();
+        let Ok(window) = js_sys::global().dyn_into::<EventTarget>() else {
+            return;
+        };
         window
             .remove_event_listener_with_event_listener("online", &self.online_listener)
             .ok();
