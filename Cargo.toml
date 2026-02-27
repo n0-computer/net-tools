@@ -37,3 +37,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)"] }
 
 [workspace.lints.clippy]
 unused-async = "warn"
+
+[patch.crates-io]
+noq-udp = { git = "https://github.com/n0-computer/noq", branch = "main" }
