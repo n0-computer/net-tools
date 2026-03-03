@@ -223,7 +223,13 @@ impl State {
         let ifaces = netdev::interface::get_interfaces();
         let local_addresses = LocalAddresses::from_raw_interfaces(&ifaces);
 
-        for iface in ifaces {
+        for mut iface in ifaces {
+            // ensure these are all sorted, so any comparisons made are stable
+            iface.ipv4.sort();
+            iface.ipv6.sort();
+            iface.ipv6_scope_ids.sort();
+            iface.dns_servers.sort();
+
             let ni = Interface { iface };
             let if_up = ni.is_up();
             let name = ni.iface.name.clone();
