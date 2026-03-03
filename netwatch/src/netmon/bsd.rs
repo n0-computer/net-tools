@@ -1,8 +1,11 @@
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use libc::{RTAX_DST, RTAX_IFP};
 use n0_error::stack_error;
+use n0_future::{
+    task::AbortOnDropHandle,
+    time::{self, Duration},
+};
 use tokio::{io::AsyncReadExt, sync::mpsc};
-use tokio_util::task::AbortOnDropHandle;
 use tracing::{trace, warn};
 
 use super::actor::NetworkMessage;
@@ -39,8 +42,10 @@ impl RouteMonitor {
         let handle = tokio::task::spawn(async move {
             trace!("AF_ROUTE monitor started");
 
-            // TODO: cleaner shutdown
             let mut buffer = vec![0u8; 2048];
+            let mut backoff = Duration::from_secs(1);
+            const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
             loop {
                 match socket.read(&mut buffer).await {
                     Ok(read) => {
@@ -48,14 +53,17 @@ impl RouteMonitor {
                         if read == buffer.len() && buffer.len() < 65536 {
                             buffer.resize(buffer.len() * 2, 0);
                         }
+                        backoff = Duration::from_secs(1);
                         trace!("AF_ROUTE: read {} bytes", read);
                         match super::super::interfaces::bsd::parse_rib(
                             libc::NET_RT_DUMP,
                             &buffer[..read],
                         ) {
                             Ok(msgs) => {
-                                if contains_interesting_message(&msgs) {
-                                    sender.send(NetworkMessage::Change).await.ok();
+                                if contains_interesting_message(&msgs)
+                                    && sender.send(NetworkMessage::Change).await.is_err()
+                                {
+                                    break;
                                 }
                             }
                             Err(err) => {
@@ -65,15 +73,15 @@ impl RouteMonitor {
                     }
                     Err(err) => {
                         warn!("AF_ROUTE: error reading: {:?}", err);
-                        // recreate socket, as it is likely in an invalid state
-                        // TODO: distinguish between different errors?
+                        time::sleep(backoff).await;
                         match create_socket() {
                             Ok(new_socket) => {
                                 socket = new_socket;
+                                backoff = Duration::from_secs(1);
                             }
                             Err(err) => {
-                                warn!("AF_ROUTE: unable to bind a new socket: {:?}", err);
-                                // TODO: what to do here?
+                                warn!("AF_ROUTE: unable to recreate socket: {:?}", err);
+                                backoff = (backoff * 2).min(MAX_BACKOFF);
                             }
                         }
                     }
