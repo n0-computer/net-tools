@@ -29,10 +29,10 @@ jobs:
       PREVIEW_PATH: pr/${{ github.event.pull_request.number || inputs.pr_number }}/docs
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: nightly-2024-11-30
+        toolchain: nightly-2025-10-09
     - name: Install sccache
       uses: mozilla-actions/sccache-action@v0.0.9
 

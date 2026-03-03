@@ -135,28 +135,27 @@ impl<M: Mapping> CurrentMapping<M> {
             deadline,
             expire_after,
         }) = &mut self.mapping
+            && deadline.as_mut().poll(cx).is_ready()
         {
-            if deadline.as_mut().poll(cx).is_ready() {
-                let (external_ip, external_port) = mapping.external();
-                // check if the deadline means the mapping is expired or due for renewal
-                return if *expire_after {
-                    trace!("mapping expired {mapping:?}");
-                    self.update(None);
-                    Poll::Ready(Event::Expired {
-                        external_ip,
-                        external_port,
-                    })
-                } else {
-                    // mapping is due for renewal
-                    *deadline = Box::pin(time::sleep(mapping.half_lifetime()));
-                    *expire_after = true;
-                    trace!("due for renewal {mapping:?}");
-                    Poll::Ready(Event::Renew {
-                        external_ip,
-                        external_port,
-                    })
-                };
-            }
+            let (external_ip, external_port) = mapping.external();
+            // check if the deadline means the mapping is expired or due for renewal
+            return if *expire_after {
+                trace!("mapping expired {mapping:?}");
+                self.update(None);
+                Poll::Ready(Event::Expired {
+                    external_ip,
+                    external_port,
+                })
+            } else {
+                // mapping is due for renewal
+                *deadline = Box::pin(time::sleep(mapping.half_lifetime()));
+                *expire_after = true;
+                trace!("due for renewal {mapping:?}");
+                Poll::Ready(Event::Renew {
+                    external_ip,
+                    external_port,
+                })
+            };
         }
         Poll::Pending
     }

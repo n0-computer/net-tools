@@ -2,6 +2,7 @@ use std::{
     future::Future,
     io,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
     task::{Context, Poll},
@@ -447,7 +448,7 @@ impl UdpSocket {
 
     /// Creates a [`UdpSender`] sender.
     pub fn create_sender(self: Arc<Self>) -> UdpSender {
-        UdpSender::new(self.clone())
+        UdpSender::new(self)
     }
 
     /// Whether transmitted datagrams might get fragmented by the IP layer
@@ -463,7 +464,7 @@ impl UdpSocket {
     ///
     /// This is 1 if the platform doesn't support GSO. Subject to change if errors are detected
     /// while using GSO.
-    pub fn max_gso_segments(&self) -> usize {
+    pub fn max_gso_segments(&self) -> NonZeroUsize {
         let guard = self.socket.read().unwrap();
         guard.max_gso_segments()
     }
@@ -472,7 +473,7 @@ impl UdpSocket {
     /// compute the receive buffer size.
     ///
     /// Returns 1 if the platform doesn't support GRO.
-    pub fn gro_segments(&self) -> usize {
+    pub fn gro_segments(&self) -> NonZeroUsize {
         let guard = self.socket.read().unwrap();
         guard.gro_segments()
     }
@@ -687,8 +688,10 @@ enum SocketState {
         addr: SocketAddr,
     },
     Closed {
-        last_max_gso_segments: usize,
-        last_gro_segments: usize,
+        /// The addr to rebind to when recovering.
+        addr: SocketAddr,
+        last_max_gso_segments: NonZeroUsize,
+        last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
     },
 }
@@ -767,25 +770,34 @@ impl SocketState {
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let (addr, closed_state) = match self {
-            Self::Connected { state, addr, .. } => {
-                let s = SocketState::Closed {
-                    last_max_gso_segments: state.max_gso_segments(),
-                    last_gro_segments: state.gro_segments(),
-                    last_may_fragment: state.may_fragment(),
-                };
-                (*addr, s)
-            }
-            Self::Closed { .. } => {
-                return Err(io::Error::other("socket is closed and cannot be rebound"));
-            }
+        let addr = match self {
+            Self::Connected { addr, .. } => *addr,
+            Self::Closed { addr, .. } => *addr,
         };
         debug!("rebinding {}", addr);
 
-        *self = closed_state;
-        *self = Self::bind(addr)?;
+        // Transition to Closed first to drop the old socket.
+        // This is needed so the port is released before we try to bind again.
+        if let Self::Connected { state, .. } = self {
+            *self = SocketState::Closed {
+                addr,
+                last_max_gso_segments: state.max_gso_segments(),
+                last_gro_segments: state.gro_segments(),
+                last_may_fragment: state.may_fragment(),
+            };
+        }
 
-        Ok(())
+        match Self::bind(addr) {
+            Ok(new_state) => {
+                *self = new_state;
+                Ok(())
+            }
+            Err(err) => {
+                // Stay in Closed state but allow future rebind attempts
+                debug!("rebind failed, will retry on next attempt: {}", err);
+                Err(err)
+            }
+        }
     }
 
     fn is_closed(&self) -> bool {
@@ -794,8 +806,9 @@ impl SocketState {
 
     fn close(&mut self) -> Option<(tokio::net::UdpSocket, quinn_udp::UdpSocketState)> {
         match self {
-            Self::Connected { state, .. } => {
+            Self::Connected { state, addr, .. } => {
                 let s = SocketState::Closed {
+                    addr: *addr,
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
@@ -818,7 +831,7 @@ impl SocketState {
         }
     }
 
-    fn max_gso_segments(&self) -> usize {
+    fn max_gso_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.max_gso_segments(),
             Self::Closed {
@@ -828,7 +841,7 @@ impl SocketState {
         }
     }
 
-    fn gro_segments(&self) -> usize {
+    fn gro_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.gro_segments(),
             Self::Closed {
@@ -840,17 +853,16 @@ impl SocketState {
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
-        trace!("dropping UdpSocket");
-        if let Some((socket, _)) = self.socket.write().unwrap().close() {
-            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                // No wakeup after dropping write lock here, since we're getting dropped.
-                // this will be empty if `close` was called before
-                let std_sock = socket.into_std();
-                handle.spawn_blocking(move || {
-                    // Calls libc::close, which can block
-                    drop(std_sock);
-                });
-            }
+        if let Some((socket, _)) = self.socket.write().unwrap().close()
+            && let Ok(handle) = tokio::runtime::Handle::try_current()
+        {
+            // No wakeup after dropping write lock here, since we're getting dropped.
+            // this will be empty if `close` was called before
+            let std_sock = socket.into_std();
+            handle.spawn_blocking(move || {
+                // Calls libc::close, which can block
+                drop(std_sock);
+            });
         }
     }
 }
@@ -860,6 +872,12 @@ pin_project_lite::pin_project! {
         socket: Arc<UdpSocket>,
         #[pin]
         fut: Option<Pin<Box<dyn Future<Output = io::Result<()>> + Send + Sync + 'static>>>,
+    }
+}
+
+impl Clone for UdpSender {
+    fn clone(&self) -> Self {
+        self.socket.clone().create_sender()
     }
 }
 

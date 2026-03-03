@@ -1,6 +1,6 @@
 [package]
 name = "portmapper"
-version = "0.10.1"
+version = "0.14.0"
 edition = "2024"
 readme = "README.md"
 description = "Portmapping utilities"
@@ -10,7 +10,7 @@ repository = "https://github.com/n0-computer/net-tools"
 keywords = ["portmapping", "pmp", "pcp", "upnp"]
 
 # Sadly this also needs to be updated in .github/workflows/ci.yml
-rust-version = "1.85"
+rust-version = "1.89"
 
 [lints]
 workspace = true
@@ -22,15 +22,14 @@ derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_
 futures-lite = "2.5"
 futures-util = "0.3.25"
 igd-next = { version = "0.16.1", features = ["aio_tokio"] }
-iroh-metrics = { version = "0.36", default-features = false }
+iroh-metrics = { version = "0.38", default-features = false }
 libc = "0.2.139"
-nested_enum_utils = "0.2.0"
-netwatch = { version = "0.10.0", path = "../netwatch" }
+netwatch = { version = "0.14.0", path = "../netwatch" }
+n0-error = "0.1.2"
 num_enum = "0.7"
 rand = "0.9"
-serde = { version = "1", features = ["derive", "rc"] }
+serde = { version = "1.0.185", features = ["derive", "rc"] }
 smallvec = "1.11.1"
-snafu = { version = "0.8.5", features = ["rust_1_81"] }
 socket2 = "0.6"
 time = "0.3.20"
 tokio = { version = "1", features = ["io-util", "macros", "sync", "rt", "net", "fs", "io-std", "signal", "process"] }

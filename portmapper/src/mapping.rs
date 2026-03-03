@@ -2,8 +2,7 @@
 
 use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
-use nested_enum_utils::common_fields;
-use snafu::{Backtrace, ResultExt, Snafu};
+use n0_error::stack_error;
 
 use super::{nat_pmp, pcp, upnp};
 use crate::Protocol;
@@ -26,18 +25,15 @@ pub enum Mapping {
 }
 
 /// Mapping error.
-#[common_fields({
-    backtrace: Option<Backtrace>,
-})]
 #[allow(missing_docs)]
-#[derive(Debug, Snafu)]
+#[stack_error(derive, add_meta, from_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("PCP mapping failed"))]
+    #[error("PCP mapping failed")]
     Pcp { source: pcp::Error },
-    #[snafu(display("NAT-PMP mapping failed"))]
+    #[error("NAT-PMP mapping failed")]
     NatPmp { source: nat_pmp::Error },
-    #[snafu(display("UPnP mapping failed"))]
+    #[error("UPnP mapping failed")]
     Upnp { source: upnp::Error },
 }
 
@@ -53,7 +49,7 @@ impl Mapping {
         pcp::Mapping::new(protocol, local_ip, local_port, gateway, external_addr)
             .await
             .map(Self::Pcp)
-            .context(PcpSnafu)
+            .map_err(Error::from)
     }
 
     /// Create a new NAT-PMP mapping.
@@ -73,7 +69,7 @@ impl Mapping {
         )
         .await
         .map(Self::NatPmp)
-        .context(NatPmpSnafu)
+        .map_err(Error::from)
     }
 
     /// Create a new UPnP mapping.
@@ -87,15 +83,15 @@ impl Mapping {
         upnp::Mapping::new(protocol, local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
-            .context(UpnpSnafu)
+            .map_err(Error::from)
     }
 
     /// Release the mapping.
     pub(crate) async fn release(self) -> Result<(), Error> {
         match self {
-            Mapping::Upnp(m) => m.release().await.context(UpnpSnafu)?,
-            Mapping::Pcp(m) => m.release().await.context(PcpSnafu)?,
-            Mapping::NatPmp(m) => m.release().await.context(NatPmpSnafu)?,
+            Mapping::Upnp(m) => m.release().await?,
+            Mapping::Pcp(m) => m.release().await?,
+            Mapping::NatPmp(m) => m.release().await?,
         }
         Ok(())
     }
