@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use js_sys::{JsString, Reflect};
+use n0_future::time::Instant;
 
 pub const BROWSER_INTERFACE: &str = "browserif";
 
@@ -77,6 +78,9 @@ pub struct State {
 
     /// The URL to the Proxy Autoconfig URL, if applicable.
     pub(crate) pac: Option<String>,
+
+    /// Monotonic timestamp, when an unsuspend was detected.
+    pub last_unsuspend: Option<Instant>,
 }
 
 impl fmt::Display for State {
@@ -117,6 +121,7 @@ impl State {
             default_route_interface: Some(BROWSER_INTERFACE.to_string()),
             http_proxy: None,
             pac: None,
+            last_unsuspend: None,
         }
     }
 
