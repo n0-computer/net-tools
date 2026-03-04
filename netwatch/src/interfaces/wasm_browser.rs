@@ -80,7 +80,7 @@ pub struct State {
     pub(crate) pac: Option<String>,
 
     /// Monotonic timestamp, when an unsuspend was detected.
-    pub last_unsuspend: Option<n0_future::time::Instant>,
+    pub last_unsuspend: Option<Instant>,
 }
 
 impl fmt::Display for State {

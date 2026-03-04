@@ -2,6 +2,8 @@
 
 use std::{collections::HashMap, fmt, net::IpAddr};
 
+use n0_future::time::Instant;
+
 #[cfg(any(
     target_os = "freebsd",
     target_os = "openbsd",
@@ -190,7 +192,7 @@ pub struct State {
     pub default_route_interface: Option<String>,
 
     /// Monotonic timestamp, when an unsuspend was detected.
-    pub last_unsuspend: Option<n0_future::time::Instant>,
+    pub last_unsuspend: Option<Instant>,
 }
 
 impl fmt::Display for State {
