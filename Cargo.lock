@@ -1042,6 +1042,7 @@ dependencies = [
  "bytes",
  "cfg_aliases",
  "derive_more",
+ "ipnet",
  "iroh-quinn-udp",
  "js-sys",
  "libc",

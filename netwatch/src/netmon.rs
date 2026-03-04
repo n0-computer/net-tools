@@ -22,6 +22,8 @@ mod linux;
 mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(not(any(has_netdev, wasm_browser)))]
+mod fallback;
 
 #[cfg(not(wasm_browser))]
 pub(crate) use self::actor::is_interesting_interface;

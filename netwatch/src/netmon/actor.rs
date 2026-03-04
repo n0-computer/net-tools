@@ -23,6 +23,8 @@ use super::linux as os;
 use super::wasm_browser as os;
 #[cfg(target_os = "windows")]
 use super::windows as os;
+#[cfg(not(any(has_netdev, wasm_browser)))]
+use super::fallback as os;
 use crate::interfaces::State;
 
 /// The message sent by the OS specific monitors.
