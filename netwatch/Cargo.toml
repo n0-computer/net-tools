@@ -35,7 +35,7 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-quinn-udp = { package = "noq-udp", git = "https://github.com/n0-computer/noq", branch = "main" }
+quinn-udp = { package = "noq-udp", git = "https://github.com/n0-computer/noq", branch = "swallow-send-error" }
 libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
 
