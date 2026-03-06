@@ -41,7 +41,7 @@ socket2 = { version = "0.6", features = ["all"] }
 
 # netdev is only available on desktop/mobile platforms
 [target.'cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "windows", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies]
-netdev = "0.40.0"
+netdev = "0.40.1"
 tokio = { version = "1", features = [
     "io-util",
     "macros",
