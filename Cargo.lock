@@ -1050,8 +1050,9 @@ dependencies = [
 
 [[package]]
 name = "noq-udp"
-version = "0.8.0"
-source = "git+https://github.com/n0-computer/noq?branch=swallow-send-error#b951baffa7b411d5fc1f0cfc51ad93f07af65834"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb9be4fedd6b98f3ba82ccd3506f4d0219fb723c3f97c67e12fe1494aa020e44"
 dependencies = [
  "cfg_aliases",
  "libc",
