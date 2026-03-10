@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "netwatch"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "portmapper"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64",
  "bytes",
