@@ -10,11 +10,13 @@ use super::actor::NetworkMessage;
 pub struct Error;
 
 #[derive(Debug)]
-pub(super) struct RouteMonitor;
+pub(super) struct RouteMonitor {
+    _sender: mpsc::Sender<NetworkMessage>,
+}
 
 impl RouteMonitor {
-    pub(super) fn new(_sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        Ok(RouteMonitor)
+    pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
+        Ok(RouteMonitor { _sender: sender })
     }
 }
 

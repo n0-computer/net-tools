@@ -19,12 +19,12 @@ use super::android as os;
 use super::bsd as os;
 #[cfg(target_os = "linux")]
 use super::linux as os;
+#[cfg(posix_minimal)]
+use super::posix_minimal as os;
 #[cfg(wasm_browser)]
 use super::wasm_browser as os;
 #[cfg(target_os = "windows")]
 use super::windows as os;
-#[cfg(not(any(has_netdev, wasm_browser)))]
-use super::fallback as os;
 use crate::interfaces::State;
 
 /// The message sent by the OS specific monitors.

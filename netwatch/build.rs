@@ -5,7 +5,9 @@ fn main() {
     cfg_aliases! {
         // Convenience aliases
         wasm_browser: { all(target_family = "wasm", target_os = "unknown") },
+        // Limited POSIX platforms (not wasm)
+        posix_minimal: { target_os = "espidf" },
         // Platforms where the `netdev` crate is available
-        has_netdev: { any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "windows", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd") },
+        has_netdev: { not(any(posix_minimal, wasm_browser)) },
     }
 }
