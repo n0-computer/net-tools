@@ -18,12 +18,12 @@
 <a href=#18 id=18 data-nosnippet>18</a></span><span class="kw">mod </span>bsd;
 <a href=#19 id=19 data-nosnippet>19</a><span class="attr">#[cfg(target_os = <span class="string">"linux"</span>)]
 <a href=#20 id=20 data-nosnippet>20</a></span><span class="kw">mod </span>linux;
-<a href=#21 id=21 data-nosnippet>21</a><span class="attr">#[cfg(wasm_browser)]
-<a href=#22 id=22 data-nosnippet>22</a></span><span class="kw">mod </span>wasm_browser;
-<a href=#23 id=23 data-nosnippet>23</a><span class="attr">#[cfg(target_os = <span class="string">"windows"</span>)]
-<a href=#24 id=24 data-nosnippet>24</a></span><span class="kw">mod </span>windows;
-<a href=#25 id=25 data-nosnippet>25</a><span class="attr">#[cfg(not(any(has_netdev, wasm_browser)))]
-<a href=#26 id=26 data-nosnippet>26</a></span><span class="kw">mod </span>fallback;
+<a href=#21 id=21 data-nosnippet>21</a><span class="attr">#[cfg(posix_minimal)]
+<a href=#22 id=22 data-nosnippet>22</a></span><span class="kw">mod </span>posix_minimal;
+<a href=#23 id=23 data-nosnippet>23</a><span class="attr">#[cfg(wasm_browser)]
+<a href=#24 id=24 data-nosnippet>24</a></span><span class="kw">mod </span>wasm_browser;
+<a href=#25 id=25 data-nosnippet>25</a><span class="attr">#[cfg(target_os = <span class="string">"windows"</span>)]
+<a href=#26 id=26 data-nosnippet>26</a></span><span class="kw">mod </span>windows;
 <a href=#27 id=27 data-nosnippet>27</a>
 <a href=#28 id=28 data-nosnippet>28</a><span class="attr">#[cfg(not(wasm_browser))]
 <a href=#29 id=29 data-nosnippet>29</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">use </span><span class="self">self</span>::actor::is_interesting_interface;
