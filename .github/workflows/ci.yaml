@@ -147,6 +147,22 @@ jobs:
       env:
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG' }}
 
+  test_posix_minimal:
+    name: Test posix_minimal (netwatch)
+    if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: "sccache"
+      SCCACHE_GHA_ENABLED: "on"
+      RUSTFLAGS: "-Dwarnings --cfg posix_minimal"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Build and test netwatch (posix_minimal)
+        run: cargo test --locked -p netwatch
+
   esp32_check:
     name: ESP32-C3 build check
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
