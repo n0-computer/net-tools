@@ -73,6 +73,22 @@ impl IpNet {
     }
 }
 
+/// The router/gateway of the local network (stub — always returns `None`).
+#[derive(Debug, Clone)]
+pub struct HomeRouter {
+    /// Ip of the router.
+    pub gateway: IpAddr,
+    /// Our local Ip if known.
+    pub my_ip: Option<IpAddr>,
+}
+
+impl HomeRouter {
+    /// Returns `None` — no gateway discovery available on this platform.
+    pub fn new() -> Option<Self> {
+        None
+    }
+}
+
 /// Intended to store the state of the machine's network interfaces.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct State {
