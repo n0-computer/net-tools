@@ -28,8 +28,6 @@ tokio = { version = "1", features = [
     "io-util",
     "macros",
     "sync",
-    "rt",
-    "net",
     "time",
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -40,6 +38,7 @@ tracing = "0.1"
 noq-udp = "0.9"
 libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
+tokio = { version = "1", features = ["rt", "net"] }
 
 # netdev is available on all non-embedded, non-wasm platforms
 [target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
