@@ -129,11 +129,7 @@ pub struct Interface {
 
 impl fmt::Display for Interface {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} ipv4={:?} ipv6={:?}",
-            self.name, self.ipv4, self.ipv6
-        )
+        write!(f, "{} ipv4={:?} ipv6={:?}", self.name, self.ipv4, self.ipv6)
     }
 }
 
