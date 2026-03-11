@@ -147,6 +147,20 @@ jobs:
       env:
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG' }}
 
+  esp32_check:
+    name: ESP32-C3 build check
+    if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+      - name: Check netwatch for ESP32-C3
+        run: cargo check -Z build-std=std,panic_abort --target riscv32imc-esp-espidf -p netwatch --no-default-features
+
   wasm_test:
     name: Build & test wasm32 for browsers
     runs-on: ubuntu-latest
