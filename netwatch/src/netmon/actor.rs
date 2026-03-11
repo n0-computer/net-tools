@@ -2,7 +2,7 @@ use n0_future::time::{self, Duration, Instant};
 use n0_watcher::Watchable;
 pub(super) use os::Error;
 use os::RouteMonitor;
-#[cfg(not(wasm_browser))]
+#[cfg(not(any(posix_minimal, wasm_browser)))]
 pub(crate) use os::is_interesting_interface;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};

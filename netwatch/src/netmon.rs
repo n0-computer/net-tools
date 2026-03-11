@@ -25,7 +25,7 @@ mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(not(wasm_browser))]
+#[cfg(not(any(posix_minimal, wasm_browser)))]
 pub(crate) use self::actor::is_interesting_interface;
 use self::actor::{Actor, ActorMessage};
 pub use crate::interfaces::State;
