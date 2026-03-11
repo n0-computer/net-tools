@@ -1018,6 +1018,7 @@ dependencies = [
  "bytes",
  "cfg_aliases",
  "derive_more",
+ "ipnet",
  "js-sys",
  "libc",
  "n0-error",
