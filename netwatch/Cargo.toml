@@ -18,7 +18,6 @@ workspace = true
 [dependencies]
 atomic-waker = "1.1.2"
 bytes = "1.7"
-ipnet = "2"
 n0-error = "0.1.2"
 n0-future = "0.3.1"
 n0-watcher = "0.6.0"
@@ -35,6 +34,7 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+ipnet = "2"
 noq-udp = "0.9"
 libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
