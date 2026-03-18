@@ -63,6 +63,8 @@ impl Request {
 
     #[cfg(test)]
     fn random<R: rand::Rng>(opcode: super::Opcode, rng: &mut R) -> Self {
+        use rand::RngExt;
+
         match opcode {
             Opcode::DetermineExternalAddress => Request::ExternalAddress,
             Opcode::MapUdp => Request::Mapping {

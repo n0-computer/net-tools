@@ -4,7 +4,7 @@ use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 
 use n0_error::{e, stack_error};
 use netwatch::UdpSocket;
-use rand::RngCore;
+use rand::Rng;
 use tracing::{debug, trace};
 
 use crate::{Protocol, defaults::PCP_RECV_TIMEOUT as RECV_TIMEOUT};
