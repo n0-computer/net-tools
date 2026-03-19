@@ -36,7 +36,7 @@ tracing = "0.1"
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 noq-udp = "0.9"
 libc = "0.2.139"
-netdev = "0.40.1"
+netdev = "0.41.0"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = [
     "io-util",
