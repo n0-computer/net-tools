@@ -2,7 +2,7 @@ use n0_future::time::{self, Duration, Instant};
 use n0_watcher::Watchable;
 pub(super) use os::Error;
 use os::RouteMonitor;
-#[cfg(not(wasm_browser))]
+#[cfg(not(any(posix_minimal, wasm_browser)))]
 pub(crate) use os::is_interesting_interface;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
@@ -19,6 +19,8 @@ use super::android as os;
 use super::bsd as os;
 #[cfg(target_os = "linux")]
 use super::linux as os;
+#[cfg(posix_minimal)]
+use super::posix_minimal as os;
 #[cfg(wasm_browser)]
 use super::wasm_browser as os;
 #[cfg(target_os = "windows")]
