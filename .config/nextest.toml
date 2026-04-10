@@ -8,3 +8,12 @@ run-in-isolation = { max-threads = 32 }
 filter = 'test(::run_in_isolation::)'
 test-group = 'run-in-isolation'
 threads-required = 32
+
+[profile.default]
+default-filter = 'not binary(patchbay)'
+
+[profile.patchbay]
+fail-fast = false
+test-threads = 1
+default-filter = 'binary(patchbay)'
+slow-timeout = { period = "30s", terminate-after = 4 }

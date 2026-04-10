@@ -81,6 +81,10 @@ web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 testresult = "0.4.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+patchbay = "0.3"
+ctor = "0.8"
+
 # *non*-wasm-in-browser test/dev dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1", features = [
