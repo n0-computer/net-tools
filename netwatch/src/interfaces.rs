@@ -17,6 +17,7 @@ mod linux;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub use netdev::interface::ipv6_addr_flags::Ipv6AddrFlags;
 pub(crate) use netdev::ipnet::{Ipv4Net, Ipv6Net};
 
 #[cfg(any(
@@ -78,12 +79,18 @@ impl Interface {
 
     /// A list of all ip addresses of this interface.
     pub fn addrs(&self) -> impl Iterator<Item = IpNet> + '_ {
-        self.iface
-            .ipv4
-            .iter()
-            .cloned()
-            .map(IpNet::V4)
-            .chain(self.iface.ipv6.iter().cloned().map(IpNet::V6))
+        self.iface.ipv4.iter().cloned().map(IpNet::V4).chain(
+            self.iface
+                .ipv6
+                .iter()
+                .zip(self.iface.ipv6_scope_ids.iter())
+                .zip(self.iface.ipv6_addr_flags.iter())
+                .map(|((net, scope_id), flags)| IpNet::V6 {
+                    net: *net,
+                    scope_id: *scope_id,
+                    flags: *flags,
+                }),
+        )
     }
 
     /// Creates a fake interface for usage in tests.
@@ -118,6 +125,7 @@ impl Interface {
                 dns_servers: vec![],
                 default: false,
                 ipv6_scope_ids: vec![],
+                ipv6_addr_flags: vec![],
                 stats: None,
                 mtu: None,
                 oper_state: OperState::Up,
@@ -132,7 +140,14 @@ pub enum IpNet {
     /// Structure of IPv4 Network.
     V4(Ipv4Net),
     /// Structure of IPv6 Network.
-    V6(Ipv6Net),
+    V6 {
+        /// The actual network address.
+        net: Ipv6Net,
+        /// IPv6 scope ID
+        scope_id: u32,
+        /// IPv6 address flags.
+        flags: Ipv6AddrFlags,
+    },
 }
 
 impl PartialEq for IpNet {
@@ -143,10 +158,23 @@ impl PartialEq for IpNet {
                     && a.prefix_len() == b.prefix_len()
                     && a.netmask() == b.netmask()
             }
-            (IpNet::V6(a), IpNet::V6(b)) => {
-                a.addr() == b.addr()
-                    && a.prefix_len() == b.prefix_len()
-                    && a.netmask() == b.netmask()
+            (
+                IpNet::V6 {
+                    net: net_a,
+                    scope_id: scope_id_a,
+                    flags: flags_a,
+                },
+                IpNet::V6 {
+                    net: net_b,
+                    scope_id: scope_id_b,
+                    flags: flags_b,
+                },
+            ) => {
+                net_a.addr() == net_b.addr()
+                    && net_a.prefix_len() == net_b.prefix_len()
+                    && net_a.netmask() == net_b.netmask()
+                    && scope_id_a == scope_id_b
+                    && flags_a == flags_b
             }
             _ => false,
         }
@@ -159,7 +187,7 @@ impl IpNet {
     pub fn addr(&self) -> IpAddr {
         match self {
             IpNet::V4(a) => IpAddr::V4(a.addr()),
-            IpNet::V6(a) => IpAddr::V6(a.addr()),
+            IpNet::V6 { net, .. } => IpAddr::V6(net.addr()),
         }
     }
 }
@@ -231,9 +259,10 @@ impl State {
         for mut iface in ifaces {
             // ensure these are all sorted, so any comparisons made are stable
             iface.ipv4.sort();
-            iface.ipv6.sort();
-            iface.ipv6_scope_ids.sort();
             iface.dns_servers.sort();
+
+            // ipv6_scope_ids and ipv6_addr_flags need to match ipv6 order
+            sort_ipv6(&mut iface);
 
             let ni = Interface { iface };
             let if_up = ni.is_up();
@@ -317,6 +346,23 @@ impl State {
 
         false
     }
+}
+
+/// Sorts all ipv6 related fields in one go.
+fn sort_ipv6(iface: &mut netdev::Interface) {
+    let n = iface.ipv6.len();
+    debug_assert_eq!(n, iface.ipv6_scope_ids.len());
+    debug_assert_eq!(n, iface.ipv6_addr_flags.len());
+
+    let mut keys: Vec<_> = (0..n).collect();
+
+    // calculate ordering
+    keys.sort_by_key(|x| &iface.ipv6[*x]);
+
+    // apply ordering to all three
+    iface.ipv6 = keys.iter().map(|&i| iface.ipv6[i]).collect();
+    iface.ipv6_scope_ids = keys.iter().map(|&i| iface.ipv6_scope_ids[i]).collect();
+    iface.ipv6_addr_flags = keys.iter().map(|&i| iface.ipv6_addr_flags[i]).collect();
 }
 
 /// Reports whether ip is a usable IPv4 address which should have Internet connectivity.
@@ -533,6 +579,45 @@ mod tests {
             vec![a1.clone(), a2.clone()].into_iter(),
             vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
         ));
+    }
+
+    #[test]
+    fn test_sort_ipv6() {
+        let addr_a = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
+        let addr_b = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2);
+        let addr_c = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1);
+
+        let net_a = Ipv6Net::new(addr_a, 64).unwrap();
+        let net_b = Ipv6Net::new(addr_b, 64).unwrap();
+        let net_c = Ipv6Net::new(addr_c, 64).unwrap();
+
+        let flags_a = Ipv6AddrFlags {
+            permanent: true,
+            ..Default::default()
+        };
+        let flags_b = Ipv6AddrFlags {
+            temporary: true,
+            ..Default::default()
+        };
+        let flags_c = Ipv6AddrFlags {
+            deprecated: true,
+            ..Default::default()
+        };
+
+        let mut iface = Interface::fake().iface;
+
+        // Deliberately out of sorted order: c, b, a
+        iface.ipv6 = vec![net_c, net_b, net_a];
+        iface.ipv6_scope_ids = vec![30, 20, 10];
+        iface.ipv6_addr_flags = vec![flags_c, flags_b, flags_a];
+
+        sort_ipv6(&mut iface);
+
+        assert_eq!(iface.ipv6, vec![net_a, net_b, net_c]);
+        assert_eq!(iface.ipv6_scope_ids, vec![10, 20, 30]);
+        assert!(iface.ipv6_addr_flags[0].permanent);
+        assert!(iface.ipv6_addr_flags[1].temporary);
+        assert!(iface.ipv6_addr_flags[2].deprecated);
     }
 
     #[test]
