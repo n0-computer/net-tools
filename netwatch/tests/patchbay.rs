@@ -51,7 +51,6 @@ async fn default_route_v4_only() -> TestResult {
 
 /// Netwatch detects a default route on a v6-only network.
 #[tokio::test]
-#[ignore = "default_route() does not fall through to netlink when /proc/net/route has no IPv4 default"]
 async fn default_route_v6_only() -> TestResult {
     let state = state_for_routed_device(IpSupport::V6Only).await?;
 
@@ -75,7 +74,6 @@ async fn default_route_dual_stack() -> TestResult {
 /// After replugging from a v4 router to a v6 router, netwatch detects the new
 /// default route.
 #[tokio::test]
-#[ignore = "default_route() does not fall through to netlink when /proc/net/route has no IPv4 default"]
 async fn default_route_after_replug_v4_to_v6() -> TestResult {
     let lab = Lab::new().await?;
     let v4_router = lab
