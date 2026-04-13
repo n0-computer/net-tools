@@ -33,7 +33,7 @@ missing_debug_implementations = "warn"
 # require a feature enabled when using `--cfg docsrs` which we can not
 # do.  To enable for a crate set `#![cfg_attr(iroh_docsrs,
 # feature(doc_cfg))]` in the crate.
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)", "cfg(skip_patchbay)"] }
 
 [workspace.lints.clippy]
 unused-async = "warn"
