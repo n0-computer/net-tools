@@ -34,7 +34,7 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-noq-udp = "0.9"
+noq-udp = "0.10"
 libc = "0.2.139"
 netdev = "0.42.0"
 socket2 = { version = "0.6", features = ["all"] }
@@ -55,7 +55,7 @@ objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-netlink-packet-route = "0.29.0"
+netlink-packet-route = "0.30.0"
 netlink-packet-core = "0.8.1"
 netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
@@ -82,8 +82,8 @@ testresult = "0.4.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-patchbay = "0.3"
-ctor = "0.8"
+patchbay = "0.5"
+ctor = "0.10"
 
 # *non*-wasm-in-browser test/dev dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
