@@ -99,7 +99,7 @@ async fn default_route_after_replug_v4_to_v6() -> TestResult {
     assert_eq!(state.default_route_interface.as_deref(), Some("eth0"));
 
     // Replug from the v4 router to the v6 router.
-    device.replug_iface("eth0", v6_router.id()).await?;
+    device.iface("eth0").unwrap().replug(v6_router.id()).await?;
 
     let state = device.spawn(|_| State::new())?.await?;
     assert!(!state.have_v4, "should not have v4");
