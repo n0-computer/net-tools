@@ -143,11 +143,13 @@ impl Actor {
     async fn handle_potential_change(&mut self, time_jumped: bool) {
         trace!("potential change");
 
-        let new_state = State::new().await;
+        let mut new_state = State::new().await;
         let old_state = &self.interface_state.get();
 
-        // No major changes, continue on
-        if !time_jumped && old_state == &new_state {
+        if time_jumped {
+            new_state.last_unsuspend.replace(Instant::now());
+        } else if old_state == &new_state {
+            // No major changes, continue on
             debug!("no changes detected");
             return;
         }

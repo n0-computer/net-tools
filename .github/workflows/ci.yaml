@@ -31,6 +31,8 @@ jobs:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
     timeout-minutes: 30
     runs-on: [self-hosted, linux, X64]
+    env:
+      RUSTFLAGS: "-Dwarnings --cfg skip_patchbay"
     strategy:
       fail-fast: false
       matrix:
@@ -99,7 +101,7 @@ jobs:
         java-version: '17'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      uses: android-actions/setup-android@v4
 
     - name: Setup Android NDK
       uses: arqu/setup-ndk@main
@@ -120,6 +122,8 @@ jobs:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
     timeout-minutes: 30
     runs-on: [self-hosted, linux, X64]
+    env:
+      RUSTFLAGS: "-Dwarnings --cfg skip_patchbay"
     strategy:
       fail-fast: false
       matrix:
@@ -164,7 +168,8 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install wasm-bindgen-test-runner
-        run: cargo binstall wasm-bindgen-cli --locked --no-confirm
+        # Match the version of wasm-bindgen used in Cargo.lock
+        run: cargo binstall wasm-bindgen-cli@0.2.118 --locked --no-confirm
 
       - name: Install wasm-tools
         uses: bytecodealliance/actions/wasm-tools/setup@v1

@@ -1,6 +1,6 @@
 [package]
 name = "portmapper"
-version = "0.14.0"
+version = "0.16.0"
 edition = "2024"
 readme = "README.md"
 description = "Portmapping utilities"
@@ -21,18 +21,18 @@ bytes = "1.7"
 derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_into", "deref"] }
 futures-lite = "2.5"
 futures-util = "0.3.25"
-igd-next = { version = "0.16.1", features = ["aio_tokio"] }
+igd-next = { version = "0.17.0", features = ["aio_tokio"] }
 iroh-metrics = { version = "0.38", default-features = false }
 libc = "0.2.139"
-netwatch = { version = "0.14.0", path = "../netwatch" }
+netwatch = { version = "0.16.0", path = "../netwatch" }
 n0-error = "0.1.2"
 num_enum = "0.7"
-rand = "0.9"
+rand = "0.10"
 serde = { version = "1.0.185", features = ["derive", "rc"] }
 smallvec = "1.11.1"
 socket2 = "0.6"
 time = "0.3.20"
-tokio = { version = "1", features = ["io-util", "macros", "sync", "rt", "net", "fs", "io-std", "signal", "process"] }
+tokio = { version = "1", features = ["io-util", "macros", "sync", "rt", "net", "fs", "io-std"] }
 tokio-util = { version = "0.7", features = ["io-util", "io", "codec", "rt"] }
 tracing = "0.1"
 url = { version = "2.5", features = ["serde"] }
@@ -43,7 +43,7 @@ tower-layer = "0.3.3"
 
 [dev-dependencies]
 ntest = "0.9"
-rand_chacha = "0.9"
+rand_chacha = "0.10"
 tokio = { version = "1", features = ["io-util", "sync", "rt", "net", "fs", "macros", "time", "test-util"] }
 
 [features]

@@ -9,7 +9,7 @@ use std::{
 };
 
 use atomic_waker::AtomicWaker;
-use quinn_udp::Transmit;
+use noq_udp::Transmit;
 use tokio::io::Interest;
 use tracing::{debug, trace, warn};
 
@@ -279,9 +279,23 @@ impl UdpSocket {
     ///
     /// Returns an error if the rebind is needed, but failed.
     fn maybe_rebind(&self) -> io::Result<()> {
-        if self.is_broken() {
-            self.rebind()?;
+        if !self.is_broken() {
+            return Ok(());
         }
+
+        let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
+
+        // Re-check after acquiring the write lock — another caller may have
+        // already completed the rebind while we were waiting.
+        if !self.is_broken() {
+            return Ok(());
+        }
+
+        guard.rebind()?;
+        self.is_broken
+            .store(false, std::sync::atomic::Ordering::Release);
+        drop(guard);
+        self.wake_all();
         Ok(())
     }
 
@@ -311,8 +325,8 @@ impl UdpSocket {
         }
     }
 
-    /// Send a quinn based `Transmit`.
-    pub fn try_send_quinn(&self, transmit: &Transmit<'_>) -> io::Result<()> {
+    /// Send a noq based `Transmit`.
+    pub fn try_send_noq(&self, transmit: &Transmit<'_>) -> io::Result<()> {
         loop {
             self.maybe_rebind()?;
 
@@ -341,12 +355,8 @@ impl UdpSocket {
         }
     }
 
-    /// poll send a quinn based `Transmit`.
-    pub fn poll_send_quinn(
-        &self,
-        cx: &mut Context,
-        transmit: &Transmit<'_>,
-    ) -> Poll<io::Result<()>> {
+    /// poll send a noq based `Transmit`.
+    pub fn poll_send_noq(&self, cx: &mut Context, transmit: &Transmit<'_>) -> Poll<io::Result<()>> {
         loop {
             if let Err(err) = self.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -385,12 +395,12 @@ impl UdpSocket {
         }
     }
 
-    /// quinn based `poll_recv`
-    pub fn poll_recv_quinn(
+    /// noq based `poll_recv`
+    pub fn poll_recv_noq(
         &self,
         cx: &mut Context,
         bufs: &mut [io::IoSliceMut<'_>],
-        meta: &mut [quinn_udp::RecvMeta],
+        meta: &mut [noq_udp::RecvMeta],
     ) -> Poll<io::Result<usize>> {
         loop {
             if let Err(err) = self.maybe_rebind() {
@@ -683,7 +693,7 @@ impl Future for SendToFut<'_, '_> {
 enum SocketState {
     Connected {
         socket: tokio::net::UdpSocket,
-        state: quinn_udp::UdpSocketState,
+        state: noq_udp::UdpSocketState,
         /// The addr we are binding to.
         addr: SocketAddr,
     },
@@ -697,9 +707,7 @@ enum SocketState {
 }
 
 impl SocketState {
-    fn try_get_connected(
-        &self,
-    ) -> io::Result<(&tokio::net::UdpSocket, &quinn_udp::UdpSocketState)> {
+    fn try_get_connected(&self) -> io::Result<(&tokio::net::UdpSocket, &noq_udp::UdpSocketState)> {
         match self {
             Self::Connected {
                 socket,
@@ -738,7 +746,7 @@ impl SocketState {
             socket.set_only_v6(true)?;
         }
 
-        // Binding must happen before calling quinn, otherwise `local_addr`
+        // Binding must happen before calling noq, otherwise `local_addr`
         // is not yet available on all OSes.
         socket.bind(&addr.into())?;
 
@@ -749,8 +757,8 @@ impl SocketState {
 
         // Convert into tokio UdpSocket
         let socket = tokio::net::UdpSocket::from_std(socket)?;
-        let socket_ref = quinn_udp::UdpSockRef::from(&socket);
-        let socket_state = quinn_udp::UdpSocketState::new(socket_ref)?;
+        let socket_ref = noq_udp::UdpSockRef::from(&socket);
+        let socket_state = noq_udp::UdpSocketState::new(socket_ref)?;
 
         let local_addr = socket.local_addr()?;
         if addr.port() != 0 && local_addr.port() != addr.port() {
@@ -804,7 +812,7 @@ impl SocketState {
         matches!(self, Self::Closed { .. })
     }
 
-    fn close(&mut self) -> Option<(tokio::net::UdpSocket, quinn_udp::UdpSocketState)> {
+    fn close(&mut self) -> Option<(tokio::net::UdpSocket, noq_udp::UdpSocketState)> {
         match self {
             Self::Connected { state, addr, .. } => {
                 let s = SocketState::Closed {
@@ -893,8 +901,8 @@ impl UdpSender {
     }
 
     /// Async sending
-    pub fn send<'a, 'b>(&self, transmit: &'a quinn_udp::Transmit<'b>) -> SendFutQuinn<'a, 'b> {
-        SendFutQuinn {
+    pub fn send<'a, 'b>(&self, transmit: &'a noq_udp::Transmit<'b>) -> SendFutNoq<'a, 'b> {
+        SendFutNoq {
             socket: self.socket.clone(),
             transmit,
         }
@@ -903,7 +911,7 @@ impl UdpSender {
     /// Poll send
     pub fn poll_send(
         self: Pin<&mut Self>,
-        transmit: &quinn_udp::Transmit,
+        transmit: &noq_udp::Transmit,
         cx: &mut Context,
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
@@ -950,7 +958,7 @@ impl UdpSender {
     }
 
     /// Best effort sending
-    pub fn try_send(&self, transmit: &quinn_udp::Transmit) -> io::Result<()> {
+    pub fn try_send(&self, transmit: &noq_udp::Transmit) -> io::Result<()> {
         self.socket.maybe_rebind()?;
 
         match self.socket.socket.try_read() {
@@ -966,14 +974,14 @@ impl UdpSender {
     }
 }
 
-/// Send future quinn
+/// Send future noq
 #[derive(Debug)]
-pub struct SendFutQuinn<'a, 'b> {
+pub struct SendFutNoq<'a, 'b> {
     socket: Arc<UdpSocket>,
-    transmit: &'a quinn_udp::Transmit<'b>,
+    transmit: &'a noq_udp::Transmit<'b>,
 }
 
-impl Future for SendFutQuinn<'_, '_> {
+impl Future for SendFutNoq<'_, '_> {
     type Output = io::Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {

@@ -1,6 +1,6 @@
 [package]
 name = "netwatch"
-version = "0.14.0"
+version = "0.16.0"
 readme = "README.md"
 description = "Cross-platform monitoring for network interface changes"
 license = "MIT OR Apache-2.0"
@@ -34,9 +34,9 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-quinn-udp = { package = "iroh-quinn-udp", version = "0.8" }
+noq-udp = "0.10"
 libc = "0.2.139"
-netdev = "0.40.0"
+netdev = "0.42.0"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = [
     "io-util",
@@ -46,8 +46,6 @@ tokio = { version = "1", features = [
     "net",
     "fs",
     "io-std",
-    "signal",
-    "process",
     "time",
 ] }
 
@@ -57,13 +55,14 @@ objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-netlink-packet-route = "0.29.0"
+netlink-packet-route = "0.30.0"
 netlink-packet-core = "0.8.1"
 netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
 derive_more = { version = "2.0.1", features = ["display"] }
+tokio = { version = "1", features = ["process"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wmi = "0.18"
@@ -81,6 +80,10 @@ web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 [dev-dependencies]
 testresult = "0.4.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+patchbay = "0.5"
+ctor = "0.10"
 
 # *non*-wasm-in-browser test/dev dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]

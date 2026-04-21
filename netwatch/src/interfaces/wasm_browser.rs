@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use js_sys::{JsString, Reflect};
+use n0_future::time::Instant;
 
 pub const BROWSER_INTERFACE: &str = "browserif";
 
@@ -18,11 +19,15 @@ impl fmt::Display for Interface {
 
 impl Interface {
     async fn new() -> Self {
-        let is_up = Self::is_up();
+        let is_up = match Self::is_up() {
+            Some(v) => v,
+            None => {
+                tracing::warn!("navigator.onLine unavailable, assuming up");
+                true
+            }
+        };
         tracing::debug!(onLine = is_up, "Fetched globalThis.navigator.onLine");
-        Self {
-            is_up: is_up.unwrap_or(true),
-        }
+        Self { is_up }
     }
 
     fn is_up() -> Option<bool> {
@@ -73,6 +78,9 @@ pub struct State {
 
     /// The URL to the Proxy Autoconfig URL, if applicable.
     pub(crate) pac: Option<String>,
+
+    /// Monotonic timestamp, when an unsuspend was detected.
+    pub last_unsuspend: Option<Instant>,
 }
 
 impl fmt::Display for State {
@@ -113,6 +121,7 @@ impl State {
             default_route_interface: Some(BROWSER_INTERFACE.to_string()),
             http_proxy: None,
             pac: None,
+            last_unsuspend: None,
         }
     }
 
