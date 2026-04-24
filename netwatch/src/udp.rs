@@ -746,6 +746,12 @@ impl SocketState {
             socket.set_only_v6(true)?;
         }
 
+        // Allow rebinding to an address still in TIME_WAIT
+        #[cfg(unix)]
+        if let Err(err) = socket.set_reuse_address(true) {
+            debug!("failed to set SO_REUSEADDR: {:?}", err);
+        }
+
         // Binding must happen before calling noq, otherwise `local_addr`
         // is not yet available on all OSes.
         socket.bind(&addr.into())?;
