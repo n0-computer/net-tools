@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["IpNet"],"fn":["default_route_interface"],"struct":["DefaultRouteDetails","HomeRouter","Interface","Ipv6AddrFlags","State"]};
