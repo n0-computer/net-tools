@@ -16,7 +16,7 @@ use patchbay::{IpSupport, Lab};
 use testresult::TestResult;
 
 /// Init the user namespace before any threads are spawned.
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn userns_ctor() {
     patchbay::init_userns().expect("failed to init userns");
 }
