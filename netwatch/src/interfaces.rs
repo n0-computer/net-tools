@@ -129,6 +129,9 @@ impl Interface {
                 stats: None,
                 mtu: None,
                 oper_state: OperState::Up,
+                auto_negotiate: None,
+                dhcp_v4_enabled: None,
+                dhcp_v6_enabled: None,
             },
         }
     }
