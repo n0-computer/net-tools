@@ -20,7 +20,7 @@ base64 = "0.22.1"
 bytes = "1.7"
 derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_into", "deref"] }
 igd-next = { version = "0.17.0", features = ["aio_tokio"] }
-iroh-metrics = { version = "0.38", default-features = false }
+iroh-metrics = { version = "1.0.0-rc.0", default-features = false }
 libc = "0.2.139"
 netwatch = { version = "0.16.0", path = "../netwatch" }
 n0-error = "=1.0.0-rc.0"
