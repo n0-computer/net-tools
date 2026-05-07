@@ -36,7 +36,7 @@ tracing = "0.1"
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 noq-udp = "=1.0.0-rc.0"
 libc = "0.2.139"
-netdev = "0.42.0"
+netdev = "0.43.0"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = [
     "io-util",
@@ -83,7 +83,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 patchbay = "0.5"
-ctor = "0.10"
+ctor = "1.0"
 
 # *non*-wasm-in-browser test/dev dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
