@@ -121,15 +121,15 @@ fn is_default_gateway(rm: &RouteMessage) -> bool {
     };
 
     match (dst, netmask) {
-        (Addr::Inet4 { ip: dst }, Addr::Inet4 { ip: netmask }) => {
-            if dst.octets() == V4_DEFAULT && netmask.octets() == V4_DEFAULT {
-                return true;
-            }
+        (Addr::Inet4 { ip: dst }, Addr::Inet4 { ip: netmask })
+            if dst.octets() == V4_DEFAULT && netmask.octets() == V4_DEFAULT =>
+        {
+            return true;
         }
-        (Addr::Inet6 { ip: dst, .. }, Addr::Inet6 { ip: netmask, .. }) => {
-            if dst.octets() == V6_DEFAULT && netmask.octets() == V6_DEFAULT {
-                return true;
-            }
+        (Addr::Inet6 { ip: dst, .. }, Addr::Inet6 { ip: netmask, .. })
+            if dst.octets() == V6_DEFAULT && netmask.octets() == V6_DEFAULT =>
+        {
+            return true;
         }
         _ => {}
     }

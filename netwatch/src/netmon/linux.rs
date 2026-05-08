@@ -124,19 +124,19 @@ async fn process_messages(
                         .unwrap_or_default();
                     if let Some(dst) = get_nla!(msg, route::RouteAttribute::Destination) {
                         match dst {
-                            route::RouteAddress::Inet(addr) => {
+                            route::RouteAddress::Inet(addr)
                                 if (table == 255 || table == 254)
-                                    && (addr.is_multicast() || is_link_local(IpAddr::V4(*addr)))
-                                {
-                                    continue;
-                                }
+                                    && (addr.is_multicast()
+                                        || is_link_local(IpAddr::V4(*addr))) =>
+                            {
+                                continue;
                             }
-                            route::RouteAddress::Inet6(addr) => {
+                            route::RouteAddress::Inet6(addr)
                                 if (table == 255 || table == 254)
-                                    && (addr.is_multicast() || is_link_local(IpAddr::V6(*addr)))
-                                {
-                                    continue;
-                                }
+                                    && (addr.is_multicast()
+                                        || is_link_local(IpAddr::V6(*addr))) =>
+                            {
+                                continue;
                             }
                             _ => {}
                         }
