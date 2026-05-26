@@ -34,7 +34,7 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-noq-udp = "=1.0.0-rc.0"
+noq-udp = "=1.0.0-rc.1"
 libc = "0.2.139"
 netdev = "0.43.0"
 socket2 = { version = "0.6", features = ["all"] }
