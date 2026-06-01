@@ -13,8 +13,7 @@ use super::android as os;
     target_os = "freebsd",
     target_os = "openbsd",
     target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
+    target_vendor = "apple",
 ))]
 use super::bsd as os;
 #[cfg(target_os = "linux")]

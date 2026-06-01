@@ -49,7 +49,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+[target.'cfg(target_vendor = "apple")'.dependencies]
 # msrv fix
 objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"

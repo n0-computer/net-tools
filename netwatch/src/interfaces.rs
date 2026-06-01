@@ -8,8 +8,7 @@ use n0_future::time::Instant;
     target_os = "freebsd",
     target_os = "openbsd",
     target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
+    target_vendor = "apple",
 ))]
 pub(super) mod bsd;
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -24,8 +23,7 @@ pub(crate) use netdev::ipnet::{Ipv4Net, Ipv6Net};
     target_os = "freebsd",
     target_os = "openbsd",
     target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
+    target_vendor = "apple",
 ))]
 use self::bsd::default_route;
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -455,8 +453,7 @@ impl HomeRouter {
         target_os = "freebsd",
         target_os = "openbsd",
         target_os = "netbsd",
-        target_os = "macos",
-        target_os = "ios"
+        target_vendor = "apple",
     ))]
     fn get_default_gateway() -> Option<IpAddr> {
         // netdev doesn't work yet

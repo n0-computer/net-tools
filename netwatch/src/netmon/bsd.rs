@@ -1,4 +1,4 @@
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(target_vendor = "apple")]
 use libc::{RTAX_DST, RTAX_IFP};
 use n0_error::stack_error;
 use n0_future::{
