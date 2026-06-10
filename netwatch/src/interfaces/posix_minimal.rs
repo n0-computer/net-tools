@@ -35,13 +35,43 @@ impl Interface {
     }
 }
 
+/// Per-address IPv6 state flags (stub).
+///
+/// Mirrors `netdev::interface::ipv6_addr_flags::Ipv6AddrFlags` so the
+/// `interfaces` API is identical across the `netdev` and `posix_minimal`
+/// platforms. On platforms without `netdev` (e.g. espidf) no addresses are
+/// enumerated, so these always default to `false`.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Ipv6AddrFlags {
+    /// Preferred lifetime expired; should not be used for new connections.
+    pub deprecated: bool,
+    /// Privacy address (RFC 4941).
+    pub temporary: bool,
+    /// Undergoing duplicate address detection.
+    pub tentative: bool,
+    /// Duplicate address detection failed.
+    pub duplicated: bool,
+    /// Manually configured, not from SLAAC.
+    pub permanent: bool,
+}
+
 /// Structure of an IP network, either IPv4 or IPv6.
+///
+/// The shape mirrors the `netdev`-based `IpNet` so downstream code is
+/// platform-agnostic.
 #[derive(Clone, Debug)]
 pub enum IpNet {
     /// Structure of IPv4 Network.
     V4(Ipv4Net),
     /// Structure of IPv6 Network.
-    V6(Ipv6Net),
+    V6 {
+        /// The actual network address.
+        net: Ipv6Net,
+        /// IPv6 scope ID
+        scope_id: u32,
+        /// IPv6 address flags.
+        flags: Ipv6AddrFlags,
+    },
 }
 
 impl PartialEq for IpNet {
@@ -52,10 +82,23 @@ impl PartialEq for IpNet {
                     && a.prefix_len() == b.prefix_len()
                     && a.netmask() == b.netmask()
             }
-            (IpNet::V6(a), IpNet::V6(b)) => {
-                a.addr() == b.addr()
-                    && a.prefix_len() == b.prefix_len()
-                    && a.netmask() == b.netmask()
+            (
+                IpNet::V6 {
+                    net: net_a,
+                    scope_id: scope_id_a,
+                    flags: flags_a,
+                },
+                IpNet::V6 {
+                    net: net_b,
+                    scope_id: scope_id_b,
+                    flags: flags_b,
+                },
+            ) => {
+                net_a.addr() == net_b.addr()
+                    && net_a.prefix_len() == net_b.prefix_len()
+                    && net_a.netmask() == net_b.netmask()
+                    && scope_id_a == scope_id_b
+                    && flags_a == flags_b
             }
             _ => false,
         }
@@ -68,7 +111,7 @@ impl IpNet {
     pub fn addr(&self) -> IpAddr {
         match self {
             IpNet::V4(a) => IpAddr::V4(a.addr()),
-            IpNet::V6(a) => IpAddr::V6(a.addr()),
+            IpNet::V6 { net, .. } => IpAddr::V6(net.addr()),
         }
     }
 }
