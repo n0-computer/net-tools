@@ -8,8 +8,8 @@ use std::{
 };
 
 use current_mapping::CurrentMapping;
-use futures_lite::StreamExt;
 use n0_error::{e, stack_error};
+use n0_future::StreamExt;
 use netwatch::interfaces::HomeRouter;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;

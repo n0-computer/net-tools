@@ -185,6 +185,8 @@ impl Response {
 
     #[cfg(test)]
     fn random<R: rand::Rng>(opcode: Opcode, rng: &mut R) -> Self {
+        use rand::RngExt;
+
         match opcode {
             Opcode::DetermineExternalAddress => {
                 let octets: [u8; 4] = rng.random();

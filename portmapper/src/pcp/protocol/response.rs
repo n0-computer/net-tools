@@ -225,6 +225,8 @@ impl Response {
 
     #[cfg(test)]
     fn random<R: rand::Rng>(opcode: Opcode, rng: &mut R) -> Self {
+        use rand::RngExt;
+
         let data = OpcodeData::random(opcode, rng);
         Self {
             lifetime_seconds: rng.random(),

@@ -167,7 +167,7 @@ impl<M: Mapping> CurrentMapping<M> {
     }
 }
 
-impl<M: Mapping> futures_lite::Stream for CurrentMapping<M> {
+impl<M: Mapping> n0_future::Stream for CurrentMapping<M> {
     type Item = Event;
 
     fn poll_next(
@@ -180,7 +180,7 @@ impl<M: Mapping> futures_lite::Stream for CurrentMapping<M> {
 
 #[cfg(test)]
 mod tests {
-    use futures_lite::StreamExt;
+    use n0_future::StreamExt;
 
     use super::*;
 

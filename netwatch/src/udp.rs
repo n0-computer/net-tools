@@ -433,7 +433,7 @@ impl UdpSocket {
                         trace!(
                             src = %meta.addr,
                             len = meta.len,
-                            count = meta.len / meta.stride,
+                            count = meta.len.checked_div(meta.stride).unwrap_or(0),
                             dst = %meta.dst_ip.map(|x| x.to_string()).unwrap_or_default(),
                             "UDP recv"
                         );

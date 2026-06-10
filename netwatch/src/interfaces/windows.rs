@@ -42,10 +42,15 @@ fn get_default_route() -> Result<DefaultRouteDetails, Error> {
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
-    match get_default_route() {
-        Ok(route) => Some(route),
-        Err(err) => {
+    // WMI uses COM which can deadlock on a tokio worker thread.
+    match tokio::task::spawn_blocking(get_default_route).await {
+        Ok(Ok(route)) => Some(route),
+        Ok(Err(err)) => {
             warn!("failed to retrieve default route: {:#?}", err);
+            None
+        }
+        Err(err) => {
+            warn!("default route task panicked: {:#?}", err);
             None
         }
     }

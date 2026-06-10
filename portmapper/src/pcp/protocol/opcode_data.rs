@@ -106,6 +106,8 @@ impl MapData {
 
     #[cfg(test)]
     fn random<R: rand::Rng>(rng: &mut R) -> MapData {
+        use rand::RngExt;
+
         let octets: [u8; 16] = rng.random();
         MapData {
             nonce: rng.random(),

@@ -41,9 +41,11 @@ pub enum Error {
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
-    let route = default_route_proc().await;
-    if let Ok(route) = route {
-        return route;
+    // /proc/net/route only contains IPv4 routes. If it finds one, return it.
+    // If it returns Ok(None) (no IPv4 default route) or Err (file unreadable),
+    // fall through to netlink which checks both IPv4 and IPv6.
+    if let Ok(Some(route)) = default_route_proc().await {
+        return Some(route);
     }
 
     #[cfg(target_os = "android")]

@@ -103,6 +103,8 @@ impl Request {
 
     #[cfg(test)]
     fn random<R: rand::Rng>(opcode: super::Opcode, rng: &mut R) -> Self {
+        use rand::RngExt;
+
         let opcode_data = OpcodeData::random(opcode, rng);
         let addr_octets: [u8; 16] = rng.random();
         Request {
