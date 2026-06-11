@@ -6,23 +6,26 @@ use n0_watcher::Watchable;
 use tokio::sync::{mpsc, oneshot};
 
 mod actor;
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(posix_minimal)))]
 mod android;
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
+#[cfg(all(
+    any(
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "macos",
+        target_os = "ios"
+    ),
+    not(posix_minimal)
 ))]
 mod bsd;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(posix_minimal)))]
 mod linux;
 #[cfg(posix_minimal)]
 mod posix_minimal;
 #[cfg(wasm_browser)]
 mod wasm_browser;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(posix_minimal)))]
 mod windows;
 
 #[cfg(not(any(posix_minimal, wasm_browser)))]

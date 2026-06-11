@@ -7,23 +7,26 @@ pub(crate) use os::is_interesting_interface;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(posix_minimal)))]
 use super::android as os;
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
+#[cfg(all(
+    any(
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "macos",
+        target_os = "ios"
+    ),
+    not(posix_minimal)
 ))]
 use super::bsd as os;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(posix_minimal)))]
 use super::linux as os;
 #[cfg(posix_minimal)]
 use super::posix_minimal as os;
 #[cfg(wasm_browser)]
 use super::wasm_browser as os;
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(posix_minimal)))]
 use super::windows as os;
 use crate::interfaces::State;
 
