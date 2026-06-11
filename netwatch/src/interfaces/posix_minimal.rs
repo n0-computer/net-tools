@@ -35,13 +35,73 @@ impl Interface {
     }
 }
 
+/// State flags for a single IPv6 address.
+///
+/// Hand-kept mirror of netdev's [`Ipv6AddrFlags`], so the `interfaces` API is
+/// identical on platforms built without `netdev` (e.g. esp-idf). Keep this in
+/// sync with netdev; the documentation below is copied verbatim from it.
+///
+/// All fields default to `false` when the platform does not provide the
+/// corresponding information.
+///
+/// Flags are collected from platform-specific sources:
+///
+/// - **Linux/Android**: netlink `IFA_FLAGS` attribute (`IFA_F_*` from [`<linux/if_addr.h>`])
+/// - **macOS/iOS**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*` from [`<netinet6/in6_var.h>`][xnu])
+/// - **FreeBSD/OpenBSD/NetBSD**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*` from [`<netinet6/in6_var.h>`][freebsd])
+/// - **Windows**: [`NL_DAD_STATE`] and [`NL_SUFFIX_ORIGIN`] from `IP_ADAPTER_UNICAST_ADDRESS`
+///
+/// [`Ipv6AddrFlags`]: https://docs.rs/netdev/0.44.0/netdev/interface/ipv6_addr_flags/struct.Ipv6AddrFlags.html
+/// [`<linux/if_addr.h>`]: https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_addr.h
+/// [xnu]: https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/in6_var.h
+/// [freebsd]: https://github.com/freebsd/freebsd-src/blob/main/sys/netinet6/in6_var.h
+/// [`NL_DAD_STATE`]: https://learn.microsoft.com/en-us/windows/win32/api/nldef/ne-nldef-nl_dad_state
+/// [`NL_SUFFIX_ORIGIN`]: https://learn.microsoft.com/en-us/windows/win32/api/nldef/ne-nldef-nl_suffix_origin
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Ipv6AddrFlags {
+    /// Preferred lifetime expired; should not be used for new connections.
+    ///
+    /// Sourced from `IFA_F_DEPRECATED` (Linux), `IN6_IFF_DEPRECATED` (BSD),
+    /// or `IpDadStateDeprecated` (Windows).
+    pub deprecated: bool,
+    /// Privacy address ([RFC 4941](https://datatracker.ietf.org/doc/html/rfc4941)).
+    ///
+    /// Sourced from `IFA_F_TEMPORARY` (Linux), `IN6_IFF_TEMPORARY` (BSD),
+    /// or `IpSuffixOriginRandom` (Windows).
+    pub temporary: bool,
+    /// Undergoing duplicate address detection.
+    ///
+    /// Sourced from `IFA_F_TENTATIVE` (Linux), `IN6_IFF_TENTATIVE` (BSD),
+    /// or `IpDadStateTentative` (Windows).
+    pub tentative: bool,
+    /// Duplicate address detection failed.
+    ///
+    /// Sourced from `IFA_F_DADFAILED` (Linux), `IN6_IFF_DUPLICATED` (BSD),
+    /// or `IpDadStateDuplicate` (Windows).
+    pub duplicated: bool,
+    /// Manually configured, not from SLAAC.
+    ///
+    /// Sourced from `IFA_F_PERMANENT` (Linux). Not available on BSD or Windows.
+    pub permanent: bool,
+}
+
 /// Structure of an IP network, either IPv4 or IPv6.
+///
+/// The shape mirrors the `netdev`-based `IpNet` so downstream code is
+/// platform-agnostic.
 #[derive(Clone, Debug)]
 pub enum IpNet {
     /// Structure of IPv4 Network.
     V4(Ipv4Net),
     /// Structure of IPv6 Network.
-    V6(Ipv6Net),
+    V6 {
+        /// The actual network address.
+        net: Ipv6Net,
+        /// IPv6 scope ID
+        scope_id: u32,
+        /// IPv6 address flags.
+        flags: Ipv6AddrFlags,
+    },
 }
 
 impl PartialEq for IpNet {
@@ -52,10 +112,23 @@ impl PartialEq for IpNet {
                     && a.prefix_len() == b.prefix_len()
                     && a.netmask() == b.netmask()
             }
-            (IpNet::V6(a), IpNet::V6(b)) => {
-                a.addr() == b.addr()
-                    && a.prefix_len() == b.prefix_len()
-                    && a.netmask() == b.netmask()
+            (
+                IpNet::V6 {
+                    net: net_a,
+                    scope_id: scope_id_a,
+                    flags: flags_a,
+                },
+                IpNet::V6 {
+                    net: net_b,
+                    scope_id: scope_id_b,
+                    flags: flags_b,
+                },
+            ) => {
+                net_a.addr() == net_b.addr()
+                    && net_a.prefix_len() == net_b.prefix_len()
+                    && net_a.netmask() == net_b.netmask()
+                    && scope_id_a == scope_id_b
+                    && flags_a == flags_b
             }
             _ => false,
         }
@@ -68,7 +141,7 @@ impl IpNet {
     pub fn addr(&self) -> IpAddr {
         match self {
             IpNet::V4(a) => IpAddr::V4(a.addr()),
-            IpNet::V6(a) => IpAddr::V6(a.addr()),
+            IpNet::V6 { net, .. } => IpAddr::V6(net.addr()),
         }
     }
 }
