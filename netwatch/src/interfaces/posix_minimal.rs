@@ -19,16 +19,6 @@ impl fmt::Display for Interface {
 }
 
 impl Interface {
-    /// Is this interface up?
-    pub fn is_up(&self) -> bool {
-        false
-    }
-
-    /// The name of the interface.
-    pub fn name(&self) -> &str {
-        "unknown"
-    }
-
     /// A list of all ip addresses of this interface.
     pub fn addrs(&self) -> impl Iterator<Item = IpNet> + '_ {
         std::iter::empty()
@@ -37,51 +27,20 @@ impl Interface {
 
 /// State flags for a single IPv6 address.
 ///
-/// Hand-kept mirror of netdev's [`Ipv6AddrFlags`], so the `interfaces` API is
-/// identical on platforms built without `netdev` (e.g. esp-idf). Keep this in
-/// sync with netdev; the documentation below is copied verbatim from it.
-///
-/// All fields default to `false` when the platform does not provide the
-/// corresponding information.
-///
-/// Flags are collected from platform-specific sources:
-///
-/// - **Linux/Android**: netlink `IFA_FLAGS` attribute (`IFA_F_*` from [`<linux/if_addr.h>`])
-/// - **macOS/iOS**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*` from [`<netinet6/in6_var.h>`][xnu])
-/// - **FreeBSD/OpenBSD/NetBSD**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*` from [`<netinet6/in6_var.h>`][freebsd])
-/// - **Windows**: [`NL_DAD_STATE`] and [`NL_SUFFIX_ORIGIN`] from `IP_ADAPTER_UNICAST_ADDRESS`
-///
-/// [`Ipv6AddrFlags`]: https://docs.rs/netdev/0.44.0/netdev/interface/ipv6_addr_flags/struct.Ipv6AddrFlags.html
-/// [`<linux/if_addr.h>`]: https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_addr.h
-/// [xnu]: https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/in6_var.h
-/// [freebsd]: https://github.com/freebsd/freebsd-src/blob/main/sys/netinet6/in6_var.h
-/// [`NL_DAD_STATE`]: https://learn.microsoft.com/en-us/windows/win32/api/nldef/ne-nldef-nl_dad_state
-/// [`NL_SUFFIX_ORIGIN`]: https://learn.microsoft.com/en-us/windows/win32/api/nldef/ne-nldef-nl_suffix_origin
+/// Hand-kept mirror of netdev's `Ipv6AddrFlags`, so the `interfaces` API is
+/// identical on platforms built without `netdev` (e.g. esp-idf). All fields
+/// default to `false` when the platform does not provide the information.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Ipv6AddrFlags {
     /// Preferred lifetime expired; should not be used for new connections.
-    ///
-    /// Sourced from `IFA_F_DEPRECATED` (Linux), `IN6_IFF_DEPRECATED` (BSD),
-    /// or `IpDadStateDeprecated` (Windows).
     pub deprecated: bool,
     /// Privacy address ([RFC 4941](https://datatracker.ietf.org/doc/html/rfc4941)).
-    ///
-    /// Sourced from `IFA_F_TEMPORARY` (Linux), `IN6_IFF_TEMPORARY` (BSD),
-    /// or `IpSuffixOriginRandom` (Windows).
     pub temporary: bool,
     /// Undergoing duplicate address detection.
-    ///
-    /// Sourced from `IFA_F_TENTATIVE` (Linux), `IN6_IFF_TENTATIVE` (BSD),
-    /// or `IpDadStateTentative` (Windows).
     pub tentative: bool,
     /// Duplicate address detection failed.
-    ///
-    /// Sourced from `IFA_F_DADFAILED` (Linux), `IN6_IFF_DUPLICATED` (BSD),
-    /// or `IpDadStateDuplicate` (Windows).
     pub duplicated: bool,
     /// Manually configured, not from SLAAC.
-    ///
-    /// Sourced from `IFA_F_PERMANENT` (Linux). Not available on BSD or Windows.
     pub permanent: bool,
 }
 
@@ -174,7 +133,7 @@ pub struct State {
     /// Whether the machine has IPv4 connectivity.
     pub have_v4: bool,
     /// Whether the current network interface is considered "expensive".
-    pub is_expensive: bool,
+    pub(crate) is_expensive: bool,
     /// The interface name for the machine's default route.
     pub default_route_interface: Option<String>,
     /// Monotonic timestamp, when an unsuspend was detected.
@@ -191,19 +150,6 @@ impl State {
     /// Returns a default empty state (no interface enumeration on this platform).
     pub async fn new() -> Self {
         State {
-            interfaces: HashMap::new(),
-            local_addresses: LocalAddresses::default(),
-            have_v6: false,
-            have_v4: true,
-            is_expensive: false,
-            default_route_interface: None,
-            last_unsuspend: None,
-        }
-    }
-
-    /// Creates a fake interface state for usage in tests.
-    pub fn fake() -> Self {
-        Self {
             interfaces: HashMap::new(),
             local_addresses: LocalAddresses::default(),
             have_v6: false,
