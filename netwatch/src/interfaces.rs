@@ -17,8 +17,8 @@ mod linux;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub(crate) use ipnet::{Ipv4Net, Ipv6Net};
 pub use netdev::interface::ipv6_addr_flags::Ipv6AddrFlags;
-pub(crate) use netdev::ipnet::{Ipv4Net, Ipv6Net};
 
 #[cfg(any(
     target_os = "freebsd",
