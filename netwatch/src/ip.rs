@@ -17,6 +17,8 @@ pub struct LocalAddresses {
     pub loopback: Vec<IpAddr>,
     /// Regular addresses.
     pub regular: Vec<IpAddr>,
+    /// Link-local addresses
+    pub link_local: Vec<IpAddr>,
 }
 
 #[cfg(not(wasm_browser))]
@@ -41,6 +43,7 @@ impl LocalAddresses {
         let mut regular4 = Vec::new();
         let mut regular6 = Vec::new();
         let mut linklocal4 = Vec::new();
+        let mut linklocal6 = Vec::new();
         let mut ula6 = Vec::new();
 
         for iface in ifaces {
@@ -63,14 +66,9 @@ impl LocalAddresses {
                 } else if is_link_local(ip) {
                     if ip.is_ipv4() {
                         linklocal4.push(ip);
+                    } else {
+                        linklocal6.push(ip);
                     }
-
-                    // We know of no cases where the IPv6 fe80:: addresses
-                    // are used to provide WAN connectivity. It is also very
-                    // common for users to have no IPv6 WAN connectivity,
-                    // but their OS supports IPv6 so they have an fe80::
-                    // address. We don't want to report all of those
-                    // IPv6 LL to Control.
                 } else if ip.is_ipv6() && is_private(&ip) {
                     // Google Cloud Run uses NAT with IPv6 Unique
                     // Local Addresses to provide IPv6 connectivity.
@@ -83,12 +81,13 @@ impl LocalAddresses {
             }
         }
 
+        let mut link_local = linklocal4;
+        link_local.extend(linklocal6);
+
         if regular4.is_empty() && regular6.is_empty() {
             // if we have no usable IP addresses then be willing to accept
             // addresses we otherwise wouldn't, like:
-            //   + 169.254.x.x (AWS Lambda uses NAT with these)
             //   + IPv6 ULA (Google Cloud Run uses these with address translation)
-            regular4 = linklocal4;
             regular6 = ula6;
         }
         let mut regular = regular4;
@@ -96,8 +95,13 @@ impl LocalAddresses {
 
         regular.sort();
         loopback.sort();
+        link_local.sort();
 
-        LocalAddresses { loopback, regular }
+        LocalAddresses {
+            loopback,
+            regular,
+            link_local,
+        }
     }
 }
 
