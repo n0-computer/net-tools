@@ -294,6 +294,33 @@ jobs:
     - name: clippy check (default features)
       run: cargo clippy --workspace --all-targets
 
+  external_types:
+    timeout-minutes: 30
+    name: Check external types
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: "sccache"
+      SCCACHE_GHA_ENABLED: "on"
+      # Pin to the nightly that the pinned `cargo-check-external-types`
+      # release was last tested against. Update both together, and keep the
+      # toolchain in sync with the `check-external-types` task in Makefile.toml.
+      CARGO_CHECK_EXTERNAL_TYPES_VERSION: "0.4.0"
+      TOOLCHAIN: "nightly-2025-10-18"
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.TOOLCHAIN }}
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@main
+    - uses: taiki-e/install-action@cargo-make
+    - name: Install cargo-check-external-types
+      run: cargo binstall cargo-check-external-types@${{ env.CARGO_CHECK_EXTERNAL_TYPES_VERSION }} --locked --no-confirm
+    - name: Check external types
+      run: cargo make check-external-types
+
   msrv:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
     timeout-minutes: 30

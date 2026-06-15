@@ -18,6 +18,7 @@ workspace = true
 [dependencies]
 atomic-waker = "1.1.2"
 bytes = "1.7"
+ipnet = "2"
 n0-error = "1.0.0"
 n0-future = "0.3.2"
 n0-watcher = "1.0.0"
@@ -34,7 +35,6 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-ipnet = "2"
 noq-udp = "1.0.0"
 libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
@@ -108,3 +108,24 @@ cfg_aliases = { version = "0.2.1" }
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "iroh_docsrs"]
+
+# Types from these external crates are allowed to appear in netwatch's public
+# API. The list is enforced by `cargo check-external-types` (see the
+# `check-external-types` task in Makefile.toml). Notably absent is `netdev`:
+# its types must never leak, which is why the `interfaces` module mirrors them.
+[package.metadata.cargo_check_external_types]
+allowed_external_types = [
+    # IP network types used by `interfaces::IpNet`.
+    "ipnet::*",
+    # iroh-ecosystem error and reactive-state crates.
+    "n0_error::*",
+    "n0_watcher::*",
+    # UDP transmit/receive metadata used by the `udp` module.
+    "noq_udp::*",
+    # Error types surfaced by `From` impls on `netmon::Error`.
+    "tokio::sync::mpsc::error::SendError",
+    "tokio::sync::oneshot::error::RecvError",
+    # `State::last_unsuspend` is an `n0_future::time::Instant`, which resolves
+    # to tokio's `Instant` on non-wasm targets.
+    "tokio::time::instant::Instant",
+]
