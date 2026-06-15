@@ -208,13 +208,13 @@ mod arm {
     target_arch = "powerpc64",
     target_arch = "riscv64"
 ))]
-pub use self::arm64::*;
+pub use self::lp64::*;
 #[cfg(any(
     target_arch = "aarch64",
     target_arch = "powerpc64",
     target_arch = "riscv64"
 ))]
-mod arm64 {
+mod lp64 {
     pub const SIZEOF_IF_MSGHDRL_FREE_BSD10: usize = 0xb0;
     pub const SIZEOF_IFA_MSGHDR_FREE_BSD10: usize = 0x14;
     pub const SIZEOF_IFA_MSGHDRL_FREE_BSD10: usize = 0xb0;
