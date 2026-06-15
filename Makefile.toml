@@ -18,6 +18,17 @@ workspace = false
 command = "cargo"
 args = ["nextest", "run", "-p", "netwatch", "--test", "patchbay", "--profile", "patchbay", "${@}"]
 
+# Verifies netwatch does not leak unapproved external crate types (notably
+# `netdev`) through its public API. The allowlist lives in
+# `netwatch/Cargo.toml` under `[package.metadata.cargo_check_external_types]`.
+# Requires the nightly toolchain that the pinned `cargo-check-external-types`
+# release was tested against; keep both in sync with CI.
+[tasks.check-external-types]
+workspace = false
+toolchain = "${TOOLCHAIN:nightly-2025-10-18}"
+command = "cargo"
+args = ["check-external-types", "--manifest-path", "netwatch/Cargo.toml"]
+
 [tasks.format-check]
 workspace = false
 command = "cargo"

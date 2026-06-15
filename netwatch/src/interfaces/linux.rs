@@ -7,6 +7,7 @@ use tokio::{
 };
 
 use super::DefaultRouteDetails;
+pub(super) use super::netdev_impl::{get_state, home_router};
 
 #[stack_error(derive, add_meta, from_sources, std_sources)]
 #[non_exhaustive]
