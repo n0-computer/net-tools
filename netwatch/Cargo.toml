@@ -81,7 +81,7 @@ testresult = "0.4.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-patchbay = "0.5"
+patchbay = "0.6"
 ctor = "1.0"
 
 # *non*-wasm-in-browser test/dev dependencies
