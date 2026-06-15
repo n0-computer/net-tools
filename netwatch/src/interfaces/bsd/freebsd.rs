@@ -43,58 +43,6 @@ pub const RTM_DELMADDR: c_int = 0x10;
 pub const RTM_IFANNOUNCE: c_int = 0x11;
 pub const RTM_IEEE80211: c_int = 0x12;
 
-// Hardcoded based on the generated values here: https://cs.opensource.google/go/x/net/+/master:route/zsys_freebsd_amd64.go
-#[cfg(target_arch = "x86_64")]
-pub use self::amd64::*;
-#[cfg(target_arch = "x86_64")]
-mod amd64 {
-    pub const SIZEOF_IF_MSGHDRL_FREE_BSD10: usize = 0xb0;
-    pub const SIZEOF_IFA_MSGHDR_FREE_BSD10: usize = 0x14;
-    pub const SIZEOF_IFA_MSGHDRL_FREE_BSD10: usize = 0xb0;
-    pub const SIZEOF_IFMA_MSGHDR_FREE_BSD10: usize = 0x10;
-    pub const SIZEOF_IF_ANNOUNCEMSGHDR_FREE_BSD10: usize = 0x18;
-
-    pub const SIZEOF_RT_MSGHDR_FREE_BSD10: usize = 0x98;
-    pub const SIZEOF_RT_METRICS_FREE_BSD10: usize = 0x70;
-
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD7: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD8: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD9: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD10: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD11: usize = 0xa8;
-
-    pub const SIZEOF_IF_DATA_FREE_BSD7: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD8: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD9: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD10: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD11: usize = 0x98;
-
-    pub const SIZEOF_IF_MSGHDRL_FREE_BSD10_EMU: usize = 0xb0;
-    pub const SIZEOF_IFA_MSGHDR_FREE_BSD10_EMU: usize = 0x14;
-    pub const SIZEOF_IFA_MSGHDRL_FREE_BSD10_EMU: usize = 0xb0;
-    pub const SIZEOF_IFMA_MSGHDR_FREE_BSD10_EMU: usize = 0x10;
-    pub const SIZEOF_IF_ANNOUNCEMSGHDR_FREE_BSD10_EMU: usize = 0x18;
-
-    pub const SIZEOF_RT_MSGHDR_FREE_BSD10_EMU: usize = 0x98;
-    pub const SIZEOF_RT_METRICS_FREE_BSD10_EMU: usize = 0x70;
-
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD7_EMU: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD8_EMU: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD9_EMU: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD10_EMU: usize = 0xa8;
-    pub const SIZEOF_IF_MSGHDR_FREE_BSD11_EMU: usize = 0xa8;
-
-    pub const SIZEOF_IF_DATA_FREE_BSD7_EMU: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD8_EMU: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD9_EMU: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD10_EMU: usize = 0x98;
-    pub const SIZEOF_IF_DATA_FREE_BSD11_EMU: usize = 0x98;
-
-    pub const SIZEOF_SOCKADDR_STORAGE: usize = 0x80;
-    pub const SIZEOF_SOCKADDR_INET: usize = 0x10;
-    pub const SIZEOF_SOCKADDR_INET6: usize = 0x1c;
-}
-
 // Hardcoded based on the generated values here: https://cs.opensource.google/go/x/net/+/master:route/zsys_freebsd_386.go
 #[cfg(target_arch = "x86")]
 pub use self::i686::*;
@@ -202,11 +150,23 @@ mod arm {
     pub const SIZEOF_SOCKADDR_INET6: usize = 0x1c;
 }
 
-// Hardcoded based on the generated values here: https://cs.opensource.google/go/x/net/+/master:route/zsys_freebsd_arm.go
-#[cfg(target_arch = "aarch64")]
-pub use self::arm64::*;
-#[cfg(target_arch = "aarch64")]
-mod arm64 {
+// Hardcoded based on the generated values here: https://cs.opensource.google/go/x/net/+/master:route/zsys_freebsd_amd64.go
+// These sizes are identical across all LP64 targets, so the same values apply to
+// x86_64, aarch64, powerpc64 and riscv64.
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "powerpc64",
+    target_arch = "riscv64"
+))]
+pub use self::lp64::*;
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "powerpc64",
+    target_arch = "riscv64"
+))]
+mod lp64 {
     pub const SIZEOF_IF_MSGHDRL_FREE_BSD10: usize = 0xb0;
     pub const SIZEOF_IFA_MSGHDR_FREE_BSD10: usize = 0x14;
     pub const SIZEOF_IFA_MSGHDRL_FREE_BSD10: usize = 0xb0;
