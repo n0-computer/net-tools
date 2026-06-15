@@ -792,9 +792,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-metrics"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcb7a4c78f3a46af8a1ce936b7cc931979de2bbedd416201b493e41cd7d73de7"
+checksum = "291065721ad7c477b972e581bbc528df031dc8eb5e39fe1ff3300ae5dfb157ef"
 dependencies = [
  "iroh-metrics-derive",
  "itoa",
@@ -807,9 +807,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-metrics-derive"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b90f2d66f2348ad45e4d39e671568f3439465e40086d269a0d61d53594992fb"
+checksum = "1ae5f0c4405d1fbc9fb16ff422ca40620e93dc36c30ecaba0c2aee3992b7bd48"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1447,9 +1447,9 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patchbay"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d376bb9a5ce9816d86726877840df3a5113329390d4c9241c178707b14b5485"
+checksum = "543b9acbe630f7745965d8243d3af809370cfad7b12d801b63e085e606349852"
 dependencies = [
  "anyhow",
  "chrono",
