@@ -52,10 +52,6 @@ impl RouteMonitor {
     }
 }
 
-pub(crate) fn is_interesting_interface(_name: &str) -> bool {
-    true
-}
-
 /// Manages callbacks registered with the win32 networking API.
 #[derive(derive_more::Debug, Default)]
 struct CallbackHandler {

@@ -16,7 +16,8 @@ use libc::{
 use n0_error::{e, ensure, stack_error};
 use tracing::warn;
 
-use super::DefaultRouteDetails;
+pub(super) use super::netdev_impl::get_state;
+use super::{DefaultRouteDetails, HomeRouter};
 
 #[cfg(target_os = "freebsd")]
 mod freebsd;
@@ -46,7 +47,20 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
     })
 }
 
-pub fn likely_home_router() -> Option<IpAddr> {
+/// Locates the home router via the routing table.
+///
+/// `netdev` cannot yet determine the default gateway on BSD platforms (see
+/// <https://github.com/shellrow/default-net/issues/34>), so this parses the
+/// routing table directly. The local IP still comes from `netdev`.
+pub(super) fn home_router() -> Option<HomeRouter> {
+    let gateway = likely_home_router()?;
+    Some(HomeRouter {
+        gateway,
+        my_ip: super::netdev_impl::local_ip(),
+    })
+}
+
+fn likely_home_router() -> Option<IpAddr> {
     let rib = fetch_routing_table()?;
     let msgs = parse_routing_table(&rib)?;
     for rm in msgs {

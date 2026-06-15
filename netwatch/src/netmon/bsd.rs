@@ -11,7 +11,10 @@ use tracing::{trace, warn};
 use super::actor::NetworkMessage;
 #[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))]
 use crate::interfaces::bsd::{RTAX_DST, RTAX_IFP};
-use crate::{interfaces::bsd::WireMessage, ip::is_link_local};
+use crate::{
+    interfaces::{bsd::WireMessage, is_interesting_interface},
+    ip::is_link_local,
+};
 
 #[derive(Debug)]
 pub(super) struct RouteMonitor {
@@ -125,13 +128,4 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
         }
         WireMessage::InterfaceAnnounce(_) => false,
     }
-}
-
-pub(crate) fn is_interesting_interface(name: &str) -> bool {
-    let base_name = name.trim_end_matches("0123456789");
-    if base_name == "llw" || base_name == "awdl" || base_name == "ipsec" {
-        return false;
-    }
-
-    true
 }
