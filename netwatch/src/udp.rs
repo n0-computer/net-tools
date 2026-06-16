@@ -222,6 +222,13 @@ impl UdpSocket {
                 self.mark_broken();
                 None
             }
+            // A transient receive error (see is_transient_read_error) leaves the socket
+            // healthy with the next datagram still queued, so we drop it and let the
+            // caller poll again rather than surface a spurious failure. Returning it
+            // would also strand that datagram: a non-WouldBlock error does not clear the
+            // socket's readiness, so no fresh wakeup is produced and the next recv is
+            // only driven by an unrelated wakeup. See iroh #4325.
+            _ if is_transient_read_error(&error) => None,
             _ => Some(error),
         }
     }
@@ -487,6 +494,43 @@ impl UdpSocket {
         let guard = self.socket.read().unwrap();
         guard.gro_segments()
     }
+}
+
+/// `WSAENETRESET` (Winsock error 10052).
+///
+/// On a UDP socket Windows returns this from a recv when a previously sent datagram
+/// could not be delivered because its TTL expired in transit, which the network
+/// reports back as an ICMP Time Exceeded message. It describes the fate of that one
+/// datagram, not the state of the socket: the socket stays usable and the error is
+/// cleared once read, so the next recv proceeds normally. The Rust standard library
+/// does not map this code to an [`io::ErrorKind`] (unlike `WSAECONNRESET`), so we match
+/// it by its raw OS value.
+#[cfg(windows)]
+const WSAENETRESET: i32 = 10052;
+
+/// Whether a read error is a transient condition that should be retried rather than
+/// surfaced to the caller as a failure.
+///
+/// On Windows the stack reports the fate of a *previously sent* datagram against the
+/// next recv on the same socket, so an ICMP reply surfaces as a recv error even though
+/// the socket is healthy. `WSAECONNRESET` reports an ICMP Port Unreachable, meaning the
+/// destination had no listener. `WSAENETRESET` reports an ICMP Time Exceeded, meaning a
+/// datagram's TTL expired in transit. Both are transient for the same reason: each
+/// describes a single datagram and is delivered exactly once, so reading it clears the
+/// condition and the following recv returns real data.
+///
+/// We treat `ConnectionReset` as transient on every platform, not only Windows:
+/// ECONNRESET is undefined in QUIC and can be injected by an attacker, so
+/// it must never tear down the receive path.
+fn is_transient_read_error(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::ConnectionReset {
+        return true;
+    }
+    #[cfg(windows)]
+    if error.raw_os_error() == Some(WSAENETRESET) {
+        return true;
+    }
+    false
 }
 
 /// Receive future
