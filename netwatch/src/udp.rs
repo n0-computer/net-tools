@@ -222,12 +222,8 @@ impl UdpSocket {
                 self.mark_broken();
                 None
             }
-            // A transient receive error (see is_transient_read_error) leaves the socket
-            // healthy with the next datagram still queued, so we drop it and let the
-            // caller poll again rather than surface a spurious failure. Returning it
-            // would also strand that datagram: a non-WouldBlock error does not clear the
-            // socket's readiness, so no fresh wakeup is produced and the next recv is
-            // only driven by an unrelated wakeup. See iroh #4325.
+            // A transient receive error leaves the socket healthy with the next datagram still queued,
+            // so we drop the error poll again rather than surface a spurious failure.
             _ if is_transient_read_error(&error) => None,
             _ => Some(error),
         }
