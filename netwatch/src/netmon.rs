@@ -25,7 +25,7 @@ mod windows;
 
 #[cfg(not(wasm_browser))]
 pub(crate) use self::actor::is_interesting_interface;
-use self::actor::{Actor, ActorMessage};
+use self::actor::{Actor, ActorMessage, default_state_fn};
 pub use crate::interfaces::State;
 
 /// Monitors networking interface and route changes.
@@ -61,12 +61,12 @@ impl From<oneshot::error::RecvError> for Error {
 impl Monitor {
     /// Create a new monitor.
     pub async fn new() -> Result<Self, Error> {
-        let actor = Actor::new().await?;
+        let (actor, route_monitor) = Actor::new().await?;
         let actor_tx = actor.subscribe();
         let interface_state = actor.state().clone();
 
         let handle = task::spawn(async move {
-            actor.run().await;
+            actor.run(Some(route_monitor), default_state_fn()).await;
         });
 
         Ok(Monitor {
