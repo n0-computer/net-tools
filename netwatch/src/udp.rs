@@ -222,6 +222,9 @@ impl UdpSocket {
                 self.mark_broken();
                 None
             }
+            // A transient receive error leaves the socket healthy with the next datagram still queued,
+            // so we drop the error poll again rather than surface a spurious failure.
+            _ if is_transient_read_error(&error) => None,
             _ => Some(error),
         }
     }
@@ -487,6 +490,43 @@ impl UdpSocket {
         let guard = self.socket.read().unwrap();
         guard.gro_segments()
     }
+}
+
+/// `WSAENETRESET` (Winsock error 10052).
+///
+/// On a UDP socket Windows returns this from a recv when a previously sent datagram
+/// could not be delivered because its TTL expired in transit, which the network
+/// reports back as an ICMP Time Exceeded message. It describes the fate of that one
+/// datagram, not the state of the socket: the socket stays usable and the error is
+/// cleared once read, so the next recv proceeds normally. The Rust standard library
+/// does not map this code to an [`io::ErrorKind`] (unlike `WSAECONNRESET`), so we match
+/// it by its raw OS value.
+#[cfg(windows)]
+const WSAENETRESET: i32 = 10052;
+
+/// Whether a read error is a transient condition that should be retried rather than
+/// surfaced to the caller as a failure.
+///
+/// On Windows the stack reports the fate of a *previously sent* datagram against the
+/// next recv on the same socket, so an ICMP reply surfaces as a recv error even though
+/// the socket is healthy. `WSAECONNRESET` reports an ICMP Port Unreachable, meaning the
+/// destination had no listener. `WSAENETRESET` reports an ICMP Time Exceeded, meaning a
+/// datagram's TTL expired in transit. Both are transient for the same reason: each
+/// describes a single datagram and is delivered exactly once, so reading it clears the
+/// condition and the following recv returns real data.
+///
+/// We treat `ConnectionReset` as transient on every platform, not only Windows:
+/// ECONNRESET is undefined in QUIC and can be injected by an attacker, so
+/// it must never tear down the receive path.
+fn is_transient_read_error(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::ConnectionReset {
+        return true;
+    }
+    #[cfg(windows)]
+    if error.raw_os_error() == Some(WSAENETRESET) {
+        return true;
+    }
+    false
 }
 
 /// Receive future
@@ -1119,6 +1159,60 @@ mod tests {
         assert!(!socket_a.is_broken());
 
         handle.await?;
+        Ok(())
+    }
+
+    /// Regression test for the Windows behavior handled by [`is_transient_read_error`].
+    ///
+    /// A recv call must survive an ICMP error caused by an earlier send on the same socket.
+    ///
+    /// On Windows, sending a UDP datagram to a port with no listener draws an ICMP
+    /// port-unreachable, and the OS reports it against the *next* recv on that socket as
+    /// WSAECONNRESET. Before the fix our recv loop surfaced that error, so a perfectly
+    /// good datagram waiting behind it was lost and the recv failed. After the fix the
+    /// error is ignored and the real datagram is delivered.
+    ///
+    /// This only exercises the bug on Windows. Other platforms do not deliver the ICMP
+    /// error to an unconnected recv, so the recv just returns the datagram and the test
+    /// passes whether or not the fix is present.
+    #[tokio::test]
+    async fn test_recv_survives_icmp_unreachable_from_prior_send() -> TestResult {
+        use std::time::Duration;
+
+        // The socket under test, plus a legitimate peer to deliver a real datagram.
+        let receiver = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let receiver_addr = receiver.local_addr()?;
+        let sender = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let sender_addr = sender.local_addr()?;
+
+        // A definitely-closed port: bind a socket, take its address, then close it.
+        let closed_addr = {
+            let tmp = UdpSocket::bind_local(IpFamily::V4, 0)?;
+            let addr = tmp.local_addr()?;
+            tmp.close().await;
+            addr
+        };
+
+        // The receiver pokes the closed port. On Windows the ICMP port-unreachable that
+        // comes back arms WSAECONNRESET against the receiver's next recv.
+        receiver.send_to(b"void", closed_addr).await?;
+
+        // Give the ICMP reply time to arrive, so the error is pending before the real
+        // datagram and the recv.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // The peer sends a real datagram that the receiver must deliver.
+        sender.send_to(b"hello", receiver_addr).await?;
+
+        // Before the fix this recv returns WSAECONNRESET on Windows instead of "hello".
+        let mut buf = [0u8; 16];
+        let (n, from) = tokio::time::timeout(Duration::from_secs(5), receiver.recv_from(&mut buf))
+            .await
+            .expect("recv must not hang")?;
+
+        assert_eq!(&buf[..n], b"hello");
+        assert_eq!(from, sender_addr);
+
         Ok(())
     }
 }
