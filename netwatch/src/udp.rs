@@ -1121,4 +1121,58 @@ mod tests {
         handle.await?;
         Ok(())
     }
+
+    /// Regression test for the Windows behavior handled by [`is_transient_read_error`].
+    ///
+    /// A recv call must survive an ICMP error caused by an earlier send on the same socket.
+    ///
+    /// On Windows, sending a UDP datagram to a port with no listener draws an ICMP
+    /// port-unreachable, and the OS reports it against the *next* recv on that socket as
+    /// WSAECONNRESET. Before the fix our recv loop surfaced that error, so a perfectly
+    /// good datagram waiting behind it was lost and the recv failed. After the fix the
+    /// error is ignored and the real datagram is delivered.
+    ///
+    /// This only exercises the bug on Windows. Other platforms do not deliver the ICMP
+    /// error to an unconnected recv, so the recv just returns the datagram and the test
+    /// passes whether or not the fix is present.
+    #[tokio::test]
+    async fn test_recv_survives_icmp_unreachable_from_prior_send() -> TestResult {
+        use std::time::Duration;
+
+        // The socket under test, plus a legitimate peer to deliver a real datagram.
+        let receiver = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let receiver_addr = receiver.local_addr()?;
+        let sender = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let sender_addr = sender.local_addr()?;
+
+        // A definitely-closed port: bind a socket, take its address, then close it.
+        let closed_addr = {
+            let tmp = UdpSocket::bind_local(IpFamily::V4, 0)?;
+            let addr = tmp.local_addr()?;
+            tmp.close().await;
+            addr
+        };
+
+        // The receiver pokes the closed port. On Windows the ICMP port-unreachable that
+        // comes back arms WSAECONNRESET against the receiver's next recv.
+        receiver.send_to(b"void", closed_addr).await?;
+
+        // Give the ICMP reply time to arrive, so the error is pending before the real
+        // datagram and the recv.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // The peer sends a real datagram that the receiver must deliver.
+        sender.send_to(b"hello", receiver_addr).await?;
+
+        // Before the fix this recv returns WSAECONNRESET on Windows instead of "hello".
+        let mut buf = [0u8; 16];
+        let (n, from) = tokio::time::timeout(Duration::from_secs(5), receiver.recv_from(&mut buf))
+            .await
+            .expect("recv must not hang")?;
+
+        assert_eq!(&buf[..n], b"hello");
+        assert_eq!(from, sender_addr);
+
+        Ok(())
+    }
 }
