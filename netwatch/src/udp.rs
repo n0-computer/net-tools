@@ -52,18 +52,31 @@ impl UdpSocket {
     /// Bind to the given port only on localhost.
     pub fn bind_local(network: IpFamily, port: u16) -> io::Result<Self> {
         let addr = SocketAddr::new(network.local_addr(), port);
-        Self::bind_raw(addr)
+        Self::bind_raw(addr, None)
     }
 
     /// Bind to the given port and listen on all interfaces.
     pub fn bind(network: IpFamily, port: u16) -> io::Result<Self> {
         let addr = SocketAddr::new(network.unspecified_addr(), port);
-        Self::bind_raw(addr)
+        Self::bind_raw(addr, None)
     }
 
     /// Bind to any provided [`SocketAddr`].
     pub fn bind_full(addr: impl Into<SocketAddr>) -> io::Result<Self> {
-        Self::bind_raw(addr)
+        Self::bind_raw(addr, None)
+    }
+
+    /// Bind to any provided [`SocketAddr`], applying an fwmark to the socket.
+    ///
+    /// `mark` is applied via `SO_MARK` on Linux (and reapplied on every rebind)
+    /// so the caller can policy-route this socket's egress, for example around a
+    /// full-tunnel default route. `None` leaves the socket unmarked; the mark is
+    /// a no-op on non-Linux platforms.
+    pub fn bind_full_with_mark(
+        addr: impl Into<SocketAddr>,
+        mark: Option<u32>,
+    ) -> io::Result<Self> {
+        Self::bind_raw(addr, mark)
     }
 
     /// Is the socket broken and needs a rebind?
@@ -96,8 +109,8 @@ impl UdpSocket {
         Ok(())
     }
 
-    fn bind_raw(addr: impl Into<SocketAddr>) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into())?;
+    fn bind_raw(addr: impl Into<SocketAddr>, mark: Option<u32>) -> io::Result<Self> {
+        let socket = SocketState::bind(addr.into(), mark)?;
 
         Ok(UdpSocket {
             socket: RwLock::new(socket),
@@ -736,10 +749,14 @@ enum SocketState {
         state: noq_udp::UdpSocketState,
         /// The addr we are binding to.
         addr: SocketAddr,
+        /// The fwmark to (re)apply to the socket, if any.
+        mark: Option<u32>,
     },
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
+        /// The fwmark to reapply when rebinding, if any.
+        mark: Option<u32>,
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
@@ -753,6 +770,7 @@ impl SocketState {
                 socket,
                 state,
                 addr: _,
+                mark: _,
             } => Ok((socket, state)),
             Self::Closed { .. } => {
                 warn!("socket closed");
@@ -761,7 +779,7 @@ impl SocketState {
         }
     }
 
-    fn bind(addr: SocketAddr) -> io::Result<Self> {
+    fn bind(addr: SocketAddr, mark: Option<u32>) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
             network.into(),
@@ -785,6 +803,16 @@ impl SocketState {
             // Avoid dualstack
             socket.set_only_v6(true)?;
         }
+
+        // Apply the fwmark, if set. Linux-only; a no-op elsewhere.
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if let Some(mark) = mark {
+            if let Err(err) = socket.set_mark(mark) {
+                warn!("failed to set SO_MARK {} on udp socket: {:?}", mark, err);
+            }
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let _ = mark;
 
         // Binding must happen before calling noq, otherwise `local_addr`
         // is not yet available on all OSes.
@@ -814,13 +842,14 @@ impl SocketState {
             socket,
             state: socket_state,
             addr: local_addr,
+            mark,
         })
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let addr = match self {
-            Self::Connected { addr, .. } => *addr,
-            Self::Closed { addr, .. } => *addr,
+        let (addr, mark) = match self {
+            Self::Connected { addr, mark, .. } => (*addr, *mark),
+            Self::Closed { addr, mark, .. } => (*addr, *mark),
         };
         debug!("rebinding {}", addr);
 
@@ -829,13 +858,14 @@ impl SocketState {
         if let Self::Connected { state, .. } = self {
             *self = SocketState::Closed {
                 addr,
+                mark,
                 last_max_gso_segments: state.max_gso_segments(),
                 last_gro_segments: state.gro_segments(),
                 last_may_fragment: state.may_fragment(),
             };
         }
 
-        match Self::bind(addr) {
+        match Self::bind(addr, mark) {
             Ok(new_state) => {
                 *self = new_state;
                 Ok(())
@@ -854,9 +884,12 @@ impl SocketState {
 
     fn close(&mut self) -> Option<(tokio::net::UdpSocket, noq_udp::UdpSocketState)> {
         match self {
-            Self::Connected { state, addr, .. } => {
+            Self::Connected {
+                state, addr, mark, ..
+            } => {
                 let s = SocketState::Closed {
                     addr: *addr,
+                    mark: *mark,
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
