@@ -108,8 +108,8 @@
 <a href=#108 id=108 data-nosnippet>108</a>
 <a href=#109 id=109 data-nosnippet>109</a><span class="doccomment">/// The shared home-router lookup for linux, android and windows.
 <a href=#110 id=110 data-nosnippet>110</a>///
-<a href=#111 id=111 data-nosnippet>111</a>/// BSD platforms do not use this; `netdev` cannot yet determine their default
-<a href=#112 id=112 data-nosnippet>112</a>/// gateway, so [`super::bsd`] provides its own implementation.
+<a href=#111 id=111 data-nosnippet>111</a>/// BSD platforms do not use this as `netdev` cannot yet determine their default
+<a href=#112 id=112 data-nosnippet>112</a>/// gateway, so they provide their own implementation.
 <a href=#113 id=113 data-nosnippet>113</a></span><span class="attr">#[cfg(any(target_os = <span class="string">"linux"</span>, target_os = <span class="string">"android"</span>, target_os = <span class="string">"windows"</span>))]
 <a href=#114 id=114 data-nosnippet>114</a></span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>home_router() -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw">super</span>::HomeRouter&gt; {
 <a href=#115 id=115 data-nosnippet>115</a>    <span class="kw">let </span>gateway = netdev::get_default_gateway().ok()<span class="question-mark">?</span>;
