@@ -25,7 +25,7 @@ args = ["nextest", "run", "-p", "netwatch", "--test", "patchbay", "--profile", "
 # release was tested against; keep both in sync with CI.
 [tasks.check-external-types]
 workspace = false
-toolchain = "${TOOLCHAIN:nightly-2025-10-18}"
+toolchain = "${TOOLCHAIN:nightly-2026-03-20}"
 command = "cargo"
 args = ["check-external-types", "--manifest-path", "netwatch/Cargo.toml"]
 
