@@ -1,9 +1,9 @@
 //! Contains helpers for looking up system network interfaces.
 //!
 //! All public types are defined here once and have the same shape on every
-//! platform. The platform-specific work (enumerating interfaces, finding the
-//! default route, locating the home router) lives in the submodules below and
-//! is reached through the cfg-selected `platform` alias. Conversion from the
+//! platform. The platform-specific work of enumerating interfaces, finding the
+//! default route, and locating the home router lives in the submodules below,
+//! each reached through the cfg-selected `platform` alias. Conversion from the
 //! `netdev` crate is confined to the `netdev_impl` module.
 
 use std::{collections::HashMap, fmt, net::IpAddr};
@@ -133,7 +133,8 @@ impl IpNet {
 }
 
 /// Represents a network interface.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, derive_more::Display)]
+#[display("{index}. {name} up={} addrs={addrs:?}", self.is_up())]
 pub struct Interface {
     name: String,
     index: u32,
@@ -142,19 +143,6 @@ pub struct Interface {
     flags: u32,
     mac_addr: Option<[u8; 6]>,
     addrs: Vec<IpNet>,
-}
-
-impl fmt::Display for Interface {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}. {} up={} addrs={:?}",
-            self.index,
-            self.name,
-            self.is_up(),
-            self.addrs
-        )
-    }
 }
 
 impl PartialEq for Interface {

@@ -18,6 +18,7 @@ workspace = true
 [dependencies]
 atomic-waker = "1.1.2"
 bytes = "1.7"
+derive_more = { version = "2.1", features = ["debug", "display"] }
 ipnet = "2"
 n0-error = "1.0.0"
 n0-future = "0.3.2"
@@ -60,7 +61,6 @@ netlink-proto = "0.12.0"
 netlink-sys = "0.8.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
-derive_more = { version = "2.0.1", features = ["display"] }
 tokio = { version = "1", features = ["process"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -68,11 +68,9 @@ wmi = "0.18"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 windows-result = "0.4"
 serde = { version = "1", features = ["derive"] }
-derive_more = { version = "2.1", features = ["debug"] }
 
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-derive_more = { version = "2.1", features = ["display"] }
 js-sys = "0.3.83"
 web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 
