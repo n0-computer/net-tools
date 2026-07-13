@@ -28,6 +28,36 @@ pub struct UdpSocket {
 /// UDP socket read/write buffer size (7MB). The value of 7MB is chosen as it
 /// is the max supported by a default configuration of macOS. Some platforms will silently clamp the value.
 const SOCKET_BUFFER_SIZE: usize = 7 << 20;
+
+/// Options to bind a [`UdpSocket`] with.
+///
+/// Used by [`UdpSocket::bind_with`]. The default options match what the other
+/// `bind_*` constructors use.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct BindOptions {
+    mark: Option<u32>,
+}
+
+impl BindOptions {
+    /// Creates the default options.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the fwmark to apply to the socket, or `None` to leave it unmarked.
+    ///
+    /// The mark is applied with `SO_MARK` and is reapplied whenever the socket is
+    /// rebound, so the caller can policy-route the socket's egress, for example
+    /// around a full-tunnel default route.
+    ///
+    /// This only has an effect on Linux and Android. On every other platform the
+    /// mark is ignored.
+    pub fn set_mark(mut self, mark: Option<u32>) -> Self {
+        self.mark = mark;
+        self
+    }
+}
+
 impl UdpSocket {
     /// Bind only Ipv4 on any interface.
     pub fn bind_v4(port: u16) -> io::Result<Self> {
@@ -52,31 +82,30 @@ impl UdpSocket {
     /// Bind to the given port only on localhost.
     pub fn bind_local(network: IpFamily, port: u16) -> io::Result<Self> {
         let addr = SocketAddr::new(network.local_addr(), port);
-        Self::bind_raw(addr, None)
+        Self::bind_with(addr, BindOptions::default())
     }
 
     /// Bind to the given port and listen on all interfaces.
     pub fn bind(network: IpFamily, port: u16) -> io::Result<Self> {
         let addr = SocketAddr::new(network.unspecified_addr(), port);
-        Self::bind_raw(addr, None)
+        Self::bind_with(addr, BindOptions::default())
     }
 
     /// Bind to any provided [`SocketAddr`].
     pub fn bind_full(addr: impl Into<SocketAddr>) -> io::Result<Self> {
-        Self::bind_raw(addr, None)
+        Self::bind_with(addr, BindOptions::default())
     }
 
-    /// Bind to any provided [`SocketAddr`], applying an fwmark to the socket.
-    ///
-    /// `mark` is applied via `SO_MARK` on Linux (and reapplied on every rebind)
-    /// so the caller can policy-route this socket's egress, for example around a
-    /// full-tunnel default route. `None` leaves the socket unmarked; the mark is
-    /// a no-op on non-Linux platforms.
-    pub fn bind_full_with_mark(
-        addr: impl Into<SocketAddr>,
-        mark: Option<u32>,
-    ) -> io::Result<Self> {
-        Self::bind_raw(addr, mark)
+    /// Bind to any provided [`SocketAddr`], using the given [`BindOptions`].
+    pub fn bind_with(addr: impl Into<SocketAddr>, opts: BindOptions) -> io::Result<Self> {
+        let socket = SocketState::bind(addr.into(), opts.mark)?;
+
+        Ok(UdpSocket {
+            socket: RwLock::new(socket),
+            recv_waker: AtomicWaker::default(),
+            send_waker: AtomicWaker::default(),
+            is_broken: AtomicBool::new(false),
+        })
     }
 
     /// Is the socket broken and needs a rebind?
@@ -107,17 +136,6 @@ impl UdpSocket {
         self.wake_all();
 
         Ok(())
-    }
-
-    fn bind_raw(addr: impl Into<SocketAddr>, mark: Option<u32>) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into(), mark)?;
-
-        Ok(UdpSocket {
-            socket: RwLock::new(socket),
-            recv_waker: AtomicWaker::default(),
-            send_waker: AtomicWaker::default(),
-            is_broken: AtomicBool::new(false),
-        })
     }
 
     /// Receives a single datagram message on the socket from the remote address
@@ -804,12 +822,12 @@ impl SocketState {
             socket.set_only_v6(true)?;
         }
 
-        // Apply the fwmark, if set. Linux-only; a no-op elsewhere.
+        // Apply the fwmark, if set. Only supported on linux and android.
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if let Some(mark) = mark {
-            if let Err(err) = socket.set_mark(mark) {
-                warn!("failed to set SO_MARK {} on udp socket: {:?}", mark, err);
-            }
+        if let Some(mark) = mark
+            && let Err(err) = socket.set_mark(mark)
+        {
+            warn!("failed to set SO_MARK {} on udp socket: {:?}", mark, err);
         }
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
         let _ = mark;
