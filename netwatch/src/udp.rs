@@ -10,10 +10,37 @@ use std::{
 
 use atomic_waker::AtomicWaker;
 use noq_udp::Transmit;
+use socket2::SockRef;
 use tokio::io::Interest;
 use tracing::{debug, trace, warn};
 
 use super::IpFamily;
+
+/// A hook run on the socket after it is created and before it is bound.
+///
+/// This is the escape hatch for socket options this crate does not model itself. The
+/// motivating ones decide how the socket's egress is routed: a VPN that points the
+/// default route at its own tunnel device has to keep its own underlay traffic off
+/// that route, or the transport is routed into the tunnel it is carrying. [`SO_MARK`]
+/// covers that on Linux, but it has no equivalent elsewhere: Apple platforms need
+/// `IP_BOUND_IF` / `IPV6_BOUND_IF` instead, which pins the socket to an interface and
+/// so needs the current default-route interface, not a constant.
+///
+/// The hook is applied again on every rebind, so a hook that resolves something about
+/// the current network re-resolves it on each network change instead of pinning a
+/// value that goes stale.
+///
+/// An error from the hook fails the bind. A socket that was meant to be kept out of a
+/// tunnel and silently wasn't is worse than one that failed to bind.
+///
+/// The socket's [`Domain`] is passed in because it cannot be read back off the socket
+/// portably (`SO_DOMAIN` is Linux-only) and the option to set is usually
+/// family-specific.
+///
+/// [`SO_MARK`]: BindOptions::set_mark
+/// [`Domain`]: socket2::Domain
+pub type ConfigureSocket =
+    Arc<dyn Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static>;
 
 /// Wrapper around a tokio UDP socket.
 #[derive(Debug)]
@@ -33,9 +60,10 @@ const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 ///
 /// Used by [`UdpSocket::bind_with`]. The default options match what the other
 /// `bind_*` constructors use.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone)]
 pub struct BindOptions {
     mark: Option<u32>,
+    configure: Option<ConfigureSocket>,
 }
 
 impl BindOptions {
@@ -55,6 +83,27 @@ impl BindOptions {
     pub fn set_mark(mut self, mark: Option<u32>) -> Self {
         self.mark = mark;
         self
+    }
+
+    /// Sets a [`ConfigureSocket`] hook, run on the socket before it is bound and again
+    /// on every rebind.
+    ///
+    /// Use this for socket options that are platform-specific or that depend on the
+    /// current network state, which [`set_mark`] cannot express.
+    ///
+    /// [`set_mark`]: Self::set_mark
+    pub fn configure_socket(mut self, configure: ConfigureSocket) -> Self {
+        self.configure = Some(configure);
+        self
+    }
+}
+
+impl std::fmt::Debug for BindOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BindOptions")
+            .field("mark", &self.mark)
+            .field("configure", &self.configure.as_ref().map(|_| "<hook>"))
+            .finish()
     }
 }
 
@@ -98,7 +147,7 @@ impl UdpSocket {
 
     /// Bind to any provided [`SocketAddr`], using the given [`BindOptions`].
     pub fn bind_with(addr: impl Into<SocketAddr>, opts: BindOptions) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into(), opts.mark)?;
+        let socket = SocketState::bind(addr.into(), opts.mark, opts.configure)?;
 
         Ok(UdpSocket {
             socket: RwLock::new(socket),
@@ -760,7 +809,6 @@ impl Future for SendToFut<'_, '_> {
     }
 }
 
-#[derive(Debug)]
 enum SocketState {
     Connected {
         socket: tokio::net::UdpSocket,
@@ -769,16 +817,40 @@ enum SocketState {
         addr: SocketAddr,
         /// The fwmark to (re)apply to the socket, if any.
         mark: Option<u32>,
+        /// The hook to (re)run on the socket, if any.
+        configure: Option<ConfigureSocket>,
     },
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
         /// The fwmark to reapply when rebinding, if any.
         mark: Option<u32>,
+        /// The hook to rerun when rebinding, if any.
+        configure: Option<ConfigureSocket>,
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
     },
+}
+
+impl std::fmt::Debug for SocketState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connected {
+                socket, addr, mark, ..
+            } => f
+                .debug_struct("SocketState::Connected")
+                .field("socket", socket)
+                .field("addr", addr)
+                .field("mark", mark)
+                .finish_non_exhaustive(),
+            Self::Closed { addr, mark, .. } => f
+                .debug_struct("SocketState::Closed")
+                .field("addr", addr)
+                .field("mark", mark)
+                .finish_non_exhaustive(),
+        }
+    }
 }
 
 impl SocketState {
@@ -789,6 +861,7 @@ impl SocketState {
                 state,
                 addr: _,
                 mark: _,
+                configure: _,
             } => Ok((socket, state)),
             Self::Closed { .. } => {
                 warn!("socket closed");
@@ -797,7 +870,11 @@ impl SocketState {
         }
     }
 
-    fn bind(addr: SocketAddr, mark: Option<u32>) -> io::Result<Self> {
+    fn bind(
+        addr: SocketAddr,
+        mark: Option<u32>,
+        configure: Option<ConfigureSocket>,
+    ) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
             network.into(),
@@ -832,6 +909,11 @@ impl SocketState {
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
         let _ = mark;
 
+        // Run the caller's hook. A failure here fails the bind: see [`ConfigureSocket`].
+        if let Some(configure) = &configure {
+            configure(SockRef::from(&socket), network.into())?;
+        }
+
         // Binding must happen before calling noq, otherwise `local_addr`
         // is not yet available on all OSes.
         socket.bind(&addr.into())?;
@@ -861,13 +943,24 @@ impl SocketState {
             state: socket_state,
             addr: local_addr,
             mark,
+            configure,
         })
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let (addr, mark) = match self {
-            Self::Connected { addr, mark, .. } => (*addr, *mark),
-            Self::Closed { addr, mark, .. } => (*addr, *mark),
+        let (addr, mark, configure) = match self {
+            Self::Connected {
+                addr,
+                mark,
+                configure,
+                ..
+            } => (*addr, *mark, configure.clone()),
+            Self::Closed {
+                addr,
+                mark,
+                configure,
+                ..
+            } => (*addr, *mark, configure.clone()),
         };
         debug!("rebinding {}", addr);
 
@@ -877,13 +970,14 @@ impl SocketState {
             *self = SocketState::Closed {
                 addr,
                 mark,
+                configure: configure.clone(),
                 last_max_gso_segments: state.max_gso_segments(),
                 last_gro_segments: state.gro_segments(),
                 last_may_fragment: state.may_fragment(),
             };
         }
 
-        match Self::bind(addr, mark) {
+        match Self::bind(addr, mark, configure) {
             Ok(new_state) => {
                 *self = new_state;
                 Ok(())
@@ -903,11 +997,16 @@ impl SocketState {
     fn close(&mut self) -> Option<(tokio::net::UdpSocket, noq_udp::UdpSocketState)> {
         match self {
             Self::Connected {
-                state, addr, mark, ..
+                state,
+                addr,
+                mark,
+                configure,
+                ..
             } => {
                 let s = SocketState::Closed {
                     addr: *addr,
                     mark: *mark,
+                    configure: configure.clone(),
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
@@ -1119,6 +1218,11 @@ impl Future for SendFutNoq<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        net::Ipv4Addr,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
     use testresult::TestResult;
 
     use super::*;
@@ -1176,6 +1280,46 @@ mod tests {
         }
 
         handle_a.await.ok();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_configure_socket_runs_on_bind_and_rebind() -> TestResult {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let opts = BindOptions::new().configure_socket(Arc::new(
+            move |sock: SockRef<'_>, domain: socket2::Domain| {
+                // The hook gets a real socket, and is told which family it is.
+                assert_eq!(domain, socket2::Domain::IPV4);
+                sock.set_reuse_address(true)?;
+                seen.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        ));
+
+        let socket = UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts)?;
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "hook did not run on bind");
+
+        socket.rebind()?;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "hook did not run again on rebind"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_configure_socket_error_fails_the_bind() -> TestResult {
+        let opts = BindOptions::new()
+            .configure_socket(Arc::new(|_: SockRef<'_>, _| Err(io::Error::other("nope"))));
+
+        assert!(
+            UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts).is_err(),
+            "a failing hook must fail the bind"
+        );
 
         Ok(())
     }
