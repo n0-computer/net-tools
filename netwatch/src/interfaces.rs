@@ -1,154 +1,136 @@
 //! Contains helpers for looking up system network interfaces.
+//!
+//! All public types are defined here once and have the same shape on every
+//! platform. The platform-specific work of enumerating interfaces, finding the
+//! default route, and locating the home router lives in the submodules below,
+//! each reached through the cfg-selected `platform` alias. Conversion from the
+//! `netdev` crate is confined to the `netdev_impl` module.
 
-use std::{collections::HashMap, fmt, net::IpAddr};
+use std::{
+    collections::HashMap,
+    fmt,
+    net::{IpAddr, Ipv4Addr},
+};
 
+pub(crate) use ipnet::{Ipv4Net, Ipv6Net};
 use n0_future::time::Instant;
 
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
-))]
+use crate::ip::{LocalAddresses, is_link_local};
+
+// Each platform module provides the same three entry points, reached through
+// the `platform` alias: `get_state()`, `default_route()` and `home_router()`.
+// The `netdev`-capable modules share enumeration via `netdev_impl`.
+#[cfg(netdev)]
+mod netdev_impl;
+
+#[cfg(bsd)]
 pub(super) mod bsd;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linux;
+#[cfg(posix_minimal)]
+mod posix_minimal;
+#[cfg(wasm_browser)]
+mod wasm_browser;
 #[cfg(target_os = "windows")]
 mod windows;
 
-pub(crate) use ipnet::{Ipv4Net, Ipv6Net};
-pub use netdev::interface::ipv6_addr_flags::Ipv6AddrFlags;
-
-#[cfg(any(
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "macos",
-    target_os = "ios"
-))]
-use self::bsd::default_route;
+#[cfg(bsd)]
+use self::bsd as platform;
 #[cfg(any(target_os = "linux", target_os = "android"))]
-use self::linux::default_route;
+use self::linux as platform;
+#[cfg(posix_minimal)]
+use self::posix_minimal as platform;
+#[cfg(wasm_browser)]
+use self::wasm_browser as platform;
 #[cfg(target_os = "windows")]
-use self::windows::default_route;
-#[cfg(not(wasm_browser))]
-use crate::ip::is_link_local;
-use crate::ip::{LocalAddresses, is_private_v6, is_up};
-#[cfg(not(wasm_browser))]
-use crate::netmon::is_interesting_interface;
+use self::windows as platform;
 
-/// Represents a network interface.
-#[derive(Debug, Clone)]
-pub struct Interface {
-    iface: netdev::Interface,
-}
+/// The interface flag bit indicating that an interface is up.
+///
+/// Matches the POSIX `IFF_UP` value. On platforms that do not expose BSD-style
+/// interface flags it is derived from the platform's notion of "up".
+const IFF_UP: u32 = 0x1;
 
-impl fmt::Display for Interface {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}. {} {:?} ipv4={:?} ipv6={:?}",
-            self.iface.index, self.iface.name, self.iface.if_type, self.iface.ipv4, self.iface.ipv6
-        )
-    }
-}
-
-impl PartialEq for Interface {
-    fn eq(&self, other: &Self) -> bool {
-        self.iface.index == other.iface.index
-            && self.iface.name == other.iface.name
-            && self.iface.flags == other.iface.flags
-            && self.iface.mac_addr.as_ref().map(|a| a.octets())
-                == other.iface.mac_addr.as_ref().map(|a| a.octets())
-    }
-}
-
-impl Eq for Interface {}
-
-impl Interface {
-    /// Is this interface up?
-    pub fn is_up(&self) -> bool {
-        is_up(&self.iface)
-    }
-
-    /// The name of the interface.
-    pub fn name(&self) -> &str {
-        &self.iface.name
-    }
-
-    /// A list of all ip addresses of this interface.
-    pub fn addrs(&self) -> impl Iterator<Item = IpNet> + '_ {
-        self.iface.ipv4.iter().cloned().map(IpNet::V4).chain(
-            self.iface
-                .ipv6
-                .iter()
-                .zip(self.iface.ipv6_scope_ids.iter())
-                .zip(self.iface.ipv6_addr_flags.iter())
-                .map(|((net, scope_id), flags)| IpNet::V6 {
-                    net: *net,
-                    scope_id: *scope_id,
-                    flags: *flags,
-                }),
-        )
-    }
-
-    /// Creates a fake interface for usage in tests.
+/// State flags for a single IPv6 address.
+///
+/// Hand-kept mirror of netdev's `Ipv6AddrFlags`, so the `interfaces` API is
+/// identical on platforms built without `netdev` (e.g. esp-idf). All fields
+/// default to `false` when the platform does not provide the information.
+///
+/// Flags are collected from platform-specific sources:
+///
+/// - **Linux/Android**: netlink `IFA_FLAGS` attribute (`IFA_F_*` from [`<linux/if_addr.h>`])
+/// - **macOS/iOS/FreeBSD/OpenBSD/NetBSD**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*`)
+/// - **Windows**: `NL_DAD_STATE` and `NL_SUFFIX_ORIGIN` from `IP_ADAPTER_UNICAST_ADDRESS`
+///
+/// [`<linux/if_addr.h>`]: https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_addr.h
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Ipv6AddrFlags {
+    /// The address's preferred lifetime has expired.
     ///
-    /// This allows tests to be independent of the host interfaces.
-    pub(crate) fn fake() -> Self {
-        use std::net::Ipv4Addr;
-
-        use netdev::{
-            NetworkDevice,
-            prelude::{InterfaceType, MacAddr, OperState},
-        };
-
-        Self {
-            iface: netdev::Interface {
-                index: 2,
-                name: String::from("wifi0"),
-                friendly_name: None,
-                description: None,
-                if_type: InterfaceType::Ethernet,
-                mac_addr: Some(MacAddr::new(2, 3, 4, 5, 6, 7)),
-                ipv4: vec![Ipv4Net::new(Ipv4Addr::new(192, 168, 0, 189), 24).unwrap()],
-                ipv6: vec![],
-                flags: 69699,
-                transmit_speed: None,
-                receive_speed: None,
-                gateway: Some(NetworkDevice {
-                    mac_addr: MacAddr::new(2, 3, 4, 5, 6, 8),
-                    ipv4: vec![Ipv4Addr::from([192, 168, 0, 1])],
-                    ipv6: vec![],
-                }),
-                dns_servers: vec![],
-                default: false,
-                ipv6_scope_ids: vec![],
-                ipv6_addr_flags: vec![],
-                stats: None,
-                mtu: None,
-                oper_state: OperState::Up,
-                auto_negotiate: None,
-                dhcp_v4_enabled: None,
-                dhcp_v6_enabled: None,
-            },
-        }
-    }
+    /// It stays valid for existing connections, but new connections should
+    /// prefer another address.
+    ///
+    /// Sourced from `IFA_F_DEPRECATED` (Linux), `IN6_IFF_DEPRECATED` (BSD and
+    /// macOS), or `IpDadStateDeprecated` (Windows).
+    pub deprecated: bool,
+    /// The address is a privacy address with a randomized interface identifier.
+    ///
+    /// Generated per [RFC 4941] to limit tracking, rather than derived from the
+    /// interface's MAC address.
+    ///
+    /// Sourced from `IFA_F_TEMPORARY` (Linux), `IN6_IFF_TEMPORARY` (BSD and
+    /// macOS), or `IpSuffixOriginRandom` (Windows).
+    ///
+    /// [RFC 4941]: https://datatracker.ietf.org/doc/html/rfc4941
+    pub temporary: bool,
+    /// The address is undergoing duplicate address detection.
+    ///
+    /// It is not yet usable: [duplicate address detection][dad] is still
+    /// verifying that no other node on the link claims it.
+    ///
+    /// Sourced from `IFA_F_TENTATIVE` (Linux), `IN6_IFF_TENTATIVE` (BSD and
+    /// macOS), or `IpDadStateTentative` (Windows).
+    ///
+    /// [dad]: https://datatracker.ietf.org/doc/html/rfc4862#section-5.4
+    pub tentative: bool,
+    /// Duplicate address detection found this address already in use.
+    ///
+    /// The address failed [duplicate address detection][dad]: another node on
+    /// the link is already using it, so the kernel never assigned it and it
+    /// cannot be used. This is the terminal counterpart to `tentative`, which
+    /// marks detection still in progress.
+    ///
+    /// Sourced from `IFA_F_DADFAILED` (Linux), `IN6_IFF_DUPLICATED` (BSD and
+    /// macOS), or `IpDadStateDuplicate` (Windows).
+    ///
+    /// [dad]: https://datatracker.ietf.org/doc/html/rfc4862#section-5.4
+    pub duplicated: bool,
+    /// The address was configured manually rather than via SLAAC.
+    ///
+    /// A permanent address does not expire, unlike one obtained through
+    /// stateless address autoconfiguration.
+    ///
+    /// Sourced from `IFA_F_PERMANENT` (Linux). Not reported on BSD or Windows,
+    /// where it is always `false`.
+    pub permanent: bool,
 }
 
-/// Structure of an IP network, either IPv4 or IPv6.
+/// An IP network on one of the machine's interfaces, either IPv4 or IPv6.
 #[derive(Clone, Debug)]
 pub enum IpNet {
-    /// Structure of IPv4 Network.
+    /// An IPv4 network.
     V4(Ipv4Net),
-    /// Structure of IPv6 Network.
+    /// An IPv6 network.
     V6 {
-        /// The actual network address.
+        /// The address and its network prefix.
         net: Ipv6Net,
-        /// IPv6 scope ID
+        /// Scope ID identifying the zone of a scoped address.
+        ///
+        /// Holds the interface index for a link-local address, and is zero when
+        /// the address is unscoped.
         scope_id: u32,
-        /// IPv6 address flags.
+        /// Per-address state flags as reported by the OS.
         flags: Ipv6AddrFlags,
     },
 }
@@ -195,11 +177,73 @@ impl IpNet {
     }
 }
 
+/// Represents a network interface.
+#[derive(Debug, Clone, derive_more::Display)]
+#[display("{index}. {name} up={} addrs={addrs:?}", self.is_up())]
+pub struct Interface {
+    /// The interface name, such as `eth0` or `en0`.
+    name: String,
+    /// The OS-assigned interface index.
+    index: u32,
+    /// BSD-style interface flags.
+    ///
+    /// On platforms without real interface flags this carries only [`IFF_UP`],
+    /// derived from the platform's notion of "up".
+    flags: u32,
+    /// The interface's hardware (MAC) address, if it has one.
+    mac_addr: Option<[u8; 6]>,
+    /// The IP networks assigned to the interface.
+    addrs: Vec<IpNet>,
+}
+
+impl PartialEq for Interface {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+            && self.name == other.name
+            && self.flags == other.flags
+            && self.mac_addr == other.mac_addr
+    }
+}
+
+impl Eq for Interface {}
+
+impl Interface {
+    /// Is this interface up?
+    pub fn is_up(&self) -> bool {
+        self.flags & IFF_UP != 0
+    }
+
+    /// The name of the interface.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// A list of all ip addresses of this interface.
+    pub fn addrs(&self) -> impl Iterator<Item = IpNet> + '_ {
+        self.addrs.iter().cloned()
+    }
+
+    /// Creates a fake interface for usage in tests.
+    ///
+    /// This allows tests to be independent of the host interfaces.
+    pub(crate) fn fake() -> Self {
+        Self {
+            name: String::from("wifi0"),
+            index: 2,
+            flags: 69699,
+            mac_addr: Some([2, 3, 4, 5, 6, 7]),
+            addrs: vec![IpNet::V4(
+                Ipv4Net::new(Ipv4Addr::new(192, 168, 0, 189), 24).unwrap(),
+            )],
+        }
+    }
+}
+
 /// Intended to store the state of the machine's network interfaces, routing table, and
 /// other network configuration. For now it's pretty basic.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct State {
-    /// Maps from an interface name interface.
+    /// Maps from an interface name to the interface.
     pub interfaces: HashMap<String, Interface>,
     /// List of machine's local IP addresses.
     pub local_addresses: LocalAddresses,
@@ -212,14 +256,14 @@ pub struct State {
     pub have_v4: bool,
 
     /// Whether the current network interface is considered "expensive", which currently means LTE/etc
-    /// instead of Wifi. This field is not populated by `get_state`.
+    /// instead of Wifi. This field is not populated by `State::new`.
     pub is_expensive: bool,
 
     /// The interface name for the machine's default route.
     ///
     /// It is not yet populated on all OSes.
     ///
-    /// When set, its value is the map key into `interface` and `interface_ips`.
+    /// When set, its value is the map key into `interfaces`.
     pub default_route_interface: Option<String>,
 
     /// Monotonic timestamp, when an unsuspend was detected.
@@ -229,7 +273,7 @@ pub struct State {
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ifaces: Vec<_> = self.interfaces.values().collect();
-        ifaces.sort_by_key(|iface| iface.iface.index);
+        ifaces.sort_by_key(|iface| iface.index);
         for iface in ifaces {
             write!(f, "{iface}")?;
             if let Some(ref default_if) = self.default_route_interface
@@ -250,52 +294,9 @@ impl fmt::Display for State {
 impl State {
     /// Returns the state of all the current machine's network interfaces.
     ///
-    /// It does not set the returned `State.is_expensive`. The caller can populate that.
+    /// It does not set the returned `State::is_expensive`. The caller can populate that.
     pub async fn new() -> Self {
-        let mut interfaces = HashMap::new();
-        let mut have_v6 = false;
-        let mut have_v4 = false;
-
-        let ifaces = netdev::interface::get_interfaces();
-        let local_addresses = LocalAddresses::from_raw_interfaces(&ifaces);
-
-        for mut iface in ifaces {
-            // ensure these are all sorted, so any comparisons made are stable
-            iface.ipv4.sort();
-            iface.dns_servers.sort();
-
-            // ipv6_scope_ids and ipv6_addr_flags need to match ipv6 order
-            sort_ipv6(&mut iface);
-
-            let ni = Interface { iface };
-            let if_up = ni.is_up();
-            let name = ni.iface.name.clone();
-            let pfxs: Vec<_> = ni.addrs().collect();
-
-            if if_up {
-                for pfx in &pfxs {
-                    if pfx.addr().is_loopback() {
-                        continue;
-                    }
-                    have_v6 |= is_usable_v6(&pfx.addr());
-                    have_v4 |= is_usable_v4(&pfx.addr());
-                }
-            }
-
-            interfaces.insert(name, ni);
-        }
-
-        let default_route_interface = default_route_interface().await;
-
-        State {
-            interfaces,
-            local_addresses,
-            have_v4,
-            have_v6,
-            is_expensive: false,
-            default_route_interface,
-            last_unsuspend: None,
-        }
+        platform::get_state().await
     }
 
     /// Creates a fake interface state for usage in tests.
@@ -303,10 +304,10 @@ impl State {
     /// This allows tests to be independent of the host interfaces.
     pub fn fake() -> Self {
         let fake = Interface::fake();
-        let ifname = fake.iface.name.clone();
+        let ifname = fake.name().to_string();
         Self {
             interfaces: [(ifname.clone(), fake)].into_iter().collect(),
-            local_addresses: LocalAddresses::from_raw_interfaces(&[]),
+            local_addresses: LocalAddresses::default(),
             have_v6: true,
             have_v4: true,
             is_expensive: false,
@@ -351,67 +352,28 @@ impl State {
     }
 }
 
-/// Sorts all ipv6 related fields in one go.
-fn sort_ipv6(iface: &mut netdev::Interface) {
-    let n = iface.ipv6.len();
-    debug_assert_eq!(n, iface.ipv6_scope_ids.len());
-    debug_assert_eq!(n, iface.ipv6_addr_flags.len());
-
-    let mut keys: Vec<_> = (0..n).collect();
-
-    // calculate ordering
-    keys.sort_by_key(|x| &iface.ipv6[*x]);
-
-    // apply ordering to all three
-    iface.ipv6 = keys.iter().map(|&i| iface.ipv6[i]).collect();
-    iface.ipv6_scope_ids = keys.iter().map(|&i| iface.ipv6_scope_ids[i]).collect();
-    iface.ipv6_addr_flags = keys.iter().map(|&i| iface.ipv6_addr_flags[i]).collect();
-}
-
-/// Reports whether ip is a usable IPv4 address which should have Internet connectivity.
+/// Reports whether changes to the interface named `name` are worth reacting to.
 ///
-/// Globally routable and private IPv4 addresses are always Usable, and link local
-/// 169.254.x.x addresses are in some environments.
-fn is_usable_v4(ip: &IpAddr) -> bool {
-    if !ip.is_ipv4() || ip.is_loopback() {
-        return false;
-    }
-
-    true
-}
-
-/// Reports whether ip is a usable IPv6 address which should have Internet connectivity.
-///
-/// Globally routable IPv6 addresses are always Usable, and Unique Local Addresses
-/// (fc00::/7) are in some environments used with address translation.
-///
-/// We consider all 2000::/3 addresses to be routable, which is the interpretation of
-/// <https://www.iana.org/assignments/ipv6-unicast-address-assignments/ipv6-unicast-address-assignments.xhtml>
-/// as well.  However this probably includes some addresses which should not be routed,
-/// e.g. documentation addresses.  See also
-/// <https://doc.rust-lang.org/std/net/struct.Ipv6Addr.html#method.is_global> for an
-/// alternative implementation which is both stricter and laxer in some regards.
-fn is_usable_v6(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V6(ip) => {
-            // V6 Global1 2000::/3
-            let mask: u16 = 0b1110_0000_0000_0000;
-            let base: u16 = 0x2000;
-            let segment1 = ip.segments()[0];
-            if (base & mask) == (segment1 & mask) {
-                return true;
-            }
-
-            is_private_v6(ip)
+/// Most platforms consider every interface interesting. Apple platforms hide a
+/// few virtual interfaces (AWDL, low-latency Wi-Fi, IPsec) whose churn would
+/// otherwise generate spurious change events.
+pub(crate) fn is_interesting_interface(name: &str) -> bool {
+    #[cfg(bsd)]
+    {
+        let base_name = name.trim_end_matches("0123456789");
+        if base_name == "llw" || base_name == "awdl" || base_name == "ipsec" {
+            return false;
         }
-        IpAddr::V4(_) => false,
     }
+    let _ = name;
+    true
 }
 
 /// The details about a default route.
 #[derive(Debug, Clone)]
 pub struct DefaultRouteDetails {
     /// The interface name.
+    ///
     /// It's like "eth0" (Linux), "Ethernet 2" (Windows), "en0" (macOS).
     pub interface_name: String,
 }
@@ -419,22 +381,22 @@ pub struct DefaultRouteDetails {
 impl DefaultRouteDetails {
     /// Reads the default route from the current system and returns the details.
     pub async fn new() -> Option<Self> {
-        default_route().await
+        platform::default_route().await
     }
 }
 
-/// Like `DefaultRoutDetails::new` but only returns the interface name.
+/// Like `DefaultRouteDetails::new` but only returns the interface name.
 pub async fn default_route_interface() -> Option<String> {
     DefaultRouteDetails::new().await.map(|v| v.interface_name)
 }
 
-/// Likely IPs of the residentla router, and the ip address of the current
+/// Likely IPs of the residential router, and the ip address of the current
 /// machine using it.
 #[derive(Debug, Clone)]
 pub struct HomeRouter {
-    /// Ip of the router.
+    /// IP of the router.
     pub gateway: IpAddr,
-    /// Our local Ip if known.
+    /// Our local IP, if known.
     pub my_ip: Option<IpAddr>,
 }
 
@@ -445,41 +407,12 @@ impl HomeRouter {
     /// the LAN using that gateway.
     /// This is used as the destination for UPnP, NAT-PMP, PCP, etc queries.
     pub fn new() -> Option<Self> {
-        let gateway = Self::get_default_gateway()?;
-        let my_ip = netdev::net::ip::get_local_ipaddr();
-
-        Some(HomeRouter { gateway, my_ip })
-    }
-
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd",
-        target_os = "macos",
-        target_os = "ios"
-    ))]
-    fn get_default_gateway() -> Option<IpAddr> {
-        // netdev doesn't work yet
-        // See: https://github.com/shellrow/default-net/issues/34
-        bsd::likely_home_router()
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
-    fn get_default_gateway() -> Option<IpAddr> {
-        let gateway = netdev::get_default_gateway().ok()?;
-        gateway
-            .ipv4
-            .iter()
-            .cloned()
-            .map(IpAddr::V4)
-            .chain(gateway.ipv6.iter().cloned().map(IpAddr::V6))
-            .next()
+        platform::home_router()
     }
 }
 
 /// Checks whether `a` and `b` are equal after ignoring uninteresting
 /// things, like link-local, loopback and multicast addresses.
-#[cfg(not(wasm_browser))]
 fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = IpNet>) -> bool {
     fn is_interesting(p: &IpNet) -> bool {
         let a = p.addr();
@@ -503,8 +436,6 @@ fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = 
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv6Addr;
-
     use super::*;
 
     #[test]
@@ -520,8 +451,8 @@ mod tests {
         let mut new = State::fake();
         // Add a new interesting interface to new state
         let mut iface = Interface::fake();
-        iface.iface.index = 10;
-        iface.iface.name = "eth1".to_string();
+        iface.index = 10;
+        iface.name = "eth1".to_string();
         new.interfaces.insert("eth1".to_string(), iface);
         assert!(new.is_major_change(&old));
     }
@@ -582,59 +513,5 @@ mod tests {
             vec![a1.clone(), a2.clone()].into_iter(),
             vec![a1.clone(), a2.clone(), a3.clone()].into_iter(),
         ));
-    }
-
-    #[test]
-    fn test_sort_ipv6() {
-        let addr_a = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-        let addr_b = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2);
-        let addr_c = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1);
-
-        let net_a = Ipv6Net::new(addr_a, 64).unwrap();
-        let net_b = Ipv6Net::new(addr_b, 64).unwrap();
-        let net_c = Ipv6Net::new(addr_c, 64).unwrap();
-
-        let flags_a = Ipv6AddrFlags {
-            permanent: true,
-            ..Default::default()
-        };
-        let flags_b = Ipv6AddrFlags {
-            temporary: true,
-            ..Default::default()
-        };
-        let flags_c = Ipv6AddrFlags {
-            deprecated: true,
-            ..Default::default()
-        };
-
-        let mut iface = Interface::fake().iface;
-
-        // Deliberately out of sorted order: c, b, a
-        iface.ipv6 = vec![net_c, net_b, net_a];
-        iface.ipv6_scope_ids = vec![30, 20, 10];
-        iface.ipv6_addr_flags = vec![flags_c, flags_b, flags_a];
-
-        sort_ipv6(&mut iface);
-
-        assert_eq!(iface.ipv6, vec![net_a, net_b, net_c]);
-        assert_eq!(iface.ipv6_scope_ids, vec![10, 20, 30]);
-        assert!(iface.ipv6_addr_flags[0].permanent);
-        assert!(iface.ipv6_addr_flags[1].temporary);
-        assert!(iface.ipv6_addr_flags[2].deprecated);
-    }
-
-    #[test]
-    fn test_is_usable_v6() {
-        let loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0x1);
-        assert!(!is_usable_v6(&loopback.into()));
-
-        let link_local = Ipv6Addr::new(0xfe80, 0, 0, 0, 0xcbc9, 0x6aff, 0x5b07, 0x4a9e);
-        assert!(!is_usable_v6(&link_local.into()));
-
-        let relay_use1 = Ipv6Addr::new(0x2a01, 0x4ff, 0xf0, 0xc4a1, 0, 0, 0, 0x1);
-        assert!(is_usable_v6(&relay_use1.into()));
-
-        let random_2603 = Ipv6Addr::new(0x2603, 0x3ff, 0xf1, 0xc3aa, 0x1, 0x2, 0x3, 0x1);
-        assert!(is_usable_v6(&random_2603.into()));
     }
 }

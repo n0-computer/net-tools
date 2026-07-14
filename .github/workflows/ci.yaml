@@ -181,12 +181,11 @@ jobs:
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
       - name: Install wasm-bindgen-test-runner
-        # Match the version of wasm-bindgen used in Cargo.lock
-        run: cargo binstall wasm-bindgen-cli@0.2.122 --locked --no-confirm
+        uses: taiki-e/install-action@v2
+        with:
+          # Match the version of wasm-bindgen used in Cargo.lock
+          tool: wasm-bindgen-cli@0.2.122
 
       - name: Install wasm-tools
         uses: bytecodealliance/actions/wasm-tools/setup@v1
@@ -293,6 +292,39 @@ jobs:
 
     - name: clippy check (default features)
       run: cargo clippy --workspace --all-targets
+
+  external_types:
+    timeout-minutes: 30
+    name: Check external types
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: "sccache"
+      SCCACHE_GHA_ENABLED: "on"
+      # The tool drives an internal rustdoc invocation that only emits JSON
+      # for the analyzer, so the workflow-wide `-Dwarnings` would just turn
+      # unrelated rustdoc lints (e.g. `private-intra-doc-links`) into hard
+      # failures here. Clear it for this job.
+      RUSTDOCFLAGS: ""
+      # Pin to the nightly that the pinned `cargo-check-external-types`
+      # release was last tested against. Update both together, and keep the
+      # toolchain in sync with the `check-external-types` task in Makefile.toml.
+      CARGO_CHECK_EXTERNAL_TYPES_VERSION: "0.5.0"
+      TOOLCHAIN: "nightly-2026-03-20"
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.TOOLCHAIN }}
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@v0.0.10
+    - name: Install cargo-make and cargo-check-external-types
+      uses: taiki-e/install-action@v2
+      with:
+        tool: |
+          cargo-make
+          cargo-check-external-types@${{ env.CARGO_CHECK_EXTERNAL_TYPES_VERSION }}
+    - name: Check external types
+      run: cargo make check-external-types
 
   msrv:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"

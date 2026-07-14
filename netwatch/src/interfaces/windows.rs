@@ -6,6 +6,7 @@ use tracing::warn;
 use wmi::{FilterValue, WMIConnection};
 
 use super::DefaultRouteDetails;
+pub(super) use super::netdev_impl::{get_state, home_router};
 
 /// API Docs: <https://learn.microsoft.com/en-us/previous-versions/windows/desktop/wmiiprouteprov/win32-ip4routetable>
 #[derive(Deserialize, Debug)]
