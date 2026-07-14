@@ -1,6 +1,7 @@
-//! Fallback interface enumeration for POSIX platforms without `netdev`
-//! (e.g. esp-idf). No interface enumeration, default route, or home router is
-//! available, so these report empty or absent.
+//! Interface lookups for POSIX platforms without `netdev` (e.g. esp-idf).
+//!
+//! No interface enumeration, default route, or home router is available on
+//! these platforms, so every lookup reports empty or absent.
 
 use std::collections::HashMap;
 

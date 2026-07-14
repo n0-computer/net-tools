@@ -1,15 +1,15 @@
 //! Browser (wasm) interface enumeration.
 //!
 //! Browsers expose a single bit of connectivity information,
-//! `navigator.onLine`. We model it as one synthetic interface and never have a
-//! default route or home router to report.
+//! `navigator.onLine`. We model it as one placeholder interface and never have
+//! a default route or home router to report.
 
 use js_sys::{JsString, Reflect};
 
 use super::{DefaultRouteDetails, HomeRouter, IFF_UP, Interface, State};
 use crate::ip::LocalAddresses;
 
-/// The name of the single synthetic interface we report in the browser.
+/// The name of the single placeholder interface we report in the browser.
 pub(crate) const BROWSER_INTERFACE: &str = "browserif";
 
 /// Reads `globalThis.navigator.onLine`, defaulting to `true` when unavailable.

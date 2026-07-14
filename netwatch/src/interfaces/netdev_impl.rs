@@ -1,6 +1,8 @@
-//! Conversion from the `netdev` crate into our platform-agnostic interface
-//! types, plus the shared interface enumeration and home-router lookup used by
-//! all `netdev`-capable platforms (linux, android, bsd, macos, windows).
+//! Conversion from the `netdev` crate into our platform-agnostic types.
+//!
+//! This module also holds the interface enumeration and home-router lookup
+//! shared by all `netdev`-capable platforms (linux, android, bsd, macos,
+//! windows).
 //!
 //! This is the only module that depends on `netdev`. Everything it produces is
 //! expressed in terms of the types defined in [`crate::interfaces`].

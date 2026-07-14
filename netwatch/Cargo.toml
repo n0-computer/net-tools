@@ -114,12 +114,15 @@ rustdoc-args = ["--cfg", "iroh_docsrs"]
 [package.metadata.cargo_check_external_types]
 allowed_external_types = [
     # IP network types used by `interfaces::IpNet`.
-    "ipnet::*",
-    # iroh-ecosystem error and reactive-state crates.
-    "n0_error::*",
-    "n0_watcher::*",
+    "ipnet::ipnet::Ipv4Net",
+    "ipnet::ipnet::Ipv6Net",
+    # n0-error and n0-watcher
+    "n0_error::error::StackError",
+    "n0_error::meta::Meta",
+    "n0_watcher::Direct",
     # UDP transmit/receive metadata used by the `udp` module.
-    "noq_udp::*",
+    "noq_udp::RecvMeta",
+    "noq_udp::Transmit",
     # Error types surfaced by `From` impls on `netmon::Error`.
     "tokio::sync::mpsc::error::SendError",
     "tokio::sync::oneshot::error::RecvError",

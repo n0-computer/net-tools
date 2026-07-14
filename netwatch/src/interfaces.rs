@@ -6,7 +6,11 @@
 //! each reached through the cfg-selected `platform` alias. Conversion from the
 //! `netdev` crate is confined to the `netdev_impl` module.
 
-use std::{collections::HashMap, fmt, net::IpAddr};
+use std::{
+    collections::HashMap,
+    fmt,
+    net::{IpAddr, Ipv4Addr},
+};
 
 pub(crate) use ipnet::{Ipv4Net, Ipv6Net};
 use n0_future::time::Instant;
@@ -44,7 +48,7 @@ use self::windows as platform;
 /// The interface flag bit indicating that an interface is up.
 ///
 /// Matches the POSIX `IFF_UP` value. On platforms that do not expose BSD-style
-/// interface flags it is synthesized from the platform's notion of "up".
+/// interface flags it is derived from the platform's notion of "up".
 const IFF_UP: u32 = 0x1;
 
 /// State flags for a single IPv6 address.
@@ -62,30 +66,71 @@ const IFF_UP: u32 = 0x1;
 /// [`<linux/if_addr.h>`]: https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_addr.h
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Ipv6AddrFlags {
-    /// Preferred lifetime expired; should not be used for new connections.
+    /// The address's preferred lifetime has expired.
+    ///
+    /// It stays valid for existing connections, but new connections should
+    /// prefer another address.
+    ///
+    /// Sourced from `IFA_F_DEPRECATED` (Linux), `IN6_IFF_DEPRECATED` (BSD and
+    /// macOS), or `IpDadStateDeprecated` (Windows).
     pub deprecated: bool,
-    /// Privacy address ([RFC 4941](https://datatracker.ietf.org/doc/html/rfc4941)).
+    /// The address is a privacy address with a randomized interface identifier.
+    ///
+    /// Generated per [RFC 4941] to limit tracking, rather than derived from the
+    /// interface's MAC address.
+    ///
+    /// Sourced from `IFA_F_TEMPORARY` (Linux), `IN6_IFF_TEMPORARY` (BSD and
+    /// macOS), or `IpSuffixOriginRandom` (Windows).
+    ///
+    /// [RFC 4941]: https://datatracker.ietf.org/doc/html/rfc4941
     pub temporary: bool,
-    /// Undergoing duplicate address detection.
+    /// The address is undergoing duplicate address detection.
+    ///
+    /// It is not yet usable: [duplicate address detection][dad] is still
+    /// verifying that no other node on the link claims it.
+    ///
+    /// Sourced from `IFA_F_TENTATIVE` (Linux), `IN6_IFF_TENTATIVE` (BSD and
+    /// macOS), or `IpDadStateTentative` (Windows).
+    ///
+    /// [dad]: https://datatracker.ietf.org/doc/html/rfc4862#section-5.4
     pub tentative: bool,
-    /// Duplicate address detection failed.
+    /// Duplicate address detection found this address already in use.
+    ///
+    /// The address failed [duplicate address detection][dad]: another node on
+    /// the link is already using it, so the kernel never assigned it and it
+    /// cannot be used. This is the terminal counterpart to `tentative`, which
+    /// marks detection still in progress.
+    ///
+    /// Sourced from `IFA_F_DADFAILED` (Linux), `IN6_IFF_DUPLICATED` (BSD and
+    /// macOS), or `IpDadStateDuplicate` (Windows).
+    ///
+    /// [dad]: https://datatracker.ietf.org/doc/html/rfc4862#section-5.4
     pub duplicated: bool,
-    /// Manually configured, not from SLAAC.
+    /// The address was configured manually rather than via SLAAC.
+    ///
+    /// A permanent address does not expire, unlike one obtained through
+    /// stateless address autoconfiguration.
+    ///
+    /// Sourced from `IFA_F_PERMANENT` (Linux). Not reported on BSD or Windows,
+    /// where it is always `false`.
     pub permanent: bool,
 }
 
-/// Structure of an IP network, either IPv4 or IPv6.
+/// An IP network on one of the machine's interfaces, either IPv4 or IPv6.
 #[derive(Clone, Debug)]
 pub enum IpNet {
-    /// Structure of IPv4 Network.
+    /// An IPv4 network.
     V4(Ipv4Net),
-    /// Structure of IPv6 Network.
+    /// An IPv6 network.
     V6 {
-        /// The actual network address.
+        /// The address and its network prefix.
         net: Ipv6Net,
-        /// IPv6 scope ID.
+        /// Scope ID identifying the zone of a scoped address.
+        ///
+        /// Holds the interface index for a link-local address, and is zero when
+        /// the address is unscoped.
         scope_id: u32,
-        /// IPv6 address flags.
+        /// Per-address state flags as reported by the OS.
         flags: Ipv6AddrFlags,
     },
 }
@@ -136,12 +181,18 @@ impl IpNet {
 #[derive(Debug, Clone, derive_more::Display)]
 #[display("{index}. {name} up={} addrs={addrs:?}", self.is_up())]
 pub struct Interface {
+    /// The interface name, such as `eth0` or `en0`.
     name: String,
+    /// The OS-assigned interface index.
     index: u32,
-    /// BSD-style interface flags, or a synthesized value carrying only
-    /// [`IFF_UP`] on platforms without real flags.
+    /// BSD-style interface flags.
+    ///
+    /// On platforms without real interface flags this carries only [`IFF_UP`],
+    /// derived from the platform's notion of "up".
     flags: u32,
+    /// The interface's hardware (MAC) address, if it has one.
     mac_addr: Option<[u8; 6]>,
+    /// The IP networks assigned to the interface.
     addrs: Vec<IpNet>,
 }
 
@@ -176,8 +227,6 @@ impl Interface {
     ///
     /// This allows tests to be independent of the host interfaces.
     pub(crate) fn fake() -> Self {
-        use std::net::Ipv4Addr;
-
         Self {
             name: String::from("wifi0"),
             index: 2,
@@ -303,8 +352,7 @@ impl State {
     }
 }
 
-/// Reports whether the interface named `name` is one whose changes we care
-/// about when deciding if the network state changed in a major way.
+/// Reports whether changes to the interface named `name` are worth reacting to.
 ///
 /// Most platforms consider every interface interesting. Apple platforms hide a
 /// few virtual interfaces (AWDL, low-latency Wi-Fi, IPsec) whose churn would
@@ -325,6 +373,7 @@ pub(crate) fn is_interesting_interface(name: &str) -> bool {
 #[derive(Debug, Clone)]
 pub struct DefaultRouteDetails {
     /// The interface name.
+    ///
     /// It's like "eth0" (Linux), "Ethernet 2" (Windows), "en0" (macOS).
     pub interface_name: String,
 }
@@ -345,9 +394,9 @@ pub async fn default_route_interface() -> Option<String> {
 /// machine using it.
 #[derive(Debug, Clone)]
 pub struct HomeRouter {
-    /// Ip of the router.
+    /// IP of the router.
     pub gateway: IpAddr,
-    /// Our local Ip if known.
+    /// Our local IP, if known.
     pub my_ip: Option<IpAddr>,
 }
 
