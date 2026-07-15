@@ -16,7 +16,7 @@ use tracing::{debug, trace, warn};
 
 use super::IpFamily;
 
-/// A hook run on the socket after it is created and before it is bound.
+/// Configures each socket a [`UdpSocket`] creates, right before it is bound.
 ///
 /// This is the escape hatch for socket options this crate does not model itself. The
 /// motivating ones decide how the socket's egress is routed: a VPN that points the
@@ -26,21 +26,53 @@ use super::IpFamily;
 /// `IP_BOUND_IF` / `IPV6_BOUND_IF` instead, which pins the socket to an interface and
 /// so needs the current default-route interface, not a constant.
 ///
-/// The hook is applied again on every rebind, so a hook that resolves something about
-/// the current network re-resolves it on each network change instead of pinning a
-/// value that goes stale.
-///
-/// An error from the hook fails the bind. A socket that was meant to be kept out of a
-/// tunnel and silently wasn't is worse than one that failed to bind.
-///
-/// The socket's [`Domain`] is passed in because it cannot be read back off the socket
-/// portably (`SO_DOMAIN` is Linux-only) and the option to set is usually
-/// family-specific.
+/// Any `Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static`
+/// closure implements this trait, so simple configurators need no named type.
 ///
 /// [`SO_MARK`]: BindOptions::set_mark
-/// [`Domain`]: socket2::Domain
-pub type ConfigureSocket =
-    Arc<dyn Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static>;
+pub trait SocketConfigurator: Send + Sync + 'static {
+    /// Called on the socket after it is created and before it is bound, and called
+    /// again on every rebind, so a configurator that resolves something about the
+    /// current network re-resolves it on each network change instead of pinning a
+    /// value that goes stale.
+    ///
+    /// An error fails the bind. A socket that was meant to be kept out of a tunnel
+    /// and silently wasn't is worse than one that failed to bind.
+    ///
+    /// The socket's [`Domain`] is passed in because it cannot be read back off the
+    /// socket portably (`SO_DOMAIN` is Linux-only) and the option to set is usually
+    /// family-specific.
+    ///
+    /// [`Domain`]: socket2::Domain
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()>;
+}
+
+impl<F> SocketConfigurator for F
+where
+    F: Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static,
+{
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()> {
+        self(socket, domain)
+    }
+}
+
+impl<T: SocketConfigurator + ?Sized> SocketConfigurator for Arc<T> {
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()> {
+        (**self).configure(socket, domain)
+    }
+}
+
+/// A [`SocketConfigurator`] as stored: type-erased, cloneable, and opaque to `Debug`
+/// (a bare trait object would otherwise force manual `Debug` impls on everything
+/// that holds it).
+#[derive(Clone)]
+struct Configurator(Arc<dyn SocketConfigurator>);
+
+impl std::fmt::Debug for Configurator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Configurator(..)")
+    }
+}
 
 /// Wrapper around a tokio UDP socket.
 #[derive(Debug)]
@@ -60,10 +92,10 @@ const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 ///
 /// Used by [`UdpSocket::bind_with`]. The default options match what the other
 /// `bind_*` constructors use.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct BindOptions {
     mark: Option<u32>,
-    configure: Option<ConfigureSocket>,
+    configure: Option<Configurator>,
 }
 
 impl BindOptions {
@@ -85,25 +117,16 @@ impl BindOptions {
         self
     }
 
-    /// Sets a [`ConfigureSocket`] hook, run on the socket before it is bound and again
+    /// Sets a [`SocketConfigurator`], run on the socket before it is bound and again
     /// on every rebind.
     ///
     /// Use this for socket options that are platform-specific or that depend on the
     /// current network state, which [`set_mark`] cannot express.
     ///
     /// [`set_mark`]: Self::set_mark
-    pub fn configure_socket(mut self, configure: ConfigureSocket) -> Self {
-        self.configure = Some(configure);
+    pub fn configure_socket(mut self, configurator: impl SocketConfigurator) -> Self {
+        self.configure = Some(Configurator(Arc::new(configurator)));
         self
-    }
-}
-
-impl std::fmt::Debug for BindOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BindOptions")
-            .field("mark", &self.mark)
-            .field("configure", &self.configure.as_ref().map(|_| "<hook>"))
-            .finish()
     }
 }
 
@@ -809,6 +832,7 @@ impl Future for SendToFut<'_, '_> {
     }
 }
 
+#[derive(Debug)]
 enum SocketState {
     Connected {
         socket: tokio::net::UdpSocket,
@@ -817,40 +841,20 @@ enum SocketState {
         addr: SocketAddr,
         /// The fwmark to (re)apply to the socket, if any.
         mark: Option<u32>,
-        /// The hook to (re)run on the socket, if any.
-        configure: Option<ConfigureSocket>,
+        /// The configurator to (re)run on the socket, if any.
+        configure: Option<Configurator>,
     },
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
         /// The fwmark to reapply when rebinding, if any.
         mark: Option<u32>,
-        /// The hook to rerun when rebinding, if any.
-        configure: Option<ConfigureSocket>,
+        /// The configurator to rerun when rebinding, if any.
+        configure: Option<Configurator>,
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
     },
-}
-
-impl std::fmt::Debug for SocketState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Connected {
-                socket, addr, mark, ..
-            } => f
-                .debug_struct("SocketState::Connected")
-                .field("socket", socket)
-                .field("addr", addr)
-                .field("mark", mark)
-                .finish_non_exhaustive(),
-            Self::Closed { addr, mark, .. } => f
-                .debug_struct("SocketState::Closed")
-                .field("addr", addr)
-                .field("mark", mark)
-                .finish_non_exhaustive(),
-        }
-    }
 }
 
 impl SocketState {
@@ -873,7 +877,7 @@ impl SocketState {
     fn bind(
         addr: SocketAddr,
         mark: Option<u32>,
-        configure: Option<ConfigureSocket>,
+        configure: Option<Configurator>,
     ) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
@@ -909,9 +913,10 @@ impl SocketState {
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
         let _ = mark;
 
-        // Run the caller's hook. A failure here fails the bind: see [`ConfigureSocket`].
+        // Run the caller's configurator. A failure here fails the bind: see
+        // [`SocketConfigurator::configure`].
         if let Some(configure) = &configure {
-            configure(SockRef::from(&socket), network.into())?;
+            configure.0.configure(SockRef::from(&socket), network.into())?;
         }
 
         // Binding must happen before calling noq, otherwise `local_addr`
@@ -1288,15 +1293,15 @@ mod tests {
     async fn test_configure_socket_runs_on_bind_and_rebind() -> TestResult {
         let calls = Arc::new(AtomicUsize::new(0));
         let seen = calls.clone();
-        let opts = BindOptions::new().configure_socket(Arc::new(
+        let opts = BindOptions::new().configure_socket(
             move |sock: SockRef<'_>, domain: socket2::Domain| {
-                // The hook gets a real socket, and is told which family it is.
+                // The configurator gets a real socket, and is told which family it is.
                 assert_eq!(domain, socket2::Domain::IPV4);
                 sock.set_reuse_address(true)?;
                 seen.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             },
-        ));
+        );
 
         let socket = UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts)?;
         assert_eq!(calls.load(Ordering::SeqCst), 1, "hook did not run on bind");
@@ -1313,12 +1318,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_configure_socket_error_fails_the_bind() -> TestResult {
-        let opts = BindOptions::new()
-            .configure_socket(Arc::new(|_: SockRef<'_>, _| Err(io::Error::other("nope"))));
+        let opts = BindOptions::new().configure_socket(|_: SockRef<'_>, _: socket2::Domain| {
+            Err(io::Error::other("nope"))
+        });
 
         assert!(
             UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts).is_err(),
-            "a failing hook must fail the bind"
+            "a failing configurator must fail the bind"
         );
 
         Ok(())
