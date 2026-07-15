@@ -206,7 +206,3 @@ impl RouteMonitor {
         })
     }
 }
-
-pub(crate) fn is_interesting_interface(_name: &str) -> bool {
-    true
-}
