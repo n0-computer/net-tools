@@ -62,18 +62,6 @@ impl<T: SocketConfigurator + ?Sized> SocketConfigurator for Arc<T> {
     }
 }
 
-/// A [`SocketConfigurator`] as stored: type-erased, cloneable, and opaque to `Debug`
-/// (a bare trait object would otherwise force manual `Debug` impls on everything
-/// that holds it).
-#[derive(Clone)]
-struct Configurator(Arc<dyn SocketConfigurator>);
-
-impl std::fmt::Debug for Configurator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Configurator(..)")
-    }
-}
-
 /// Wrapper around a tokio UDP socket.
 #[derive(Debug)]
 pub struct UdpSocket {
@@ -92,10 +80,11 @@ const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 ///
 /// Used by [`UdpSocket::bind_with`]. The default options match what the other
 /// `bind_*` constructors use.
-#[derive(Debug, Default, Clone)]
+#[derive(derive_more::Debug, Default, Clone)]
 pub struct BindOptions {
     mark: Option<u32>,
-    configure: Option<Configurator>,
+    #[debug(skip)]
+    configure: Option<Arc<dyn SocketConfigurator>>,
 }
 
 impl BindOptions {
@@ -125,7 +114,7 @@ impl BindOptions {
     ///
     /// [`set_mark`]: Self::set_mark
     pub fn configure_socket(mut self, configurator: impl SocketConfigurator) -> Self {
-        self.configure = Some(Configurator(Arc::new(configurator)));
+        self.configure = Some(Arc::new(configurator));
         self
     }
 }
@@ -832,7 +821,7 @@ impl Future for SendToFut<'_, '_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 enum SocketState {
     Connected {
         socket: tokio::net::UdpSocket,
@@ -842,7 +831,8 @@ enum SocketState {
         /// The fwmark to (re)apply to the socket, if any.
         mark: Option<u32>,
         /// The configurator to (re)run on the socket, if any.
-        configure: Option<Configurator>,
+        #[debug(skip)]
+        configure: Option<Arc<dyn SocketConfigurator>>,
     },
     Closed {
         /// The addr to rebind to when recovering.
@@ -850,7 +840,8 @@ enum SocketState {
         /// The fwmark to reapply when rebinding, if any.
         mark: Option<u32>,
         /// The configurator to rerun when rebinding, if any.
-        configure: Option<Configurator>,
+        #[debug(skip)]
+        configure: Option<Arc<dyn SocketConfigurator>>,
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
@@ -877,7 +868,7 @@ impl SocketState {
     fn bind(
         addr: SocketAddr,
         mark: Option<u32>,
-        configure: Option<Configurator>,
+        configure: Option<Arc<dyn SocketConfigurator>>,
     ) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
@@ -916,7 +907,7 @@ impl SocketState {
         // Run the caller's configurator. A failure here fails the bind: see
         // [`SocketConfigurator::configure`].
         if let Some(configure) = &configure {
-            configure.0.configure(SockRef::from(&socket), network.into())?;
+            configure.configure(SockRef::from(&socket), network.into())?;
         }
 
         // Binding must happen before calling noq, otherwise `local_addr`
