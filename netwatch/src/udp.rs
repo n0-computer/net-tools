@@ -1256,9 +1256,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_configure_socket_error_fails_the_bind() -> TestResult {
-        let opts = BindOptions::new().configure_socket(|_: SockRef<'_>, _: socket2::Domain| {
-            Err(io::Error::other("nope"))
-        });
+        let opts = BindOptions::new()
+            .configure_socket(|_: SockRef<'_>, _: socket2::Domain| Err(io::Error::other("nope")));
 
         assert!(
             UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts).is_err(),
