@@ -18,32 +18,14 @@ use super::IpFamily;
 
 /// Configures each socket a [`UdpSocket`] creates, right before it is bound.
 ///
-/// This is the escape hatch for socket options this crate does not model itself. The
-/// motivating ones decide how the socket's egress is routed: a VPN that points the
-/// default route at its own tunnel device has to keep its own underlay traffic off
-/// that route, or the transport is routed into the tunnel it is carrying. [`SO_MARK`]
-/// covers that on Linux, but it has no equivalent elsewhere: Apple platforms need
-/// `IP_BOUND_IF` / `IPV6_BOUND_IF` instead, which pins the socket to an interface and
-/// so needs the current default-route interface, not a constant.
-///
-/// Any `Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static`
-/// closure implements this trait, so simple configurators need no named type.
-///
-/// [`SO_MARK`]: BindOptions::set_mark
+/// An escape hatch for socket options this crate does not model itself, e.g.
+/// `SO_MARK` on Linux or `IP_BOUND_IF` on Apple platforms. Any matching `Fn`
+/// closure implements it.
 pub trait SocketConfigurator: Send + Sync + 'static {
-    /// Called on the socket after it is created and before it is bound, and called
-    /// again on every rebind, so a configurator that resolves something about the
-    /// current network re-resolves it on each network change instead of pinning a
-    /// value that goes stale.
+    /// Called before the socket is bound, and again on every rebind.
     ///
-    /// An error fails the bind. A socket that was meant to be kept out of a tunnel
-    /// and silently wasn't is worse than one that failed to bind.
-    ///
-    /// The socket's [`Domain`] is passed in because it cannot be read back off the
-    /// socket portably (`SO_DOMAIN` is Linux-only) and the option to set is usually
-    /// family-specific.
-    ///
-    /// [`Domain`]: socket2::Domain
+    /// An error fails the bind. `domain` is passed in because it cannot be read
+    /// back off the socket portably (`SO_DOMAIN` is Linux-only).
     fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()>;
 }
 
@@ -82,7 +64,6 @@ const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 /// `bind_*` constructors use.
 #[derive(derive_more::Debug, Default, Clone)]
 pub struct BindOptions {
-    mark: Option<u32>,
     #[debug(skip)]
     configure: Option<Arc<dyn SocketConfigurator>>,
 }
@@ -93,26 +74,8 @@ impl BindOptions {
         Self::default()
     }
 
-    /// Sets the fwmark to apply to the socket, or `None` to leave it unmarked.
-    ///
-    /// The mark is applied with `SO_MARK` and is reapplied whenever the socket is
-    /// rebound, so the caller can policy-route the socket's egress, for example
-    /// around a full-tunnel default route.
-    ///
-    /// This only has an effect on Linux and Android. On every other platform the
-    /// mark is ignored.
-    pub fn set_mark(mut self, mark: Option<u32>) -> Self {
-        self.mark = mark;
-        self
-    }
-
     /// Sets a [`SocketConfigurator`], run on the socket before it is bound and again
     /// on every rebind.
-    ///
-    /// Use this for socket options that are platform-specific or that depend on the
-    /// current network state, which [`set_mark`] cannot express.
-    ///
-    /// [`set_mark`]: Self::set_mark
     pub fn configure_socket(mut self, configurator: impl SocketConfigurator) -> Self {
         self.configure = Some(Arc::new(configurator));
         self
@@ -159,7 +122,7 @@ impl UdpSocket {
 
     /// Bind to any provided [`SocketAddr`], using the given [`BindOptions`].
     pub fn bind_with(addr: impl Into<SocketAddr>, opts: BindOptions) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into(), opts.mark, opts.configure)?;
+        let socket = SocketState::bind(addr.into(), opts.configure)?;
 
         Ok(UdpSocket {
             socket: RwLock::new(socket),
@@ -828,8 +791,6 @@ enum SocketState {
         state: noq_udp::UdpSocketState,
         /// The addr we are binding to.
         addr: SocketAddr,
-        /// The fwmark to (re)apply to the socket, if any.
-        mark: Option<u32>,
         /// The configurator to (re)run on the socket, if any.
         #[debug(skip)]
         configure: Option<Arc<dyn SocketConfigurator>>,
@@ -837,8 +798,6 @@ enum SocketState {
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
-        /// The fwmark to reapply when rebinding, if any.
-        mark: Option<u32>,
         /// The configurator to rerun when rebinding, if any.
         #[debug(skip)]
         configure: Option<Arc<dyn SocketConfigurator>>,
@@ -855,7 +814,6 @@ impl SocketState {
                 socket,
                 state,
                 addr: _,
-                mark: _,
                 configure: _,
             } => Ok((socket, state)),
             Self::Closed { .. } => {
@@ -865,11 +823,7 @@ impl SocketState {
         }
     }
 
-    fn bind(
-        addr: SocketAddr,
-        mark: Option<u32>,
-        configure: Option<Arc<dyn SocketConfigurator>>,
-    ) -> io::Result<Self> {
+    fn bind(addr: SocketAddr, configure: Option<Arc<dyn SocketConfigurator>>) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
             network.into(),
@@ -893,16 +847,6 @@ impl SocketState {
             // Avoid dualstack
             socket.set_only_v6(true)?;
         }
-
-        // Apply the fwmark, if set. Only supported on linux and android.
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        if let Some(mark) = mark
-            && let Err(err) = socket.set_mark(mark)
-        {
-            warn!("failed to set SO_MARK {} on udp socket: {:?}", mark, err);
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        let _ = mark;
 
         // Run the caller's configurator. A failure here fails the bind: see
         // [`SocketConfigurator::configure`].
@@ -938,25 +882,18 @@ impl SocketState {
             socket,
             state: socket_state,
             addr: local_addr,
-            mark,
             configure,
         })
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let (addr, mark, configure) = match self {
+        let (addr, configure) = match self {
             Self::Connected {
-                addr,
-                mark,
-                configure,
-                ..
-            } => (*addr, *mark, configure.clone()),
+                addr, configure, ..
+            } => (*addr, configure.clone()),
             Self::Closed {
-                addr,
-                mark,
-                configure,
-                ..
-            } => (*addr, *mark, configure.clone()),
+                addr, configure, ..
+            } => (*addr, configure.clone()),
         };
         debug!("rebinding {}", addr);
 
@@ -965,7 +902,6 @@ impl SocketState {
         if let Self::Connected { state, .. } = self {
             *self = SocketState::Closed {
                 addr,
-                mark,
                 configure: configure.clone(),
                 last_max_gso_segments: state.max_gso_segments(),
                 last_gro_segments: state.gro_segments(),
@@ -973,7 +909,7 @@ impl SocketState {
             };
         }
 
-        match Self::bind(addr, mark, configure) {
+        match Self::bind(addr, configure) {
             Ok(new_state) => {
                 *self = new_state;
                 Ok(())
@@ -995,13 +931,11 @@ impl SocketState {
             Self::Connected {
                 state,
                 addr,
-                mark,
                 configure,
                 ..
             } => {
                 let s = SocketState::Closed {
                     addr: *addr,
-                    mark: *mark,
                     configure: configure.clone(),
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
