@@ -20,7 +20,20 @@ use super::IpFamily;
 ///
 /// An escape hatch for socket options this crate does not model itself, e.g.
 /// `SO_MARK` on Linux or `IP_BOUND_IF` on Apple platforms. Any matching `Fn`
-/// closure implements it.
+/// closure implements it:
+///
+/// ```no_run
+/// use netwatch::{BindOptions, UdpSocket};
+///
+/// let opts = BindOptions::new().configure_socket(
+///     |socket: socket2::SockRef<'_>, _domain: socket2::Domain| {
+///         #[cfg(any(target_os = "linux", target_os = "android"))]
+///         socket.set_mark(0x80)?;
+///         Ok(())
+///     },
+/// );
+/// let socket = UdpSocket::bind_with("0.0.0.0:0".parse::<std::net::SocketAddr>().unwrap(), opts);
+/// ```
 pub trait SocketConfigurator: Send + Sync + 'static {
     /// Called before the socket is bound, and again on every rebind.
     ///
