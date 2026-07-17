@@ -10,10 +10,52 @@ use std::{
 
 use atomic_waker::AtomicWaker;
 use noq_udp::Transmit;
+use socket2::SockRef;
 use tokio::io::Interest;
 use tracing::{debug, trace, warn};
 
 use super::IpFamily;
+
+/// Configures each socket a [`UdpSocket`] creates, right before it is bound.
+///
+/// An escape hatch for socket options this crate does not model itself, e.g.
+/// `SO_MARK` on Linux or `IP_BOUND_IF` on Apple platforms. Any matching `Fn`
+/// closure implements it:
+///
+/// ```no_run
+/// use netwatch::{BindOptions, UdpSocket};
+///
+/// let opts = BindOptions::new().configure_socket(
+///     |socket: socket2::SockRef<'_>, _domain: socket2::Domain| {
+///         #[cfg(any(target_os = "linux", target_os = "android"))]
+///         socket.set_mark(0x80)?;
+///         Ok(())
+///     },
+/// );
+/// let socket = UdpSocket::bind_with("0.0.0.0:0".parse::<std::net::SocketAddr>().unwrap(), opts);
+/// ```
+pub trait SocketConfigurator: Send + Sync + 'static {
+    /// Called before the socket is bound, and again on every rebind.
+    ///
+    /// An error fails the bind. `domain` is passed in because it cannot be read
+    /// back off the socket portably (`SO_DOMAIN` is Linux-only).
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()>;
+}
+
+impl<F> SocketConfigurator for F
+where
+    F: Fn(SockRef<'_>, socket2::Domain) -> io::Result<()> + Send + Sync + 'static,
+{
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()> {
+        self(socket, domain)
+    }
+}
+
+impl<T: SocketConfigurator + ?Sized> SocketConfigurator for Arc<T> {
+    fn configure(&self, socket: SockRef<'_>, domain: socket2::Domain) -> io::Result<()> {
+        (**self).configure(socket, domain)
+    }
+}
 
 /// Wrapper around a tokio UDP socket.
 #[derive(Debug)]
@@ -33,9 +75,10 @@ const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 ///
 /// Used by [`UdpSocket::bind_with`]. The default options match what the other
 /// `bind_*` constructors use.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(derive_more::Debug, Default, Clone)]
 pub struct BindOptions {
-    mark: Option<u32>,
+    #[debug(skip)]
+    configure: Option<Arc<dyn SocketConfigurator>>,
 }
 
 impl BindOptions {
@@ -44,16 +87,10 @@ impl BindOptions {
         Self::default()
     }
 
-    /// Sets the fwmark to apply to the socket, or `None` to leave it unmarked.
-    ///
-    /// The mark is applied with `SO_MARK` and is reapplied whenever the socket is
-    /// rebound, so the caller can policy-route the socket's egress, for example
-    /// around a full-tunnel default route.
-    ///
-    /// This only has an effect on Linux and Android. On every other platform the
-    /// mark is ignored.
-    pub fn set_mark(mut self, mark: Option<u32>) -> Self {
-        self.mark = mark;
+    /// Sets a [`SocketConfigurator`], run on the socket before it is bound and again
+    /// on every rebind.
+    pub fn configure_socket(mut self, configurator: impl SocketConfigurator) -> Self {
+        self.configure = Some(Arc::new(configurator));
         self
     }
 }
@@ -98,7 +135,7 @@ impl UdpSocket {
 
     /// Bind to any provided [`SocketAddr`], using the given [`BindOptions`].
     pub fn bind_with(addr: impl Into<SocketAddr>, opts: BindOptions) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into(), opts.mark)?;
+        let socket = SocketState::bind(addr.into(), opts.configure)?;
 
         Ok(UdpSocket {
             socket: RwLock::new(socket),
@@ -760,21 +797,23 @@ impl Future for SendToFut<'_, '_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 enum SocketState {
     Connected {
         socket: tokio::net::UdpSocket,
         state: noq_udp::UdpSocketState,
         /// The addr we are binding to.
         addr: SocketAddr,
-        /// The fwmark to (re)apply to the socket, if any.
-        mark: Option<u32>,
+        /// The configurator to (re)run on the socket, if any.
+        #[debug(skip)]
+        configure: Option<Arc<dyn SocketConfigurator>>,
     },
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
-        /// The fwmark to reapply when rebinding, if any.
-        mark: Option<u32>,
+        /// The configurator to rerun when rebinding, if any.
+        #[debug(skip)]
+        configure: Option<Arc<dyn SocketConfigurator>>,
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
@@ -788,7 +827,7 @@ impl SocketState {
                 socket,
                 state,
                 addr: _,
-                mark: _,
+                configure: _,
             } => Ok((socket, state)),
             Self::Closed { .. } => {
                 warn!("socket closed");
@@ -797,7 +836,7 @@ impl SocketState {
         }
     }
 
-    fn bind(addr: SocketAddr, mark: Option<u32>) -> io::Result<Self> {
+    fn bind(addr: SocketAddr, configure: Option<Arc<dyn SocketConfigurator>>) -> io::Result<Self> {
         let network = IpFamily::from(addr.ip());
         let socket = socket2::Socket::new(
             network.into(),
@@ -822,15 +861,11 @@ impl SocketState {
             socket.set_only_v6(true)?;
         }
 
-        // Apply the fwmark, if set. Only supported on linux and android.
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        if let Some(mark) = mark
-            && let Err(err) = socket.set_mark(mark)
-        {
-            warn!("failed to set SO_MARK {} on udp socket: {:?}", mark, err);
+        // Run the caller's configurator. A failure here fails the bind: see
+        // [`SocketConfigurator::configure`].
+        if let Some(configure) = &configure {
+            configure.configure(SockRef::from(&socket), network.into())?;
         }
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        let _ = mark;
 
         // Binding must happen before calling noq, otherwise `local_addr`
         // is not yet available on all OSes.
@@ -860,14 +895,18 @@ impl SocketState {
             socket,
             state: socket_state,
             addr: local_addr,
-            mark,
+            configure,
         })
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let (addr, mark) = match self {
-            Self::Connected { addr, mark, .. } => (*addr, *mark),
-            Self::Closed { addr, mark, .. } => (*addr, *mark),
+        let (addr, configure) = match self {
+            Self::Connected {
+                addr, configure, ..
+            } => (*addr, configure.clone()),
+            Self::Closed {
+                addr, configure, ..
+            } => (*addr, configure.clone()),
         };
         debug!("rebinding {}", addr);
 
@@ -876,14 +915,14 @@ impl SocketState {
         if let Self::Connected { state, .. } = self {
             *self = SocketState::Closed {
                 addr,
-                mark,
+                configure: configure.clone(),
                 last_max_gso_segments: state.max_gso_segments(),
                 last_gro_segments: state.gro_segments(),
                 last_may_fragment: state.may_fragment(),
             };
         }
 
-        match Self::bind(addr, mark) {
+        match Self::bind(addr, configure) {
             Ok(new_state) => {
                 *self = new_state;
                 Ok(())
@@ -903,11 +942,14 @@ impl SocketState {
     fn close(&mut self) -> Option<(tokio::net::UdpSocket, noq_udp::UdpSocketState)> {
         match self {
             Self::Connected {
-                state, addr, mark, ..
+                state,
+                addr,
+                configure,
+                ..
             } => {
                 let s = SocketState::Closed {
                     addr: *addr,
-                    mark: *mark,
+                    configure: configure.clone(),
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
@@ -1119,6 +1161,11 @@ impl Future for SendFutNoq<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        net::Ipv4Addr,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
     use testresult::TestResult;
 
     use super::*;
@@ -1176,6 +1223,46 @@ mod tests {
         }
 
         handle_a.await.ok();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_configure_socket_runs_on_bind_and_rebind() -> TestResult {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let opts = BindOptions::new().configure_socket(
+            move |sock: SockRef<'_>, domain: socket2::Domain| {
+                // The configurator gets a real socket, and is told which family it is.
+                assert_eq!(domain, socket2::Domain::IPV4);
+                sock.set_reuse_address(true)?;
+                seen.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+
+        let socket = UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts)?;
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "hook did not run on bind");
+
+        socket.rebind()?;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "hook did not run again on rebind"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_configure_socket_error_fails_the_bind() -> TestResult {
+        let opts = BindOptions::new()
+            .configure_socket(|_: SockRef<'_>, _: socket2::Domain| Err(io::Error::other("nope")));
+
+        assert!(
+            UdpSocket::bind_with((Ipv4Addr::LOCALHOST, 0), opts).is_err(),
+            "a failing configurator must fail the bind"
+        );
 
         Ok(())
     }
