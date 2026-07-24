@@ -1526,6 +1526,7 @@ dependencies = [
  "libc",
  "n0-error",
  "n0-future",
+ "n0-watcher",
  "netwatch",
  "ntest",
  "num_enum",
