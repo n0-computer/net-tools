@@ -164,7 +164,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
-      - uses: mozilla-actions/sccache-action@v0.0.10
+      - uses: mozilla-actions/sccache-action@v0.0.11
       - name: Check workspace for ESP32-C3
         run: cargo check -Z build-std=std,panic_abort --target riscv32imc-esp-espidf --workspace --no-default-features
 
@@ -212,7 +212,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Setup Environment (PR)
         if: ${{ github.event_name == 'pull_request' }}
@@ -244,7 +244,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
-    - uses: mozilla-actions/sccache-action@v0.0.10
+    - uses: mozilla-actions/sccache-action@v0.0.11
     - uses: taiki-e/install-action@cargo-make
     - run: cargo make format-check
 
@@ -261,7 +261,7 @@ jobs:
       with:
         toolchain: nightly-2026-04-17
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.10
+      uses: mozilla-actions/sccache-action@v0.0.11
 
     - name: Docs
       run: cargo doc --workspace --all-features --no-deps --document-private-items
@@ -280,7 +280,7 @@ jobs:
       with:
         components: clippy
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.10
+      uses: mozilla-actions/sccache-action@v0.0.11
 
     # TODO: We have a bunch of platform-dependent code so should
     #    probably run this job on the full platform matrix
@@ -316,7 +316,7 @@ jobs:
       with:
         toolchain: ${{ env.TOOLCHAIN }}
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.10
+      uses: mozilla-actions/sccache-action@v0.0.11
     - name: Install cargo-make and cargo-check-external-types
       uses: taiki-e/install-action@v2
       with:
@@ -340,7 +340,7 @@ jobs:
       with:
         toolchain: ${{ env.MSRV }}
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.10
+      uses: mozilla-actions/sccache-action@v0.0.11
 
     - name: Check MSRV all features
       run: |
