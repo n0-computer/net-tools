@@ -161,8 +161,12 @@ jobs:
       SCCACHE_GHA_ENABLED: "on"
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@nightly
+      # Pinned: nightly-2026-07-30 and later fail to build std for espidf
+      # (libc::AT_FDCWD missing, see https://github.com/rust-lang/rust/pull/158168).
+      # Unpin once fixed upstream.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-07-29
           components: rust-src
       - uses: mozilla-actions/sccache-action@v0.0.10
       - name: Check workspace for ESP32-C3
