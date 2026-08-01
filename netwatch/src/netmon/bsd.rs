@@ -169,6 +169,12 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
             true
         }
         WireMessage::Route(msg) => {
+            // RTM_MISS is not a route change and can be emitted often on
+            // dual-stack hosts with no IPv6 connectivity.
+            if msg.r#type as libc::c_int == libc::RTM_MISS {
+                return false;
+            }
+
             // Ignore local unicast
             if let Some(addr) = msg.addrs.get(RTAX_DST as usize)
                 && let Some(ip) = addr.ip()
