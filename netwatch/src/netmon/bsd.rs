@@ -169,6 +169,30 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
             true
         }
         WireMessage::Route(msg) => {
+            // RTM_MISS reports the fate of a packet, not a change to the
+            // routing table: a lookup found no route for a destination. The
+            // table is identical before and after, so rebuilding the interface
+            // state can only conclude that nothing changed — and on macOS that
+            // rebuild is a full `getifaddrs` sweep (once per address, since
+            // `if_nametoindex` calls it again) plus a synchronous CoreWLAN XPC
+            // round-trip per Wi-Fi interface.
+            //
+            // A host with no working IPv6 route emits these continuously: every
+            // application's failed v6 connect produces one, and they are
+            // broadcast to every AF_ROUTE listener on the machine, so processes
+            // pay for traffic they had no part in. Measured on a laptop whose v6
+            // default sat behind a VPN tunnel, 1138 of 1142 route messages over
+            // two minutes were RTM_MISS, driving ~1.15 interface enumerations
+            // per second in each idle process — every one of which then logged
+            // "no changes detected".
+            //
+            // Real topology changes still arrive as RTM_ADD/RTM_DELETE/
+            // RTM_CHANGE, or as the RTM_NEWADDR/RTM_DELADDR/RTM_IFINFO handled
+            // above, so dropping this loses no signal.
+            if msg.r#type as libc::c_int == libc::RTM_MISS {
+                return false;
+            }
+
             // Ignore local unicast
             if let Some(addr) = msg.addrs.get(RTAX_DST as usize)
                 && let Some(ip) = addr.ip()
