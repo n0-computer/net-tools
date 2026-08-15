@@ -101,7 +101,7 @@ wasm-bindgen-test = "0.3"
 wasm-tracing = "2.1.0"
 
 [build-dependencies]
-cfg_aliases = { version = "0.2.1" }
+cfg_aliases = { version = "0.2.2" }
 
 [package.metadata.docs.rs]
 all-features = true
