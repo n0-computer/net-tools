@@ -43,7 +43,7 @@ tokio = { version = "1", features = ["rt", "net"] }
 
 # netdev is available on all non-embedded, non-wasm platforms
 [target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
-netdev = "0.45.0"
+netdev = "0.46.1"
 tokio = { version = "1", features = [
     "fs",
     "io-std",
