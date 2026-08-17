@@ -28,17 +28,7 @@ pub enum Error {
     MissingMaskField {},
     #[cfg(not(target_os = "android"))]
     #[error("netlink")]
-    Netlink {
-        source: netlink_proto::Error<netlink_packet_route::RouteNetlinkMessage>,
-    },
-    #[cfg(not(target_os = "android"))]
-    #[error("unexpected netlink message")]
-    UnexpectedNetlinkMessage {},
-    #[cfg(not(target_os = "android"))]
-    #[error("netlink error message: {message:?}")]
-    NetlinkErrorMessage {
-        message: netlink_packet_core::ErrorMessage,
-    },
+    Netlink { source: netwatch_netlink::Error },
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
@@ -143,162 +133,57 @@ mod android {
 #[cfg(not(target_os = "android"))]
 mod sane {
     use n0_error::e;
-    use n0_future::{Either, StreamExt, TryStream};
-    use netlink_packet_core::{NLM_F_DUMP, NLM_F_REQUEST, NetlinkMessage};
-    use netlink_packet_route::{
-        AddressFamily, RouteNetlinkMessage,
-        link::{LinkAttribute, LinkMessage},
-        route::{RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope, RouteType},
-    };
-    use netlink_sys::protocols::NETLINK_ROUTE;
-    use tracing::{Instrument, info_span};
+    use netwatch_netlink::{AsyncConnection, RouteFamily};
 
     use super::*;
 
-    type Handle = netlink_proto::ConnectionHandle<RouteNetlinkMessage>;
-
-    macro_rules! try_rtnl {
-        ($msg: expr, $message_type:path) => {{
-            use netlink_packet_core::NetlinkPayload;
-            use netlink_packet_route::RouteNetlinkMessage;
-
-            let (_header, payload) = $msg.into_parts();
-            match payload {
-                NetlinkPayload::InnerMessage($message_type(msg)) => msg,
-                NetlinkPayload::Error(err) => {
-                    return Err(e!(Error::NetlinkErrorMessage { message: err }));
-                }
-                _ => return Err(e!(Error::UnexpectedNetlinkMessage)),
-            }
-        }};
-    }
-
     pub async fn default_route() -> Result<Option<DefaultRouteDetails>, Error> {
-        let (connection, handle, _receiver) =
-            netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE)?;
+        let mut conn = AsyncConnection::new().map_err(|err| e!(Error::Netlink, err))?;
 
-        let task = tokio::spawn(connection.instrument(info_span!("netlink.conn")));
-
-        let default = default_route_netlink_family(&handle, AddressFamily::Inet).await?;
+        let default = default_route_netlink_family(&mut conn, RouteFamily::Ipv4).await?;
         let default = match default {
             Some(default) => Some(default),
-            None => {
-                default_route_netlink_family(&handle, netlink_packet_route::AddressFamily::Inet6)
-                    .await?
-            }
+            None => default_route_netlink_family(&mut conn, RouteFamily::Ipv6).await?,
         };
-        task.abort();
-        task.await.ok();
         Ok(default.map(|(name, _index)| DefaultRouteDetails {
             interface_name: name,
         }))
     }
 
-    fn get_route(
-        handle: Handle,
-        message: RouteMessage,
-    ) -> impl TryStream<Ok = RouteMessage, Err = Error> {
-        let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetRoute(message));
-        req.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
-
-        match handle.request(req, netlink_proto::sys::SocketAddr::new(0, 0)) {
-            Ok(response) => Either::Left(
-                response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewRoute))),
-            ),
-            Err(e) => Either::Right(n0_future::stream::once::<Result<RouteMessage, Error>>(Err(
-                e!(Error::Netlink, e),
-            ))),
-        }
-    }
-
-    fn create_route_message(family: netlink_packet_route::AddressFamily) -> RouteMessage {
-        let mut message = RouteMessage::default();
-        message.header.table = RouteHeader::RT_TABLE_MAIN;
-        message.header.protocol = RouteProtocol::Static;
-        message.header.scope = RouteScope::Universe;
-        message.header.kind = RouteType::Unicast;
-        message.header.address_family = family;
-        message
-    }
-
     /// Returns the `(name, index)` of the interface for the default route.
     async fn default_route_netlink_family(
-        handle: &Handle,
-        family: netlink_packet_route::AddressFamily,
+        conn: &mut AsyncConnection,
+        family: RouteFamily,
     ) -> Result<Option<(String, u32)>, Error> {
-        let msg = create_route_message(family);
-        let mut routes = get_route(handle.clone(), msg);
-
-        while let Some(route) = routes.try_next().await? {
-            let route_attrs = route.attributes;
-
-            if !route_attrs
-                .iter()
-                .any(|attr| matches!(attr, RouteAttribute::Gateway(_)))
-            {
+        let routes = conn.dump_routes(family).await?;
+        for route in routes {
+            if route.gateway.is_none() {
                 // A default route has a gateway.
                 continue;
             }
-
-            if route.header.destination_prefix_length > 0 {
+            if route.dst_len > 0 {
                 // A default route has no destination prefix length because it needs to route all
                 // destinations.
                 continue;
             }
-
-            let index = route_attrs.iter().find_map(|attr| match attr {
-                RouteAttribute::Oif(index) => Some(*index),
-                _ => None,
-            });
-
-            if let Some(index) = index {
-                if index == 0 {
-                    continue;
-                }
-                let name = iface_by_index(handle, index).await?;
-                return Ok(Some((name, index)));
+            let Some(index) = route.oif else {
+                continue;
+            };
+            if index == 0 {
+                continue;
             }
+            let name = iface_by_index(conn, index).await?;
+            return Ok(Some((name, index)));
         }
         Ok(None)
     }
 
-    fn get_link(
-        handle: Handle,
-        message: LinkMessage,
-    ) -> impl TryStream<Ok = LinkMessage, Err = Error> {
-        let mut req = NetlinkMessage::from(RouteNetlinkMessage::GetLink(message));
-        req.header.flags = NLM_F_REQUEST;
-
-        match handle.request(req, netlink_proto::sys::SocketAddr::new(0, 0)) {
-            Ok(response) => Either::Left(
-                response.map(move |msg| Ok(try_rtnl!(msg, RouteNetlinkMessage::NewLink))),
-            ),
-            Err(e) => Either::Right(n0_future::stream::once::<Result<LinkMessage, Error>>(Err(
-                e!(Error::Netlink, e),
-            ))),
-        }
-    }
-
-    fn create_link_get_message(index: u32) -> LinkMessage {
-        let mut message = LinkMessage::default();
-        message.header.index = index;
-        message
-    }
-
-    async fn iface_by_index(handle: &Handle, index: u32) -> Result<String, Error> {
-        let message = create_link_get_message(index);
-        let mut links = get_link(handle.clone(), message);
-        let msg = links
-            .try_next()
+    async fn iface_by_index(conn: &mut AsyncConnection, index: u32) -> Result<String, Error> {
+        let link = conn
+            .get_link_by_index(index)
             .await?
             .ok_or_else(|| e!(Error::NoResponse))?;
-
-        for nla in msg.attributes {
-            if let LinkAttribute::IfName(name) = nla {
-                return Ok(name);
-            }
-        }
-        Err(e!(Error::InterfaceNotFound))
+        link.name.ok_or_else(|| e!(Error::InterfaceNotFound))
     }
 
     #[cfg(test)]
