@@ -69,23 +69,32 @@ pub(super) fn interfaces() -> Vec<Interface> {
 fn default_gateway() -> Option<IpAddr> {
     let local_ip = local_ip()?;
     let ifaces = interfaces();
-    let iface = ifaces
+    // The first interface owning the local IP that also has a gateway
+    // wins, like in netdev's algorithm.
+    let owners = ifaces
         .iter()
-        .find(|iface| iface.addrs.iter().any(|net| net.addr() == local_ip))?;
+        .filter(|iface| iface.addrs.iter().any(|net| net.addr() == local_ip));
     match netlink::default_gateways_by_interface() {
-        Ok(mut gateways) => {
-            let (v4, v6) = gateways.remove(&iface.index)?;
-            v4.first()
-                .copied()
-                .map(IpAddr::V4)
-                .or_else(|| v6.first().copied().map(IpAddr::V6))
-        }
+        Ok(mut gateways) => owners
+            .filter_map(|iface| {
+                let (v4, v6) = gateways.remove(&iface.index)?;
+                v4.first()
+                    .copied()
+                    .map(IpAddr::V4)
+                    .or_else(|| v6.first().copied().map(IpAddr::V6))
+            })
+            .next(),
         #[cfg(target_os = "linux")]
         Err(err) => {
             tracing::debug!("netlink route dump failed ({err:?}), trying procfs");
-            let (v4, v6) = procfs::gateways_by_interface_name().remove(iface.name())?;
-            v4.map(IpAddr::V4)
-                .or_else(|| v6.first().copied().map(IpAddr::V6))
+            let mut gateways = procfs::gateways_by_interface_name();
+            owners
+                .filter_map(|iface| {
+                    let (v4, v6) = gateways.remove(iface.name())?;
+                    v4.map(IpAddr::V4)
+                        .or_else(|| v6.first().copied().map(IpAddr::V6))
+                })
+                .next()
         }
         // Android has no readable /proc/net/route; without netlink there
         // is no gateway source.

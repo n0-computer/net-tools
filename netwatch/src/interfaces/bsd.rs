@@ -37,6 +37,9 @@ mod macos;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use self::macos::*;
 
+// The signature is part of the cross-platform contract; other platforms
+// genuinely await in their implementations.
+#[allow(clippy::unused_async)]
 pub async fn default_route() -> Option<DefaultRouteDetails> {
     let idx = default_route_interface_index()?;
     let interfaces = super::enumerate::interfaces();
