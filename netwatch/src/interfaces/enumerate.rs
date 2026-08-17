@@ -1,87 +1,43 @@
-//! Conversion from the `netdev` crate into our platform-agnostic types.
+//! Interface enumeration and state assembly.
 //!
-//! This module also holds the interface enumeration and home-router lookup
-//! shared by all `netdev`-capable platforms (linux, android, bsd, macos,
-//! windows).
-//!
-//! This is the only module that depends on `netdev`. Everything it produces is
-//! expressed in terms of the types defined in [`crate::interfaces`].
+//! [`get_state`], [`home_router`] and [`LocalAddresses`] are assembled here
+//! from two platform primitives: `interfaces()`, the list of network
+//! interfaces in our own [`Interface`] type, and `default_gateway()`, the
+//! gateway address of the default route. BSD platforms do not use
+//! `default_gateway()`; they parse the routing table in
+//! [`crate::interfaces::bsd`] instead.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
-use super::{Interface, IpNet, Ipv6AddrFlags, State};
+use super::{Interface, State};
 use crate::ip::{LocalAddresses, is_link_local, is_private, is_private_v6};
 
-const IFF_UP: u32 = 0x1;
+mod netdev_shim;
+use netdev_shim as platform;
+
+/// The interface flag bit indicating a loopback interface.
+///
+/// Matches the POSIX `IFF_LOOPBACK` value. The windows backend synthesizes
+/// BSD-style flags but maps loopback to the winsock value `0x4`, so this
+/// bit is never set there; loopback addresses are still classified by
+/// [`IpAddr::is_loopback`].
 const IFF_LOOPBACK: u32 = 0x8;
 
-/// Converts netdev's IPv6 address flags into our mirrored [`Ipv6AddrFlags`].
-///
-/// This is a free function rather than a `From` impl on purpose: a public
-/// `From<netdev::...>` would re-expose the `netdev` type in our public API,
-/// which is exactly what the [`Ipv6AddrFlags`] mirror exists to avoid.
-fn to_ipv6_addr_flags(flags: netdev::interface::ipv6_addr_flags::Ipv6AddrFlags) -> Ipv6AddrFlags {
-    Ipv6AddrFlags {
-        deprecated: flags.deprecated,
-        temporary: flags.temporary,
-        tentative: flags.tentative,
-        duplicated: flags.duplicated,
-        permanent: flags.permanent,
-    }
-}
-
-/// Converts a [`netdev::Interface`] into our platform-agnostic [`Interface`].
-///
-/// Addresses are sorted (IPv4 first, then IPv6, each by address) so that
-/// comparisons between successive snapshots are stable.
-fn to_interface(iface: netdev::Interface) -> Interface {
-    // netdev keeps these three IPv6 arrays parallel, one entry per address.
-    // The zip below relies on that; assert it so a netdev change that breaks
-    // the invariant surfaces in tests rather than silently dropping addresses.
-    debug_assert_eq!(iface.ipv6.len(), iface.ipv6_scope_ids.len());
-    debug_assert_eq!(iface.ipv6.len(), iface.ipv6_addr_flags.len());
-
-    let mut v4: Vec<IpNet> = iface.ipv4.iter().copied().map(IpNet::V4).collect();
-    let mut v6: Vec<IpNet> = iface
-        .ipv6
-        .iter()
-        .copied()
-        .zip(iface.ipv6_scope_ids.iter().copied())
-        .zip(iface.ipv6_addr_flags.iter().copied())
-        .map(|((net, scope_id), flags)| IpNet::V6 {
-            net,
-            scope_id,
-            flags: to_ipv6_addr_flags(flags),
-        })
-        .collect();
-
-    // Sort each family by address so successive snapshots compare equal, then
-    // concatenate as IPv4-first.
-    v4.sort_by_key(IpNet::addr);
-    v6.sort_by_key(IpNet::addr);
-    let mut addrs = v4;
-    addrs.append(&mut v6);
-
-    Interface {
-        name: iface.name,
-        index: iface.index,
-        flags: iface.flags,
-        mac_addr: iface.mac_addr.as_ref().map(|a| a.octets()),
-        addrs,
-    }
+/// Enumerates the machine's network interfaces.
+pub(super) fn interfaces() -> Vec<Interface> {
+    platform::interfaces()
 }
 
 /// Enumerates the machine's network interfaces and assembles the [`State`].
 pub(super) async fn get_state() -> State {
-    let raw = netdev::interface::get_interfaces();
-    let local_addresses = local_addresses(&raw);
+    let ifaces = interfaces();
+    let local_addresses = local_addresses(&ifaces);
 
     let mut interfaces = std::collections::HashMap::new();
     let mut have_v6 = false;
     let mut have_v4 = false;
 
-    for raw in raw {
-        let iface = to_interface(raw);
+    for iface in ifaces {
         if iface.is_up() {
             for pfx in iface.addrs() {
                 let addr = pfx.addr();
@@ -110,23 +66,47 @@ pub(super) async fn get_state() -> State {
 
 /// The shared home-router lookup for linux, android and windows.
 ///
-/// BSD platforms do not use this as `netdev` cannot yet determine their default
-/// gateway, so they provide their own implementation.
+/// BSD platforms do not use this; they parse the routing table directly in
+/// [`crate::interfaces::bsd`].
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
 pub(super) fn home_router() -> Option<super::HomeRouter> {
-    let gateway = netdev::get_default_gateway().ok()?;
-    let gateway = gateway
-        .ipv4
-        .iter()
-        .copied()
-        .map(IpAddr::V4)
-        .chain(gateway.ipv6.iter().copied().map(IpAddr::V6))
-        .next()?;
-
+    let gateway = platform::default_gateway()?;
     Some(super::HomeRouter {
         gateway,
         my_ip: local_ip(),
     })
+}
+
+/// The local IP address selected for outbound traffic.
+///
+/// Opens a UDP socket and lets the operating system choose the source
+/// address it would use to reach a non-routable destination; no packets
+/// are sent.
+pub(super) fn local_ip() -> Option<IpAddr> {
+    // Binding the IPv4 socket can succeed while a later step fails in
+    // IPv6-only environments, so fall back to IPv6 whenever any IPv4 step
+    // fails.
+    local_ip_family(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 254, 254, 254)), 1),
+    )
+    .or_else(|| {
+        local_ip_family(
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+            SocketAddr::new(
+                IpAddr::V6(Ipv6Addr::new(
+                    0xfdff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                )),
+                1,
+            ),
+        )
+    })
+}
+
+fn local_ip_family(bind: SocketAddr, probe: SocketAddr) -> Option<IpAddr> {
+    let socket = UdpSocket::bind(bind).ok()?;
+    socket.connect(probe).ok()?;
+    Some(socket.local_addr().ok()?.ip())
 }
 
 /// Reports whether `ip` is a usable IPv4 address which should have Internet connectivity.
@@ -169,25 +149,16 @@ fn is_usable_v6(ip: &IpAddr) -> bool {
     }
 }
 
-/// The local IP address of this machine, as reported by `netdev`.
-pub(super) fn local_ip() -> Option<IpAddr> {
-    netdev::net::ip::get_local_ipaddr()
-}
-
-const fn is_up(interface: &netdev::Interface) -> bool {
-    interface.flags & IFF_UP != 0
-}
-
-const fn is_loopback(interface: &netdev::Interface) -> bool {
+const fn is_loopback(interface: &Interface) -> bool {
     interface.flags & IFF_LOOPBACK != 0
 }
 
-/// Builds the machine's [`LocalAddresses`] from a raw `netdev` interface list.
+/// Builds the machine's [`LocalAddresses`] from an interface list.
 ///
 /// If there are no regular addresses it falls back to IPv4 link-local or IPv6
 /// unique-local addresses, because we know of environments where these are used
 /// with NAT to provide connectivity.
-fn local_addresses(ifaces: &[netdev::Interface]) -> LocalAddresses {
+fn local_addresses(ifaces: &[Interface]) -> LocalAddresses {
     let mut loopback = Vec::new();
     let mut regular4 = Vec::new();
     let mut regular6 = Vec::new();
@@ -195,18 +166,13 @@ fn local_addresses(ifaces: &[netdev::Interface]) -> LocalAddresses {
     let mut ula6 = Vec::new();
 
     for iface in ifaces {
-        if !is_up(iface) {
+        if !iface.is_up() {
             // Skip down interfaces
             continue;
         }
         let ifc_is_loopback = is_loopback(iface);
-        let addrs = iface
-            .ipv4
-            .iter()
-            .map(|a| IpAddr::V4(a.addr()))
-            .chain(iface.ipv6.iter().map(|a| IpAddr::V6(a.addr())));
 
-        for ip in addrs {
+        for ip in iface.addrs().map(|pfx| pfx.addr()) {
             let ip = ip.to_canonical();
 
             if ip.is_loopback() || ifc_is_loopback {
@@ -258,7 +224,7 @@ impl LocalAddresses {
     /// IPv6 unique-local addresses, because we know of environments where these
     /// are used with NAT to provide connectivity.
     pub fn new() -> Self {
-        local_addresses(&netdev::interface::get_interfaces())
+        local_addresses(&platform::interfaces())
     }
 }
 
@@ -289,5 +255,14 @@ mod tests {
 
         let random_2603 = Ipv6Addr::new(0x2603, 0x3ff, 0xf1, 0xc3aa, 0x1, 0x2, 0x3, 0x1);
         assert!(is_usable_v6(&random_2603.into()));
+    }
+
+    #[test]
+    fn test_local_ip() {
+        // Either family may be unavailable in a test environment; only
+        // check that a returned address is not unspecified.
+        if let Some(ip) = local_ip() {
+            assert!(!ip.is_unspecified());
+        }
     }
 }

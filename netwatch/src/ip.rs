@@ -4,8 +4,9 @@ use std::net::{IpAddr, Ipv6Addr};
 
 /// List of machine's IP addresses.
 ///
-/// The netdev-based constructors live in [`crate::interfaces`]'s `netdev_impl`
-/// module; on platforms without `netdev` this is only ever the empty default.
+/// The constructors live in [`crate::interfaces`]'s `enumerate` module; on
+/// platforms without interface enumeration (esp-idf, browsers) this is only
+/// ever the empty default.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LocalAddresses {
     /// Loopback addresses.

@@ -16,7 +16,7 @@ use libc::{
 use n0_error::{e, ensure, stack_error};
 use tracing::warn;
 
-pub(super) use super::netdev_impl::get_state;
+pub(super) use super::enumerate::get_state;
 use super::{DefaultRouteDetails, HomeRouter};
 
 #[cfg(target_os = "freebsd")]
@@ -39,7 +39,7 @@ use self::macos::*;
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
     let idx = default_route_interface_index()?;
-    let interfaces = netdev::get_interfaces();
+    let interfaces = super::enumerate::interfaces();
     let iface = interfaces.into_iter().find(|i| i.index == idx)?;
 
     Some(DefaultRouteDetails {
@@ -49,14 +49,13 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
 
 /// Locates the home router via the routing table.
 ///
-/// `netdev` cannot yet determine the default gateway on BSD platforms (see
-/// <https://github.com/shellrow/default-net/issues/34>), so this parses the
-/// routing table directly. The local IP still comes from `netdev`.
+/// BSD platforms parse the routing table directly rather than going through
+/// the shared `default_gateway()` backend primitive.
 pub(super) fn home_router() -> Option<HomeRouter> {
     let gateway = likely_home_router()?;
     Some(HomeRouter {
         gateway,
-        my_ip: super::netdev_impl::local_ip(),
+        my_ip: super::enumerate::local_ip(),
     })
 }
 

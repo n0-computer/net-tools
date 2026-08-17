@@ -3,8 +3,9 @@
 //! All public types are defined here once and have the same shape on every
 //! platform. The platform-specific work of enumerating interfaces, finding the
 //! default route, and locating the home router lives in the submodules below,
-//! each reached through the cfg-selected `platform` alias. Conversion from the
-//! `netdev` crate is confined to the `netdev_impl` module.
+//! each reached through the cfg-selected `platform` alias. Interface
+//! enumeration and state assembly shared by the full platforms lives in the
+//! `enumerate` module.
 
 use std::{
     collections::HashMap,
@@ -19,9 +20,9 @@ use crate::ip::{LocalAddresses, is_link_local};
 
 // Each platform module provides the same three entry points, reached through
 // the `platform` alias: `get_state()`, `default_route()` and `home_router()`.
-// The `netdev`-capable modules share enumeration via `netdev_impl`.
+// The full platforms share enumeration and state assembly via `enumerate`.
 #[cfg(netdev)]
-mod netdev_impl;
+mod enumerate;
 
 #[cfg(bsd)]
 pub(super) mod bsd;
