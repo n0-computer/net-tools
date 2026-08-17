@@ -1084,6 +1084,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "n0-error",
+ "socket2",
  "tokio",
  "tracing",
 ]

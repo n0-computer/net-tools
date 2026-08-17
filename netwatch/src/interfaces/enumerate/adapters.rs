@@ -5,6 +5,9 @@
 //! the operational status and interface type using winsock `IFF_*`
 //! values, and the default gateway requires an ARP-resolvable IPv4
 //! gateway on the adapter owning the local IP.
+//!
+//! The unsafe surface is confined to the [`Adapters`] buffer wrapper and
+//! its accessors; the enumeration logic itself is safe code.
 
 use std::{
     ffi::CStr,
@@ -17,7 +20,7 @@ use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
             GAA_FLAG_INCLUDE_GATEWAYS, GetAdaptersAddresses, IP_ADAPTER_ADDRESSES_LH,
-            IP_ADAPTER_UNICAST_ADDRESS_LH, SendARP,
+            IP_ADAPTER_GATEWAY_ADDRESS_LH, IP_ADAPTER_UNICAST_ADDRESS_LH, SendARP,
         },
         Ndis::IfOperStatusUp,
     },
@@ -44,37 +47,23 @@ const IFF_MULTICAST: u32 = 16;
 /// Returns an empty list when the adapter query fails; there is no error
 /// channel, matching the behavior callers have relied on so far.
 pub(super) fn interfaces() -> Vec<Interface> {
-    let Some(buf) = adapters_buffer() else {
+    let Some(adapters) = Adapters::load() else {
         return Vec::new();
     };
 
     let mut interfaces = Vec::new();
-    for adapter in iter_list(buf.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>(), |a| {
-        a.Next.cast_const()
-    }) {
-        // SAFETY: AdapterName is a NUL-terminated ANSI string (the
-        // adapter GUID) owned by the buffer.
-        let name = unsafe { CStr::from_ptr(adapter.AdapterName.0.cast()) }
-            .to_string_lossy()
-            .into_owned();
-        // SAFETY: reading the IfIndex variant of the union is always
-        // valid; both variants are plain integers.
-        let index = unsafe { adapter.Anonymous1.Anonymous.IfIndex };
-
-        let mut builder = IfaceBuilder::new(name, index, adapter_flags(adapter));
+    for adapter in adapters.iter() {
+        let mut builder = IfaceBuilder::new(
+            adapter_name(adapter),
+            adapter_index(adapter),
+            adapter_flags(adapter),
+        );
         if adapter.PhysicalAddressLength == 6 {
             builder.mac = adapter.PhysicalAddress[..6].try_into().ok();
         }
 
-        for unicast in iter_list(
-            adapter
-                .FirstUnicastAddress
-                .cast_const()
-                .cast::<IP_ADAPTER_UNICAST_ADDRESS_LH>(),
-            |u| u.Next.cast_const(),
-        ) {
-            // SAFETY: the SOCKET_ADDRESS points into the adapter buffer.
-            let Some((ip, scope_id)) = (unsafe { socket_address_to_ip(&unicast.Address) }) else {
+        for unicast in unicast_addrs(adapter) {
+            let Some((ip, scope_id)) = socket_address_to_ip(adapter, &unicast.Address) else {
                 continue;
             };
             match ip {
@@ -108,26 +97,17 @@ pub(super) fn interfaces() -> Vec<Interface> {
 /// only an IPv6 gateway yields nothing, like it did with netdev.
 pub(super) fn default_gateway() -> Option<IpAddr> {
     let local_ip = super::local_ip()?;
-    let buf = adapters_buffer()?;
+    let adapters = Adapters::load()?;
 
-    for adapter in iter_list(buf.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>(), |a| {
-        a.Next.cast_const()
-    }) {
+    for adapter in adapters.iter() {
         if adapter_flags(adapter) & IFF_UP == 0 {
             continue;
         }
 
         let mut v4_addrs = Vec::new();
         let mut owns_local_ip = false;
-        for unicast in iter_list(
-            adapter
-                .FirstUnicastAddress
-                .cast_const()
-                .cast::<IP_ADAPTER_UNICAST_ADDRESS_LH>(),
-            |u| u.Next.cast_const(),
-        ) {
-            // SAFETY: the SOCKET_ADDRESS points into the adapter buffer.
-            let Some((ip, _)) = (unsafe { socket_address_to_ip(&unicast.Address) }) else {
+        for unicast in unicast_addrs(adapter) {
+            let Some((ip, _)) = socket_address_to_ip(adapter, &unicast.Address) else {
                 continue;
             };
             owns_local_ip |= ip == local_ip;
@@ -139,12 +119,8 @@ pub(super) fn default_gateway() -> Option<IpAddr> {
             continue;
         }
 
-        for gateway in iter_list(adapter.FirstGatewayAddress.cast_const(), |g| {
-            g.Next.cast_const()
-        }) {
-            // SAFETY: as above.
-            let Some((IpAddr::V4(gateway), _)) =
-                (unsafe { socket_address_to_ip(&gateway.Address) })
+        for gateway in gateway_addrs(adapter) {
+            let Some((IpAddr::V4(gateway), _)) = socket_address_to_ip(adapter, &gateway.Address)
             else {
                 continue;
             };
@@ -159,38 +135,98 @@ pub(super) fn default_gateway() -> Option<IpAddr> {
     None
 }
 
-/// Queries the adapter list, growing the buffer up to three times as
-/// `GetAdaptersAddresses` requests.
-fn adapters_buffer() -> Option<Vec<u8>> {
-    // 15k is the size MSDN recommends to avoid the second call.
-    let mut buf: Vec<u8> = Vec::with_capacity(15000);
-    let mut retries = 3;
-    loop {
-        let mut size = buf.capacity() as u32;
-        // SAFETY: the buffer is valid for writes of `size` bytes.
-        let res = unsafe {
-            GetAdaptersAddresses(
-                AF_UNSPEC.0 as u32,
-                GAA_FLAG_INCLUDE_GATEWAYS,
-                None,
-                Some(buf.as_mut_ptr().cast()),
-                &mut size,
-            )
-        };
-        if res == NO_ERROR.0 {
-            // SAFETY: the call wrote `size` bytes (bounded by capacity).
-            unsafe { buf.set_len(size as usize) };
-            return Some(buf);
-        } else if res == ERROR_BUFFER_OVERFLOW.0 && retries > 0 {
-            buf.reserve(size as usize);
-            retries -= 1;
-        } else {
-            return None;
+/// The adapter list returned by `GetAdaptersAddresses`.
+///
+/// Owns the backing buffer; all adapter references and the pointers
+/// inside them stay valid for as long as this value lives, which is what
+/// the accessor functions below rely on.
+struct Adapters {
+    buf: Vec<u8>,
+}
+
+impl Adapters {
+    /// Queries the adapter list, growing the buffer up to three times as
+    /// `GetAdaptersAddresses` requests.
+    fn load() -> Option<Self> {
+        // 15k is the size MSDN recommends to avoid the second call.
+        let mut buf: Vec<u8> = Vec::with_capacity(15000);
+        let mut retries = 3;
+        loop {
+            let mut size = buf.capacity() as u32;
+            // SAFETY: the buffer is valid for writes of `size` bytes, and
+            // on success the call wrote `size` bytes (bounded by the
+            // capacity).
+            let res = unsafe {
+                let res = GetAdaptersAddresses(
+                    AF_UNSPEC.0 as u32,
+                    GAA_FLAG_INCLUDE_GATEWAYS,
+                    None,
+                    Some(buf.as_mut_ptr().cast()),
+                    &mut size,
+                );
+                if res == NO_ERROR.0 {
+                    buf.set_len(size as usize);
+                }
+                res
+            };
+            if res == NO_ERROR.0 {
+                return Some(Self { buf });
+            } else if res == ERROR_BUFFER_OVERFLOW.0 && retries > 0 {
+                buf.reserve(size as usize);
+                retries -= 1;
+            } else {
+                return None;
+            }
         }
+    }
+
+    /// Iterates the adapters in the list.
+    fn iter(&self) -> impl Iterator<Item = &IP_ADAPTER_ADDRESSES_LH> {
+        iter_list(
+            self.buf.as_ptr().cast(),
+            |adapter: &IP_ADAPTER_ADDRESSES_LH| adapter.Next.cast_const(),
+        )
     }
 }
 
+/// Iterates the unicast addresses of an adapter.
+fn unicast_addrs(
+    adapter: &IP_ADAPTER_ADDRESSES_LH,
+) -> impl Iterator<Item = &IP_ADAPTER_UNICAST_ADDRESS_LH> {
+    iter_list(
+        adapter.FirstUnicastAddress.cast_const().cast(),
+        |unicast: &IP_ADAPTER_UNICAST_ADDRESS_LH| unicast.Next.cast_const(),
+    )
+}
+
+/// Iterates the gateway addresses of an adapter.
+fn gateway_addrs(
+    adapter: &IP_ADAPTER_ADDRESSES_LH,
+) -> impl Iterator<Item = &IP_ADAPTER_GATEWAY_ADDRESS_LH> {
+    iter_list(adapter.FirstGatewayAddress.cast_const(), |gateway| {
+        gateway.Next.cast_const()
+    })
+}
+
+/// The adapter name (its GUID string).
+fn adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH) -> String {
+    // SAFETY: AdapterName is a NUL-terminated ANSI string owned by the
+    // adapter buffer.
+    let name = unsafe { CStr::from_ptr(adapter.AdapterName.0.cast()) };
+    name.to_string_lossy().into_owned()
+}
+
+/// The adapter's interface index; may be zero when IPv4 is disabled.
+fn adapter_index(adapter: &IP_ADAPTER_ADDRESSES_LH) -> u32 {
+    // SAFETY: reading the IfIndex variant of the union is always valid;
+    // both variants are plain integers.
+    unsafe { adapter.Anonymous1.Anonymous.IfIndex }
+}
+
 /// Iterates a `Next`-linked list of structs inside the adapter buffer.
+///
+/// The returned references borrow from the start pointer's referent, so
+/// they cannot outlive the [`Adapters`] buffer they point into.
 fn iter_list<'a, T: 'a>(
     mut ptr: *const T,
     next: fn(&T) -> *const T,
@@ -241,13 +277,15 @@ fn unicast_v6_flags(unicast: &IP_ADAPTER_UNICAST_ADDRESS_LH) -> Ipv6AddrFlags {
 /// Parses a `SOCKET_ADDRESS`, returning the address and, for IPv6, the
 /// scope ID.
 ///
-/// # Safety
-///
-/// `address.lpSockaddr` must be null or point to a sockaddr at least as
-/// large as its family's `SOCKADDR_IN`/`SOCKADDR_IN6`, as the adapter
-/// buffer guarantees.
-unsafe fn socket_address_to_ip(address: &SOCKET_ADDRESS) -> Option<(IpAddr, u32)> {
-    // SAFETY: per the caller contract.
+/// The unused adapter argument pins down that the sockaddr pointer
+/// borrows from the adapter buffer, which guarantees it is null or
+/// points to a sockaddr at least as large as its family's
+/// `SOCKADDR_IN`/`SOCKADDR_IN6`.
+fn socket_address_to_ip(
+    _owner: &IP_ADAPTER_ADDRESSES_LH,
+    address: &SOCKET_ADDRESS,
+) -> Option<(IpAddr, u32)> {
+    // SAFETY: the sockaddr lives in the adapter buffer (see above).
     let sockaddr = unsafe { address.lpSockaddr.cast::<SOCKADDR_INET>().as_ref() }?;
     // SAFETY: si_family overlaps the family field of both variants.
     let family = unsafe { sockaddr.si_family };

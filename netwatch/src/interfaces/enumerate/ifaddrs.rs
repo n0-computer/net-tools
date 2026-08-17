@@ -6,7 +6,9 @@
 //!
 //! Every getifaddrs entry carries one address; entries are merged per
 //! interface name, with flags taken from the first entry of a name the
-//! way netdev did it.
+//! way netdev did it. The unsafe surface is confined to the [`IfAddrs`]
+//! list wrapper, the [`Entry`] accessors, and the flag ioctl; the walk
+//! itself is safe code.
 
 use std::{
     ffi::CStr,
@@ -28,55 +30,27 @@ const MAC_FAMILY: libc::c_int = libc::AF_LINK;
 /// Returns an empty list when the call fails; there is no error channel,
 /// matching the behavior callers have relied on so far.
 pub(super) fn interfaces() -> Vec<Interface> {
-    #[cfg(target_os = "android")]
-    let Some((getifaddrs_fn, freeifaddrs_fn)) = compat::symbols() else {
+    let Some(list) = IfAddrs::load() else {
         return Vec::new();
     };
-    #[cfg(not(target_os = "android"))]
-    let (getifaddrs_fn, freeifaddrs_fn) = (
-        libc::getifaddrs as unsafe extern "C" fn(*mut *mut libc::ifaddrs) -> libc::c_int,
-        libc::freeifaddrs as unsafe extern "C" fn(*mut libc::ifaddrs),
-    );
-
-    let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
-    // SAFETY: `list` is a valid out-pointer for getifaddrs.
-    if unsafe { getifaddrs_fn(&mut list) } != 0 {
-        return Vec::new();
-    }
 
     let mut builders: Vec<IfaceBuilder> = Vec::new();
-    let mut entry = list;
-    while !entry.is_null() {
-        // SAFETY: `entry` points at a live node of the getifaddrs list.
-        let ifa = unsafe { &*entry };
-        entry = ifa.ifa_next;
-
-        if ifa.ifa_name.is_null() {
+    for entry in list.iter() {
+        let Some(name) = entry.name() else {
             continue;
-        }
-        // SAFETY: `ifa_name` is a NUL-terminated string owned by the list.
-        let name = unsafe { CStr::from_ptr(ifa.ifa_name) }
-            .to_string_lossy()
-            .into_owned();
-
+        };
         let position = match builders.iter().position(|builder| builder.name == name) {
             Some(position) => position,
             None => {
-                // SAFETY: `ifa_name` is valid for the duration of the call.
-                let index = unsafe { libc::if_nametoindex(ifa.ifa_name) };
-                builders.push(IfaceBuilder::new(name, index, ifa.ifa_flags as u32));
+                builders.push(IfaceBuilder::new(name, entry.index(), entry.flags()));
                 builders.len() - 1
             }
         };
         let builder = &mut builders[position];
 
-        // SAFETY: the entry's sockaddr pointers are valid or null.
-        let Some((family, sa)) = (unsafe { sockaddr_slice(ifa.ifa_addr) }) else {
+        let Some((family, sa)) = entry.addr() else {
             continue;
         };
-        // SAFETY: as above.
-        let netmask = unsafe { sockaddr_slice(ifa.ifa_netmask) };
-
         if family == MAC_FAMILY {
             if let Some(mac) = parse_mac(sa) {
                 builder.mac = Some(mac);
@@ -86,7 +60,7 @@ pub(super) fn interfaces() -> Vec<Interface> {
                 continue;
             };
             // A non-contiguous netmask fails here and drops the address.
-            let Ok(net) = Ipv4Net::with_netmask(ip, parse_v4_mask(netmask)) else {
+            let Ok(net) = Ipv4Net::with_netmask(ip, parse_v4_mask(entry.netmask())) else {
                 continue;
             };
             builder.push_v4(net);
@@ -94,7 +68,7 @@ pub(super) fn interfaces() -> Vec<Interface> {
             let Some((ip, raw_scope_id)) = parse_v6_addr(sa) else {
                 continue;
             };
-            let Ok(net) = Ipv6Net::with_netmask(ip, parse_v6_mask(netmask)) else {
+            let Ok(net) = Ipv6Net::with_netmask(ip, parse_v6_mask(entry.netmask())) else {
                 continue;
             };
             let scope_id = resolve_v6_scope_id(&ip, raw_scope_id, builder.index);
@@ -103,10 +77,110 @@ pub(super) fn interfaces() -> Vec<Interface> {
         }
     }
 
-    // SAFETY: `list` came from getifaddrs and is freed exactly once.
-    unsafe { freeifaddrs_fn(list) };
-
     builders.into_iter().map(IfaceBuilder::finish).collect()
+}
+
+/// The list returned by `getifaddrs(3)`, freed on drop.
+struct IfAddrs {
+    list: *mut libc::ifaddrs,
+    free: unsafe extern "C" fn(*mut libc::ifaddrs),
+}
+
+impl IfAddrs {
+    /// Queries the list.
+    ///
+    /// Returns `None` when the call fails or, on android, when the
+    /// symbols are unavailable.
+    fn load() -> Option<Self> {
+        #[cfg(target_os = "android")]
+        let (getifaddrs, freeifaddrs) = compat::symbols()?;
+        #[cfg(not(target_os = "android"))]
+        let (getifaddrs, freeifaddrs) = (
+            libc::getifaddrs as unsafe extern "C" fn(*mut *mut libc::ifaddrs) -> libc::c_int,
+            libc::freeifaddrs as unsafe extern "C" fn(*mut libc::ifaddrs),
+        );
+
+        let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+        // SAFETY: `list` is a valid out-pointer for getifaddrs.
+        if unsafe { getifaddrs(&mut list) } != 0 {
+            return None;
+        }
+        Some(Self {
+            list,
+            free: freeifaddrs,
+        })
+    }
+
+    /// Iterates the entries of the list.
+    fn iter(&self) -> impl Iterator<Item = Entry<'_>> {
+        let mut next = self.list.cast_const();
+        std::iter::from_fn(move || {
+            // SAFETY: `next` is null or points at a live node of the
+            // list, which stays allocated for the borrow's lifetime.
+            let ifa = unsafe { next.as_ref() }?;
+            next = ifa.ifa_next;
+            Some(Entry { ifa })
+        })
+    }
+}
+
+impl Drop for IfAddrs {
+    fn drop(&mut self) {
+        if !self.list.is_null() {
+            // SAFETY: `list` came from getifaddrs and is freed exactly
+            // once.
+            unsafe { (self.free)(self.list) };
+        }
+    }
+}
+
+/// One getifaddrs entry: an interface name paired with one address.
+///
+/// The accessors encapsulate the pointer handling; the invariants they
+/// rely on (NUL-terminated name, length-backed sockaddrs) are guaranteed
+/// by getifaddrs for the lifetime of the [`IfAddrs`] list.
+#[derive(Clone, Copy)]
+struct Entry<'a> {
+    ifa: &'a libc::ifaddrs,
+}
+
+impl<'a> Entry<'a> {
+    /// The interface name.
+    fn name(&self) -> Option<String> {
+        if self.ifa.ifa_name.is_null() {
+            return None;
+        }
+        // SAFETY: ifa_name is a NUL-terminated string owned by the list.
+        let name = unsafe { CStr::from_ptr(self.ifa.ifa_name) };
+        Some(name.to_string_lossy().into_owned())
+    }
+
+    /// The OS interface index; zero when the lookup fails.
+    fn index(&self) -> u32 {
+        if self.ifa.ifa_name.is_null() {
+            return 0;
+        }
+        // SAFETY: ifa_name is a valid NUL-terminated string, see name().
+        unsafe { libc::if_nametoindex(self.ifa.ifa_name) }
+    }
+
+    /// The interface flags (`IFF_*`).
+    fn flags(&self) -> u32 {
+        self.ifa.ifa_flags
+    }
+
+    /// The entry's address family and sockaddr bytes.
+    fn addr(&self) -> Option<(libc::c_int, &'a [u8])> {
+        // SAFETY: ifa_addr is null or a sockaddr whose reported length is
+        // backed by its allocation, as getifaddrs guarantees.
+        unsafe { sockaddr_slice(self.ifa.ifa_addr) }
+    }
+
+    /// The netmask family and sockaddr bytes.
+    fn netmask(&self) -> Option<(libc::c_int, &'a [u8])> {
+        // SAFETY: as for addr().
+        unsafe { sockaddr_slice(self.ifa.ifa_netmask) }
+    }
 }
 
 /// Reads the address family and the valid bytes of a sockaddr.
@@ -241,7 +315,7 @@ fn parse_mac(sa: &[u8]) -> Option<[u8; 6]> {
 /// these platforms.
 #[cfg(bsd)]
 fn ipv6_addr_flags(name: &str, addr: &Ipv6Addr) -> Ipv6AddrFlags {
-    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::fd::AsRawFd;
 
     // From in6_var.h (xnu and FreeBSD agree); the libc crate exposes
     // neither the ioctl number nor the flag bits. The request encodes a
@@ -266,12 +340,9 @@ fn ipv6_addr_flags(name: &str, addr: &Ipv6Addr) -> Ipv6AddrFlags {
 
     let flags = Ipv6AddrFlags::default();
 
-    let fd = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
-    if fd < 0 {
+    let Ok(socket) = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None) else {
         return flags;
-    }
-    // SAFETY: `fd` is a freshly created socket owned by no one else.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    };
 
     let mut req = In6Ifreq {
         name: [0; libc::IFNAMSIZ],
@@ -281,21 +352,20 @@ fn ipv6_addr_flags(name: &str, addr: &Ipv6Addr) -> Ipv6AddrFlags {
     let name_len = name.len().min(libc::IFNAMSIZ - 1);
     req.name[..name_len].copy_from_slice(&name[..name_len]);
 
-    // SAFETY: sockaddr_in6 is valid when zeroed.
-    let mut sin6: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
-    sin6.sin6_len = std::mem::size_of::<libc::sockaddr_in6>() as u8;
-    sin6.sin6_family = libc::AF_INET6 as libc::sa_family_t;
-    sin6.sin6_addr.s6_addr = addr.octets();
-    // SAFETY: `data` is larger than sockaddr_in6.
-    unsafe { std::ptr::write_unaligned(req.data.as_mut_ptr().cast::<libc::sockaddr_in6>(), sin6) };
+    // The union starts with a sockaddr_in6 holding the queried address:
+    // the length and family bytes, then the address at offset 8.
+    req.data[0] = std::mem::size_of::<libc::sockaddr_in6>() as u8;
+    req.data[1] = libc::AF_INET6 as u8;
+    req.data[8..24].copy_from_slice(&addr.octets());
 
-    // SAFETY: `req` matches the size encoded in the ioctl request.
-    let res = unsafe { libc::ioctl(fd.as_raw_fd(), SIOCGIFAFLAG_IN6, &mut req) };
+    // SAFETY: `req` matches the 288-byte struct size encoded in the
+    // ioctl request; the kernel reads and writes only within it.
+    let res = unsafe { libc::ioctl(socket.as_raw_fd(), SIOCGIFAFLAG_IN6, &mut req) };
     if res != 0 {
         return flags;
     }
-    // SAFETY: `data` is larger than the flag word.
-    let raw = unsafe { std::ptr::read_unaligned(req.data.as_ptr().cast::<i32>()) };
+    // On success the union holds the flag word instead of the address.
+    let raw = i32::from_ne_bytes(req.data[..4].try_into().expect("length checked"));
 
     Ipv6AddrFlags {
         deprecated: raw & IN6_IFF_DEPRECATED != 0,

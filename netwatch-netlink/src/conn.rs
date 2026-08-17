@@ -4,11 +4,13 @@
 use std::{
     collections::VecDeque,
     io,
-    os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+    mem::MaybeUninit,
+    os::fd::{AsRawFd, RawFd},
     time::{Duration, Instant},
 };
 
 use n0_error::e;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tracing::warn;
 
@@ -33,29 +35,44 @@ const RECV_BUF_SIZE: usize = 64 * 1024;
 /// datagram.
 const DUMP_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// A non-blocking `NETLINK_ROUTE` socket.
+/// Builds the netlink socket address for the given multicast group mask.
+///
+/// A zero mask addresses the kernel for request/response use.
+fn netlink_addr(groups: u32) -> SockAddr {
+    // SAFETY: an all-zero sockaddr_nl is valid; only the family and the
+    // group mask need real values (pid zero lets the kernel assign one).
+    // The storage is larger than sockaddr_nl and the length says so.
+    unsafe {
+        let mut storage = socket2::SockAddrStorage::zeroed();
+        let addr = std::ptr::from_mut(&mut storage).cast::<libc::sockaddr_nl>();
+        (*addr).nl_family = libc::AF_NETLINK as libc::sa_family_t;
+        (*addr).nl_groups = groups;
+        SockAddr::new(
+            storage,
+            std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
+        )
+    }
+}
+
+/// A `NETLINK_ROUTE` socket.
 #[derive(Debug)]
 struct NetlinkSocket {
-    fd: OwnedFd,
+    socket: Socket,
 }
 
 impl NetlinkSocket {
     /// Opens the socket, subscribed to the multicast groups in `groups`
     /// (zero for request/response use).
-    fn new(groups: u32) -> io::Result<Self> {
-        let fd = unsafe {
-            libc::socket(
-                libc::AF_NETLINK,
-                libc::SOCK_DGRAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
-                libc::NETLINK_ROUTE,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: `fd` is a freshly created socket owned by no one else.
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let socket = Self { fd };
+    ///
+    /// Blocking receives use a per-call timeout; async users flip the
+    /// socket to non-blocking and drive it through an [`AsyncFd`].
+    fn new(groups: u32, nonblocking: bool) -> io::Result<Self> {
+        let socket = Socket::new(
+            Domain::from(libc::AF_NETLINK),
+            Type::DGRAM,
+            Some(Protocol::from(libc::NETLINK_ROUTE)),
+        )?;
+        socket.set_nonblocking(nonblocking)?;
 
         // On Android 11+ SELinux denies bind on netlink route sockets for
         // apps; the kernel auto-binds on the first send instead. Group
@@ -63,47 +80,16 @@ impl NetlinkSocket {
         // (netmon is a no-op there).
         let bind = groups != 0 || cfg!(not(target_os = "android"));
         if bind {
-            // SAFETY: sockaddr_nl is valid when zeroed.
-            let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
-            addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
-            addr.nl_groups = groups;
-            // SAFETY: `addr` is a valid sockaddr_nl and outlives the call.
-            let res = unsafe {
-                libc::bind(
-                    socket.fd.as_raw_fd(),
-                    std::ptr::from_ref(&addr).cast(),
-                    std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-                )
-            };
-            if res < 0 {
-                return Err(io::Error::last_os_error());
-            }
+            socket.bind(&netlink_addr(groups))?;
         }
-        Ok(socket)
+        Ok(Self { socket })
     }
 
     /// Sends a request datagram to the kernel.
     fn send_request(&self, buf: &[u8]) -> io::Result<()> {
-        // SAFETY: sockaddr_nl is valid when zeroed; pid and groups zero
-        // address the kernel.
-        let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
-        addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
-        // SAFETY: `buf` and `addr` are valid for the duration of the call.
-        let res = unsafe {
-            libc::sendto(
-                self.fd.as_raw_fd(),
-                buf.as_ptr().cast(),
-                buf.len(),
-                0,
-                std::ptr::from_ref(&addr).cast(),
-                std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-            )
-        };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        let sent = self.socket.send_to(buf, &netlink_addr(0))?;
         // Datagram sockets send whole messages; a short send cannot happen.
-        debug_assert_eq!(res as usize, buf.len());
+        debug_assert_eq!(sent, buf.len());
         Ok(())
     }
 
@@ -112,46 +98,35 @@ impl NetlinkSocket {
     /// Returns the datagram's true length, which exceeds `buf.len()` when
     /// the datagram was truncated (`MSG_TRUNC`).
     fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        // SAFETY: `buf` is valid for writes of `buf.len()` bytes.
-        let res = unsafe {
-            libc::recv(
-                self.fd.as_raw_fd(),
-                buf.as_mut_ptr().cast(),
-                buf.len(),
-                libc::MSG_TRUNC,
-            )
-        };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(res as usize)
+        // SAFETY: MaybeUninit<u8> has the same layout as u8, and the
+        // receive only writes initialized bytes into the buffer.
+        let buf = unsafe { &mut *(std::ptr::from_mut::<[u8]>(buf) as *mut [MaybeUninit<u8>]) };
+        self.socket.recv_with_flags(buf, libc::MSG_TRUNC)
     }
 
-    /// Waits until the socket is readable or `deadline` passes.
+    /// Blocking receive of one datagram, bounded by `deadline`.
     ///
-    /// Returns `false` on timeout.
-    fn poll_readable(&self, deadline: Instant) -> io::Result<bool> {
+    /// Returns `None` when the deadline passes first.
+    fn recv_deadline(&self, buf: &mut [u8], deadline: Instant) -> io::Result<Option<usize>> {
         loop {
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-                return Ok(false);
+                return Ok(None);
             };
-            let timeout_ms = remaining.as_millis().min(i32::MAX as u128 - 1) as i32 + 1;
-            let mut pollfd = libc::pollfd {
-                fd: self.fd.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            // SAFETY: `pollfd` is a valid pollfd array of length one.
-            let res = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
-            match res {
-                -1 => {
-                    let err = io::Error::last_os_error();
-                    if err.kind() != io::ErrorKind::Interrupted {
-                        return Err(err);
-                    }
+            // A zero timeout would mean "block forever".
+            self.socket
+                .set_read_timeout(Some(remaining.max(Duration::from_millis(1))))?;
+            match self.recv(buf) {
+                Ok(len) => return Ok(Some(len)),
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    return Ok(None);
                 }
-                0 => return Ok(false),
-                _ => return Ok(true),
+                Err(err) => return Err(err),
             }
         }
     }
@@ -159,7 +134,7 @@ impl NetlinkSocket {
 
 impl AsRawFd for NetlinkSocket {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
+        self.socket.as_raw_fd()
     }
 }
 
@@ -245,7 +220,7 @@ impl Connection {
     /// Opens a new connection.
     pub fn new() -> Result<Self, Error> {
         Ok(Self {
-            socket: NetlinkSocket::new(0)?,
+            socket: NetlinkSocket::new(0, false)?,
             seq: 0,
             buf: vec![0; RECV_BUF_SIZE],
         })
@@ -278,14 +253,13 @@ impl Connection {
         let deadline = Instant::now() + DUMP_TIMEOUT;
         let mut collector = DumpCollector::default();
         while !collector.done {
-            if !self.socket.poll_readable(deadline)? {
-                warn!("netlink dump timed out, returning partial result");
-                break;
-            }
-            match self.socket.recv(&mut self.buf) {
-                Ok(len) if len > self.buf.len() => return Err(e!(Error::Truncated)),
-                Ok(len) => collector.push_datagram(seq, &self.buf[..len])?,
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+            match self.socket.recv_deadline(&mut self.buf, deadline) {
+                Ok(None) => {
+                    warn!("netlink dump timed out, returning partial result");
+                    break;
+                }
+                Ok(Some(len)) if len > self.buf.len() => return Err(e!(Error::Truncated)),
+                Ok(Some(len)) => collector.push_datagram(seq, &self.buf[..len])?,
                 Err(err) => return Err(map_recv_err(err)),
             }
         }
@@ -308,7 +282,7 @@ impl AsyncConnection {
     ///
     /// Must be called from within a tokio runtime.
     pub fn new() -> Result<Self, Error> {
-        let socket = NetlinkSocket::new(0)?;
+        let socket = NetlinkSocket::new(0, true)?;
         Ok(Self {
             socket: AsyncFd::new(socket).map_err(|err| e!(Error::Io, err))?,
             seq: 0,
@@ -433,7 +407,7 @@ impl EventSocket {
     ///
     /// Must be called from within a tokio runtime.
     pub fn subscribe(groups: u32) -> Result<Self, Error> {
-        let socket = NetlinkSocket::new(groups)?;
+        let socket = NetlinkSocket::new(groups, true)?;
         Ok(Self {
             socket: AsyncFd::new(socket).map_err(|err| e!(Error::Io, err))?,
             buf: vec![0; RECV_BUF_SIZE],
