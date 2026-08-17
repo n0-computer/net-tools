@@ -41,13 +41,16 @@ libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = ["rt", "net"] }
 
-# netdev is available on all non-embedded, non-wasm platforms
 [target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
-netdev = "0.45.0"
 tokio = { version = "1", features = [
     "fs",
     "io-std",
 ] }
+
+# netdev remains on the platforms whose enumeration backend is not
+# inlined yet; linux and android use netwatch-netlink and getifaddrs.
+[target.'cfg(any(target_os = "windows", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "macos", target_os = "ios"))'.dependencies]
+netdev = "0.45.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # msrv fix

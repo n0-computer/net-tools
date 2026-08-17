@@ -9,11 +9,19 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
-use super::{Interface, State};
+use ipnet::{Ipv4Net, Ipv6Net};
+
+use super::{Interface, IpNet, Ipv6AddrFlags, State};
 use crate::ip::{LocalAddresses, is_link_local, is_private, is_private_v6};
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+mod ifaddrs;
+#[cfg(any(target_os = "windows", bsd))]
 mod netdev_shim;
-use netdev_shim as platform;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+mod netlink;
+#[cfg(target_os = "linux")]
+mod procfs;
 
 /// The interface flag bit indicating a loopback interface.
 ///
@@ -24,8 +32,159 @@ use netdev_shim as platform;
 const IFF_LOOPBACK: u32 = 0x8;
 
 /// Enumerates the machine's network interfaces.
+///
+/// Prefers netlink dumps and falls back to getifaddrs when they fail,
+/// which notably happens on Android 11+ where SELinux denies netlink link
+/// dumps to apps.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub(super) fn interfaces() -> Vec<Interface> {
-    platform::interfaces()
+    match netlink::interfaces() {
+        Ok(ifaces) => ifaces,
+        Err(err) => {
+            tracing::debug!("netlink enumeration failed ({err:?}), falling back to getifaddrs");
+            ifaddrs::interfaces()
+        }
+    }
+}
+
+/// Enumerates the machine's network interfaces.
+#[cfg(any(target_os = "windows", bsd))]
+pub(super) fn interfaces() -> Vec<Interface> {
+    netdev_shim::interfaces()
+}
+
+/// The gateway address of the default route.
+///
+/// Follows netdev's algorithm: find the interface owning the local IP the
+/// OS routes outbound traffic through, then return that interface's
+/// default-route gateway from a netlink route dump, with a procfs fallback
+/// on linux when the dump fails.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn default_gateway() -> Option<IpAddr> {
+    let local_ip = local_ip()?;
+    let ifaces = interfaces();
+    let iface = ifaces
+        .iter()
+        .find(|iface| iface.addrs.iter().any(|net| net.addr() == local_ip))?;
+    match netlink::default_gateways_by_interface() {
+        Ok(mut gateways) => {
+            let (v4, v6) = gateways.remove(&iface.index)?;
+            v4.first()
+                .copied()
+                .map(IpAddr::V4)
+                .or_else(|| v6.first().copied().map(IpAddr::V6))
+        }
+        #[cfg(target_os = "linux")]
+        Err(err) => {
+            tracing::debug!("netlink route dump failed ({err:?}), trying procfs");
+            let (v4, v6) = procfs::gateways_by_interface_name().remove(iface.name())?;
+            v4.map(IpAddr::V4)
+                .or_else(|| v6.first().copied().map(IpAddr::V6))
+        }
+        // Android has no readable /proc/net/route; without netlink there
+        // is no gateway source.
+        #[cfg(target_os = "android")]
+        Err(_) => None,
+    }
+}
+
+/// The gateway address of the default route.
+#[cfg(target_os = "windows")]
+fn default_gateway() -> Option<IpAddr> {
+    netdev_shim::default_gateway()
+}
+
+/// Accumulates one [`Interface`] during enumeration.
+///
+/// The push methods deduplicate addresses on (address, prefix) pairs the
+/// way netdev did, and `finish` produces the stable address order the
+/// state comparison relies on.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug)]
+struct IfaceBuilder {
+    name: String,
+    index: u32,
+    flags: u32,
+    mac: Option<[u8; 6]>,
+    v4: Vec<Ipv4Net>,
+    v6: Vec<(Ipv6Net, u32, Ipv6AddrFlags)>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+impl IfaceBuilder {
+    fn new(name: String, index: u32, flags: u32) -> Self {
+        Self {
+            name,
+            index,
+            flags,
+            mac: None,
+            v4: Vec::new(),
+            v6: Vec::new(),
+        }
+    }
+
+    fn push_v4(&mut self, net: Ipv4Net) {
+        let duplicate = self
+            .v4
+            .iter()
+            .any(|have| have.addr() == net.addr() && have.prefix_len() == net.prefix_len());
+        if !duplicate {
+            self.v4.push(net);
+        }
+    }
+
+    fn push_v6(&mut self, net: Ipv6Net, scope_id: u32, flags: Ipv6AddrFlags) {
+        let duplicate = self
+            .v6
+            .iter()
+            .any(|(have, _, _)| have.addr() == net.addr() && have.prefix_len() == net.prefix_len());
+        if !duplicate {
+            self.v6.push((net, scope_id, flags));
+        }
+    }
+
+    /// Builds the [`Interface`], sorting each address family by address
+    /// (IPv4 first) so successive snapshots compare equal.
+    fn finish(self) -> Interface {
+        let mut v4: Vec<IpNet> = self.v4.into_iter().map(IpNet::V4).collect();
+        let mut v6: Vec<IpNet> = self
+            .v6
+            .into_iter()
+            .map(|(net, scope_id, flags)| IpNet::V6 {
+                net,
+                scope_id,
+                flags,
+            })
+            .collect();
+        v4.sort_by_key(IpNet::addr);
+        v6.sort_by_key(IpNet::addr);
+        let mut addrs = v4;
+        addrs.append(&mut v6);
+
+        Interface {
+            name: self.name,
+            index: self.index,
+            flags: self.flags,
+            mac_addr: self.mac,
+            addrs,
+        }
+    }
+}
+
+/// Returns the scope ID for an IPv6 interface address.
+///
+/// Prefers the scope reported by the OS and falls back to the interface
+/// index for link-local addresses, which is netdev behavior the rest of
+/// the code relies on.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn resolve_v6_scope_id(addr: &Ipv6Addr, raw_scope_id: u32, if_index: u32) -> u32 {
+    if raw_scope_id != 0 {
+        raw_scope_id
+    } else if crate::ip::is_unicast_link_local(*addr) {
+        if_index
+    } else {
+        0
+    }
 }
 
 /// Enumerates the machine's network interfaces and assembles the [`State`].
@@ -70,7 +229,7 @@ pub(super) async fn get_state() -> State {
 /// [`crate::interfaces::bsd`].
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
 pub(super) fn home_router() -> Option<super::HomeRouter> {
-    let gateway = platform::default_gateway()?;
+    let gateway = default_gateway()?;
     Some(super::HomeRouter {
         gateway,
         my_ip: local_ip(),
@@ -224,7 +383,7 @@ impl LocalAddresses {
     /// IPv6 unique-local addresses, because we know of environments where these
     /// are used with NAT to provide connectivity.
     pub fn new() -> Self {
-        local_addresses(&platform::interfaces())
+        local_addresses(&interfaces())
     }
 }
 
