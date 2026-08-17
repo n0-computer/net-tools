@@ -21,7 +21,7 @@ use crate::ip::{LocalAddresses, is_link_local};
 // Each platform module provides the same three entry points, reached through
 // the `platform` alias: `get_state()`, `default_route()` and `home_router()`.
 // The full platforms share enumeration and state assembly via `enumerate`.
-#[cfg(netdev)]
+#[cfg(enumerate)]
 mod enumerate;
 
 #[cfg(bsd)]
@@ -54,9 +54,8 @@ const IFF_UP: u32 = 0x1;
 
 /// State flags for a single IPv6 address.
 ///
-/// Hand-kept mirror of netdev's `Ipv6AddrFlags`, so the `interfaces` API is
-/// identical on platforms built without `netdev` (e.g. esp-idf). All fields
-/// default to `false` when the platform does not provide the information.
+/// All fields default to `false` when the platform does not provide the
+/// information (e.g. esp-idf, which has no interface enumeration).
 ///
 /// Flags are collected from platform-specific sources:
 ///

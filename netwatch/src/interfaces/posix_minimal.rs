@@ -1,4 +1,5 @@
-//! Interface lookups for POSIX platforms without `netdev` (e.g. esp-idf).
+//! Interface lookups for POSIX platforms without interface enumeration
+//! (e.g. esp-idf).
 //!
 //! No interface enumeration, default route, or home router is available on
 //! these platforms, so every lookup reports empty or absent.

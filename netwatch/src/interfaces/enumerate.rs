@@ -4,23 +4,20 @@
 //! from two platform primitives: `interfaces()`, the list of network
 //! interfaces in our own [`Interface`] type, and `default_gateway()`, the
 //! gateway address of the default route. BSD platforms do not use
-//! `default_gateway()`; they parse the routing table in
-//! [`crate::interfaces::bsd`] instead.
+//! `default_gateway()`; they parse the routing table in the `bsd` module
+//! of `crate::interfaces` instead.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
-#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 use ipnet::{Ipv4Net, Ipv6Net};
 
-use super::{Interface, State};
-#[cfg(any(target_os = "linux", target_os = "android", bsd))]
-use super::{IpNet, Ipv6AddrFlags};
+use super::{Interface, IpNet, Ipv6AddrFlags, State};
 use crate::ip::{LocalAddresses, is_link_local, is_private, is_private_v6};
 
+#[cfg(target_os = "windows")]
+mod adapters;
 #[cfg(any(target_os = "linux", target_os = "android", bsd))]
 mod ifaddrs;
-#[cfg(target_os = "windows")]
-mod netdev_shim;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod netlink;
 #[cfg(target_os = "linux")]
@@ -59,7 +56,7 @@ pub(super) fn interfaces() -> Vec<Interface> {
 /// Enumerates the machine's network interfaces.
 #[cfg(target_os = "windows")]
 pub(super) fn interfaces() -> Vec<Interface> {
-    netdev_shim::interfaces()
+    adapters::interfaces()
 }
 
 /// The gateway address of the default route.
@@ -100,7 +97,7 @@ fn default_gateway() -> Option<IpAddr> {
 /// The gateway address of the default route.
 #[cfg(target_os = "windows")]
 fn default_gateway() -> Option<IpAddr> {
-    netdev_shim::default_gateway()
+    adapters::default_gateway()
 }
 
 /// Accumulates one [`Interface`] during enumeration.
@@ -108,7 +105,6 @@ fn default_gateway() -> Option<IpAddr> {
 /// The push methods deduplicate addresses on (address, prefix) pairs the
 /// way netdev did, and `finish` produces the stable address order the
 /// state comparison relies on.
-#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 #[derive(Debug)]
 struct IfaceBuilder {
     name: String,
@@ -119,7 +115,6 @@ struct IfaceBuilder {
     v6: Vec<(Ipv6Net, u32, Ipv6AddrFlags)>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 impl IfaceBuilder {
     fn new(name: String, index: u32, flags: u32) -> Self {
         Self {
@@ -234,8 +229,8 @@ pub(super) async fn get_state() -> State {
 
 /// The shared home-router lookup for linux, android and windows.
 ///
-/// BSD platforms do not use this; they parse the routing table directly in
-/// [`crate::interfaces::bsd`].
+/// BSD platforms do not use this; they parse the routing table directly
+/// in the `bsd` module of `crate::interfaces`.
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
 pub(super) fn home_router() -> Option<super::HomeRouter> {
     let gateway = default_gateway()?;

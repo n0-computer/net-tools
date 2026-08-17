@@ -54,9 +54,6 @@ netwatch-netlink = { version = "0.1.0", path = "../netwatch-netlink" }
 tokio = { version = "1", features = ["process"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-# netdev remains only on windows, whose enumeration backend is not
-# inlined yet; everything else uses the inlined backends.
-netdev = "0.45.0"
 wmi = "0.18"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 windows-result = "0.4"
@@ -102,8 +99,7 @@ rustdoc-args = ["--cfg", "iroh_docsrs"]
 
 # Types from these external crates are allowed to appear in netwatch's public
 # API. The list is enforced by `cargo check-external-types` (see the
-# `check-external-types` task in Makefile.toml). Notably absent is `netdev`:
-# its types must never leak, which is why the `interfaces` module mirrors them.
+# `check-external-types` task in Makefile.toml).
 [package.metadata.cargo_check_external_types]
 allowed_external_types = [
     # IP network types used by `interfaces::IpNet`.
