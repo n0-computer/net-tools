@@ -9,6 +9,14 @@
 //! way netdev did it. The unsafe surface is confined to the [`IfAddrs`]
 //! list wrapper, the [`Entry`] accessors, and the flag ioctl; the walk
 //! itself is safe code.
+//!
+//! We wrap the FFI ourselves instead of using nix, the one crate whose
+//! getifaddrs wrapper exposes enough (flags, MAC, scope IDs): nix only
+//! zero-pads the truncated netmask sockaddrs BSD kernels produce on
+//! Apple targets (on the other BSDs the netmask would parse as /0),
+//! links `getifaddrs` directly (bionic exports it only since API 24, so
+//! binaries would stop loading on older Android), and does not cover
+//! the flag ioctl anyway.
 
 use std::{
     ffi::CStr,
@@ -197,36 +205,35 @@ unsafe fn sockaddr_slice<'a>(sa: *const libc::sockaddr) -> Option<(libc::c_int, 
     if sa.is_null() {
         return None;
     }
-    // SAFETY: `sa` points at a sockaddr per the caller contract.
-    let family = unsafe { (*sa).sa_family } as libc::c_int;
+    // SAFETY: `sa` points at a sockaddr whose reported length is backed
+    // by its allocation, per the caller contract.
+    unsafe {
+        let family = (*sa).sa_family as libc::c_int;
 
-    #[cfg(bsd)]
-    let len = {
-        // SAFETY: as above.
-        let sa_len = unsafe { (*sa).sa_len } as usize;
-        if sa_len == 0 {
-            match family {
-                libc::AF_INET => std::mem::size_of::<libc::sockaddr_in>(),
-                libc::AF_INET6 => std::mem::size_of::<libc::sockaddr_in6>(),
-                libc::AF_LINK => std::mem::size_of::<libc::sockaddr_dl>(),
-                _ => return None,
+        #[cfg(bsd)]
+        let len = {
+            let sa_len = (*sa).sa_len as usize;
+            if sa_len == 0 {
+                match family {
+                    libc::AF_INET => std::mem::size_of::<libc::sockaddr_in>(),
+                    libc::AF_INET6 => std::mem::size_of::<libc::sockaddr_in6>(),
+                    libc::AF_LINK => std::mem::size_of::<libc::sockaddr_dl>(),
+                    _ => return None,
+                }
+            } else {
+                sa_len.min(std::mem::size_of::<libc::sockaddr_storage>())
             }
-        } else {
-            sa_len.min(std::mem::size_of::<libc::sockaddr_storage>())
-        }
-    };
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    let len = match family {
-        libc::AF_INET => std::mem::size_of::<libc::sockaddr_in>(),
-        libc::AF_INET6 => std::mem::size_of::<libc::sockaddr_in6>(),
-        libc::AF_PACKET => std::mem::size_of::<libc::sockaddr_ll>(),
-        _ => return None,
-    };
+        };
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let len = match family {
+            libc::AF_INET => std::mem::size_of::<libc::sockaddr_in>(),
+            libc::AF_INET6 => std::mem::size_of::<libc::sockaddr_in6>(),
+            libc::AF_PACKET => std::mem::size_of::<libc::sockaddr_ll>(),
+            _ => return None,
+        };
 
-    // SAFETY: `len` bytes are backed per the caller contract.
-    Some((family, unsafe {
-        std::slice::from_raw_parts(sa.cast::<u8>(), len)
-    }))
+        Some((family, std::slice::from_raw_parts(sa.cast::<u8>(), len)))
+    }
 }
 
 /// Parses the address of a full-length `sockaddr_in`.
@@ -399,10 +406,13 @@ mod compat {
     pub(super) fn symbols() -> Option<(GetIfAddrsFn, FreeIfAddrsFn)> {
         static SYMBOLS: OnceLock<Option<(usize, usize)>> = OnceLock::new();
         let (getifaddrs, freeifaddrs) = (*SYMBOLS.get_or_init(|| {
-            // SAFETY: dlsym with a valid NUL-terminated symbol name.
-            let getifaddrs = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"getifaddrs".as_ptr()) };
-            // SAFETY: as above.
-            let freeifaddrs = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"freeifaddrs".as_ptr()) };
+            // SAFETY: dlsym with valid NUL-terminated symbol names.
+            let (getifaddrs, freeifaddrs) = unsafe {
+                (
+                    libc::dlsym(libc::RTLD_DEFAULT, c"getifaddrs".as_ptr()),
+                    libc::dlsym(libc::RTLD_DEFAULT, c"freeifaddrs".as_ptr()),
+                )
+            };
             if getifaddrs.is_null() || freeifaddrs.is_null() {
                 None
             } else {

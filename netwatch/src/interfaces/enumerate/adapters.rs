@@ -285,22 +285,23 @@ fn socket_address_to_ip(
     _owner: &IP_ADAPTER_ADDRESSES_LH,
     address: &SOCKET_ADDRESS,
 ) -> Option<(IpAddr, u32)> {
-    // SAFETY: the sockaddr lives in the adapter buffer (see above).
-    let sockaddr = unsafe { address.lpSockaddr.cast::<SOCKADDR_INET>().as_ref() }?;
-    // SAFETY: si_family overlaps the family field of both variants.
-    let family = unsafe { sockaddr.si_family };
-    if family == AF_INET {
-        // SAFETY: family says this is a SOCKADDR_IN.
-        let octets = unsafe { sockaddr.Ipv4.sin_addr.S_un.S_addr }.to_ne_bytes();
-        Some((IpAddr::V4(Ipv4Addr::from(octets)), 0))
-    } else if family == AF_INET6 {
-        // SAFETY: family says this is a SOCKADDR_IN6.
-        let ip = IpAddr::from(unsafe { sockaddr.Ipv6.sin6_addr.u.Byte });
-        // SAFETY: both union variants are a u32.
-        let scope_id = unsafe { sockaddr.Ipv6.Anonymous.sin6_scope_id };
-        Some((ip, scope_id))
-    } else {
-        None
+    // SAFETY: the sockaddr lives in the adapter buffer (see above);
+    // si_family overlaps the family field of both union variants and
+    // selects which one is initialized.
+    unsafe {
+        let sockaddr = address.lpSockaddr.cast::<SOCKADDR_INET>().as_ref()?;
+        let family = sockaddr.si_family;
+        if family == AF_INET {
+            let octets = sockaddr.Ipv4.sin_addr.S_un.S_addr.to_ne_bytes();
+            Some((IpAddr::V4(Ipv4Addr::from(octets)), 0))
+        } else if family == AF_INET6 {
+            let ip = IpAddr::from(sockaddr.Ipv6.sin6_addr.u.Byte);
+            // Both variants of the scope union are a u32.
+            let scope_id = sockaddr.Ipv6.Anonymous.sin6_scope_id;
+            Some((ip, scope_id))
+        } else {
+            None
+        }
     }
 }
 
