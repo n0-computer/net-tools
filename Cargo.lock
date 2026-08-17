@@ -1175,8 +1175,6 @@ dependencies = [
  "netdev",
  "netwatch-netlink",
  "noq-udp",
- "objc2-core-foundation",
- "objc2-system-configuration",
  "patchbay",
  "pin-project-lite",
  "serde",
@@ -1383,7 +1381,6 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "709fe137109bd1e8b5a99390f77a7d8b2961dafc1a1c5db8f2e60329ad6d895a"
 dependencies = [
- "bitflags",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -1405,11 +1402,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7216bd11cbda54ccabcab84d523dc93b858ec75ecfb3a7d89513fa22464da396"
 dependencies = [
  "bitflags",
- "dispatch2",
- "libc",
- "objc2",
  "objc2-core-foundation",
- "objc2-security",
 ]
 
 [[package]]

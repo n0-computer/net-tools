@@ -9,14 +9,17 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 use ipnet::{Ipv4Net, Ipv6Net};
 
-use super::{Interface, IpNet, Ipv6AddrFlags, State};
+use super::{Interface, State};
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
+use super::{IpNet, Ipv6AddrFlags};
 use crate::ip::{LocalAddresses, is_link_local, is_private, is_private_v6};
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 mod ifaddrs;
-#[cfg(any(target_os = "windows", bsd))]
+#[cfg(target_os = "windows")]
 mod netdev_shim;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod netlink;
@@ -48,7 +51,13 @@ pub(super) fn interfaces() -> Vec<Interface> {
 }
 
 /// Enumerates the machine's network interfaces.
-#[cfg(any(target_os = "windows", bsd))]
+#[cfg(bsd)]
+pub(super) fn interfaces() -> Vec<Interface> {
+    ifaddrs::interfaces()
+}
+
+/// Enumerates the machine's network interfaces.
+#[cfg(target_os = "windows")]
 pub(super) fn interfaces() -> Vec<Interface> {
     netdev_shim::interfaces()
 }
@@ -99,7 +108,7 @@ fn default_gateway() -> Option<IpAddr> {
 /// The push methods deduplicate addresses on (address, prefix) pairs the
 /// way netdev did, and `finish` produces the stable address order the
 /// state comparison relies on.
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 #[derive(Debug)]
 struct IfaceBuilder {
     name: String,
@@ -110,7 +119,7 @@ struct IfaceBuilder {
     v6: Vec<(Ipv6Net, u32, Ipv6AddrFlags)>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 impl IfaceBuilder {
     fn new(name: String, index: u32, flags: u32) -> Self {
         Self {
@@ -176,7 +185,7 @@ impl IfaceBuilder {
 /// Prefers the scope reported by the OS and falls back to the interface
 /// index for link-local addresses, which is netdev behavior the rest of
 /// the code relies on.
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(any(target_os = "linux", target_os = "android", bsd))]
 fn resolve_v6_scope_id(addr: &Ipv6Addr, raw_scope_id: u32, if_index: u32) -> u32 {
     if raw_scope_id != 0 {
         raw_scope_id

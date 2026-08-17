@@ -47,16 +47,6 @@ tokio = { version = "1", features = [
     "io-std",
 ] }
 
-# netdev remains on the platforms whose enumeration backend is not
-# inlined yet; linux and android use netwatch-netlink and getifaddrs.
-[target.'cfg(any(target_os = "windows", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "macos", target_os = "ios"))'.dependencies]
-netdev = "0.45.0"
-
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-# msrv fix
-objc2-core-foundation = "0.3.2"
-objc2-system-configuration = "0.3.2"
-
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 netwatch-netlink = { version = "0.1.0", path = "../netwatch-netlink" }
 
@@ -64,6 +54,9 @@ netwatch-netlink = { version = "0.1.0", path = "../netwatch-netlink" }
 tokio = { version = "1", features = ["process"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# netdev remains only on windows, whose enumeration backend is not
+# inlined yet; everything else uses the inlined backends.
+netdev = "0.45.0"
 wmi = "0.18"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 windows-result = "0.4"
