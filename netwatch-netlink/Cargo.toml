@@ -1,0 +1,31 @@
+[package]
+name = "netwatch-netlink"
+version = "0.1.0"
+readme = "README.md"
+description = "Minimal rtnetlink client for netwatch"
+license = "MIT OR Apache-2.0"
+authors = ["n0 team"]
+repository = "https://github.com/n0-computer/net-tools"
+keywords = ["networking", "netlink"]
+edition = "2024"
+
+# Sadly this also needs to be updated in .github/workflows/ci.yml
+rust-version = "1.91"
+
+[lints]
+workspace = true
+
+# The crate is empty on every other platform (see lib.rs), so all
+# dependencies are gated on the platforms with rtnetlink.
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = "0.2.139"
+n0-error = "1.0.0"
+socket2 = "0.6"
+tokio = { version = "1.41", features = ["net", "time"] }
+tracing = "0.1"
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dev-dependencies]
+tokio = { version = "1.41", features = ["macros", "rt", "time"] }
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-linux-android"]

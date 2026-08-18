@@ -1,7 +1,8 @@
 [workspace]
 members = [
   "portmapper",
-  "netwatch"
+  "netwatch",
+  "netwatch-netlink"
 ]
 
 resolver = "2"

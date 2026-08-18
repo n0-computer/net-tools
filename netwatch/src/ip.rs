@@ -4,8 +4,9 @@ use std::net::{IpAddr, Ipv6Addr};
 
 /// List of machine's IP addresses.
 ///
-/// The netdev-based constructors live in [`crate::interfaces`]'s `netdev_impl`
-/// module; on platforms without `netdev` this is only ever the empty default.
+/// The constructors live in [`crate::interfaces`]'s `enumerate` module; on
+/// platforms without interface enumeration (esp-idf, browsers) this is only
+/// ever the empty default.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LocalAddresses {
     /// Loopback addresses.
@@ -17,7 +18,7 @@ pub struct LocalAddresses {
 /// Reports whether `ip` is a private address, according to RFC 1918
 /// (IPv4 addresses) and RFC 4193 (IPv6 addresses). That is, it reports whether
 /// ip is in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or fc00::/7.
-#[cfg(netdev)]
+#[cfg(enumerate)]
 pub(crate) fn is_private(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
@@ -32,7 +33,7 @@ pub(crate) fn is_private(ip: &IpAddr) -> bool {
     }
 }
 
-#[cfg(netdev)]
+#[cfg(enumerate)]
 pub(crate) fn is_private_v6(ip: &Ipv6Addr) -> bool {
     // RFC 4193 allocates fc00::/7 as the unique local unicast IPv6 address subnet.
     ip.octets()[0] & 0xfe == 0xfc

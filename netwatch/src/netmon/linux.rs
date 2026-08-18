@@ -9,13 +9,10 @@ use libc::{
 };
 use n0_error::stack_error;
 use n0_future::{
-    Stream, StreamExt,
     task::AbortOnDropHandle,
     time::{self, Duration},
 };
-use netlink_packet_core::{NetlinkMessage, NetlinkPayload};
-use netlink_packet_route::{RouteNetlinkMessage, address, route};
-use netlink_sys::{AsyncSocket, SocketAddr};
+use netwatch_netlink::{EventSocket, Message, group_flag};
 use tokio::sync::mpsc;
 use tracing::{trace, warn};
 
@@ -34,145 +31,99 @@ pub enum Error {
     Io { source: std::io::Error },
 }
 
-const fn nl_mgrp(group: u32) -> u32 {
-    if group > 31 {
-        panic!("use netlink_sys::Socket::add_membership() for this group");
-    }
-    if group == 0 { 0 } else { 1 << (group - 1) }
-}
-macro_rules! get_nla {
-    ($msg:expr, $nla:path) => {
-        $msg.attributes.iter().find_map(|nla| match nla {
-            $nla(n) => Some(n),
-            _ => None,
-        })
-    };
-}
-
-#[allow(clippy::type_complexity)]
-fn setup_netlink() -> std::io::Result<(
-    AbortOnDropHandle<()>,
-    impl Stream<Item = (NetlinkMessage<RouteNetlinkMessage>, SocketAddr)>,
-)> {
-    use netlink_sys::protocols::NETLINK_ROUTE;
-
-    let (mut conn, _handle, messages) =
-        netlink_proto::new_connection::<RouteNetlinkMessage>(NETLINK_ROUTE)?;
-
-    let groups = nl_mgrp(RTNLGRP_IPV4_IFADDR)
-        | nl_mgrp(RTNLGRP_IPV6_IFADDR)
-        | nl_mgrp(RTNLGRP_IPV4_ROUTE)
-        | nl_mgrp(RTNLGRP_IPV6_ROUTE)
-        | nl_mgrp(RTNLGRP_IPV4_RULE)
-        | nl_mgrp(RTNLGRP_IPV6_RULE);
-
-    let addr = SocketAddr::new(0, groups);
-    conn.socket_mut().socket_mut().bind(&addr)?;
-
-    let conn_handle = AbortOnDropHandle::new(tokio::task::spawn(conn));
-
-    Ok((conn_handle, messages))
+/// Subscribes to the rtnetlink groups netwatch reacts to: address, route
+/// and rule changes for both address families.
+fn subscribe() -> Result<EventSocket, netwatch_netlink::Error> {
+    let groups = group_flag(RTNLGRP_IPV4_IFADDR)
+        | group_flag(RTNLGRP_IPV6_IFADDR)
+        | group_flag(RTNLGRP_IPV4_ROUTE)
+        | group_flag(RTNLGRP_IPV6_ROUTE)
+        | group_flag(RTNLGRP_IPV4_RULE)
+        | group_flag(RTNLGRP_IPV6_RULE);
+    EventSocket::subscribe(groups)
 }
 
 /// Returns `true` if the connection was lost (should reconnect),
 /// `false` if the sender is gone (should shut down).
-async fn process_messages(
-    sender: &mpsc::Sender<NetworkMessage>,
-    messages: &mut (impl Stream<Item = (NetlinkMessage<RouteNetlinkMessage>, SocketAddr)> + Unpin),
-) -> bool {
+async fn process_messages(sender: &mpsc::Sender<NetworkMessage>, events: &mut EventSocket) -> bool {
     let mut addr_cache: HashMap<u32, HashSet<IpAddr>> = HashMap::new();
 
-    while let Some((message, _)) = messages.next().await {
-        match message.payload {
-            NetlinkPayload::Error(err) => {
-                warn!("error reading netlink payload: {:?}", err);
+    loop {
+        let message = match events.next().await {
+            Ok(message) => message,
+            Err(netwatch_netlink::Error::ErrorMessage { code, .. }) => {
+                warn!("error reading netlink payload: code {code}");
+                continue;
             }
-            NetlinkPayload::Done(_) => {
-                trace!("done received, reconnecting");
+            Err(err) => {
+                trace!("netlink event socket lost ({err:?}), reconnecting");
                 return true;
             }
-            NetlinkPayload::InnerMessage(msg) => match msg {
-                RouteNetlinkMessage::NewAddress(msg) => {
-                    trace!("NEWADDR: {:?}", msg);
-                    let addrs = addr_cache.entry(msg.header.index).or_default();
-                    if let Some(addr) = get_nla!(msg, address::AddressAttribute::Address) {
-                        if addrs.contains(addr) {
-                            continue;
-                        } else {
-                            addrs.insert(*addr);
-                            if sender.send(NetworkMessage::Change).await.is_err() {
-                                return false;
-                            }
+        };
+        match message {
+            Message::NewAddress(msg) => {
+                trace!("NEWADDR: {:?}", msg);
+                let addrs = addr_cache.entry(msg.index).or_default();
+                if let Some(addr) = msg.address {
+                    if addrs.contains(&addr) {
+                        continue;
+                    } else {
+                        addrs.insert(addr);
+                        if sender.send(NetworkMessage::Change).await.is_err() {
+                            return false;
                         }
                     }
                 }
-                RouteNetlinkMessage::DelAddress(msg) => {
-                    trace!("DELADDR: {:?}", msg);
-                    let addrs = addr_cache.entry(msg.header.index).or_default();
-                    if let Some(addr) = get_nla!(msg, address::AddressAttribute::Address) {
-                        addrs.remove(addr);
-                    }
-                    if sender.send(NetworkMessage::Change).await.is_err() {
-                        return false;
-                    }
+            }
+            Message::DelAddress(msg) => {
+                trace!("DELADDR: {:?}", msg);
+                let addrs = addr_cache.entry(msg.index).or_default();
+                if let Some(addr) = msg.address {
+                    addrs.remove(&addr);
                 }
-                RouteNetlinkMessage::NewRoute(msg) | RouteNetlinkMessage::DelRoute(msg) => {
-                    trace!("ROUTE:: {:?}", msg);
+                if sender.send(NetworkMessage::Change).await.is_err() {
+                    return false;
+                }
+            }
+            Message::NewRoute(msg) | Message::DelRoute(msg) => {
+                trace!("ROUTE:: {:?}", msg);
 
-                    let table = get_nla!(msg, route::RouteAttribute::Table)
-                        .copied()
-                        .unwrap_or_default();
-                    if let Some(dst) = get_nla!(msg, route::RouteAttribute::Destination) {
-                        match dst {
-                            route::RouteAddress::Inet(addr)
-                                if (table == 255 || table == 254)
-                                    && (addr.is_multicast()
-                                        || is_link_local(IpAddr::V4(*addr))) =>
-                            {
-                                continue;
-                            }
-                            route::RouteAddress::Inet6(addr)
-                                if (table == 255 || table == 254)
-                                    && (addr.is_multicast()
-                                        || is_link_local(IpAddr::V6(*addr))) =>
-                            {
-                                continue;
-                            }
-                            _ => {}
-                        }
-                    }
-                    if sender.send(NetworkMessage::Change).await.is_err() {
-                        return false;
-                    }
+                let table = msg.table.unwrap_or_default();
+                if let Some(dst) = msg.destination
+                    && (table == 255 || table == 254)
+                    && (dst.is_multicast() || is_link_local(dst))
+                {
+                    // Ignore multicast and link-local route changes in the
+                    // local and main tables; they are not interesting.
+                    continue;
                 }
-                RouteNetlinkMessage::NewRule(msg) => {
-                    trace!("NEWRULE: {:?}", msg);
-                    if sender.send(NetworkMessage::Change).await.is_err() {
-                        return false;
-                    }
+                if sender.send(NetworkMessage::Change).await.is_err() {
+                    return false;
                 }
-                RouteNetlinkMessage::DelRule(msg) => {
-                    trace!("DELRULE: {:?}", msg);
-                    if sender.send(NetworkMessage::Change).await.is_err() {
-                        return false;
-                    }
+            }
+            Message::NewRule => {
+                trace!("NEWRULE");
+                if sender.send(NetworkMessage::Change).await.is_err() {
+                    return false;
                 }
-                RouteNetlinkMessage::NewLink(msg) => {
-                    trace!("NEWLINK: {:?}", msg);
+            }
+            Message::DelRule => {
+                trace!("DELRULE");
+                if sender.send(NetworkMessage::Change).await.is_err() {
+                    return false;
                 }
-                RouteNetlinkMessage::DelLink(msg) => {
-                    trace!("DELLINK: {:?}", msg);
-                }
-                msg => {
-                    trace!("unhandled: {:?}", msg);
-                }
-            },
-            _ => {}
+            }
+            Message::NewLink(msg) => {
+                trace!("NEWLINK: {:?}", msg);
+            }
+            Message::DelLink(msg) => {
+                trace!("DELLINK: {:?}", msg);
+            }
+            msg => {
+                trace!("unhandled: {:?}", msg);
+            }
         }
     }
-
-    // Stream ended — connection lost
-    true
 }
 
 impl RouteMonitor {
@@ -182,11 +133,11 @@ impl RouteMonitor {
             const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
             loop {
-                match setup_netlink() {
-                    Ok((_conn_handle, mut messages)) => {
+                match subscribe() {
+                    Ok(mut events) => {
                         backoff = Duration::from_secs(1);
-                        let should_reconnect = process_messages(&sender, &mut messages).await;
-                        // _conn_handle dropped here, aborting the connection task
+                        let should_reconnect = process_messages(&sender, &mut events).await;
+                        // events dropped here, closing the socket
                         if !should_reconnect {
                             break;
                         }

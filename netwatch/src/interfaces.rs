@@ -3,8 +3,9 @@
 //! All public types are defined here once and have the same shape on every
 //! platform. The platform-specific work of enumerating interfaces, finding the
 //! default route, and locating the home router lives in the submodules below,
-//! each reached through the cfg-selected `platform` alias. Conversion from the
-//! `netdev` crate is confined to the `netdev_impl` module.
+//! each reached through the cfg-selected `platform` alias. Interface
+//! enumeration and state assembly shared by the full platforms lives in the
+//! `enumerate` module.
 
 use std::{
     collections::HashMap,
@@ -19,9 +20,9 @@ use crate::ip::{LocalAddresses, is_link_local};
 
 // Each platform module provides the same three entry points, reached through
 // the `platform` alias: `get_state()`, `default_route()` and `home_router()`.
-// The `netdev`-capable modules share enumeration via `netdev_impl`.
-#[cfg(netdev)]
-mod netdev_impl;
+// The full platforms share enumeration and state assembly via `enumerate`.
+#[cfg(enumerate)]
+mod enumerate;
 
 #[cfg(bsd)]
 pub(super) mod bsd;
@@ -53,9 +54,8 @@ const IFF_UP: u32 = 0x1;
 
 /// State flags for a single IPv6 address.
 ///
-/// Hand-kept mirror of netdev's `Ipv6AddrFlags`, so the `interfaces` API is
-/// identical on platforms built without `netdev` (e.g. esp-idf). All fields
-/// default to `false` when the platform does not provide the information.
+/// All fields default to `false` when the platform does not provide the
+/// information (e.g. esp-idf, which has no interface enumeration).
 ///
 /// Flags are collected from platform-specific sources:
 ///
