@@ -16,7 +16,7 @@ args = [
 [tasks.patchbay]
 workspace = false
 command = "cargo"
-args = ["nextest", "run", "-p", "netwatch", "--test", "patchbay", "--profile", "patchbay", "${@}"]
+args = ["nextest", "run", "--locked", "-p", "netwatch", "--test", "patchbay", "--profile", "patchbay", "${@}"]
 
 # Verifies netwatch does not leak unapproved external crate types (notably
 # `netdev`) through its public API. The allowlist lives in

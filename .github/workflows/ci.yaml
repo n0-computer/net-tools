@@ -119,8 +119,8 @@ jobs:
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
       run: |
-        cargo install --version 3.5.4 cargo-ndk
-        cargo ndk --target ${{ matrix.target }} build
+        cargo install --locked --version 3.5.4 cargo-ndk
+        cargo ndk --target ${{ matrix.target }} build --locked
 
   cross_test:
     name: Cross Test
@@ -179,7 +179,7 @@ jobs:
           components: rust-src
       - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Check workspace for ESP32-C3
-        run: cargo check -Z build-std=std,panic_abort --target riscv32imc-esp-espidf --workspace --no-default-features
+        run: cargo check --locked -Z build-std=std,panic_abort --target riscv32imc-esp-espidf --workspace --no-default-features
 
   wasm_test:
     name: Build & test wasm32 for browsers
@@ -206,7 +206,7 @@ jobs:
         uses: bytecodealliance/actions/wasm-tools/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1.1.3
 
       - name: wasm32 build (netwatch)
-        run: cargo build --target wasm32-unknown-unknown -p netwatch
+        run: cargo build --locked --target wasm32-unknown-unknown -p netwatch
 
       # If the Wasm file contains any 'import "env"' declarations, then
       # some non-Wasm-compatible code made it into the final code.
@@ -215,7 +215,7 @@ jobs:
           ! wasm-tools print --skeleton target/wasm32-unknown-unknown/debug/netwatch.wasm | grep 'import "env"'
 
       - name: Run smoke test in wasm
-        run: cargo test -p netwatch --test smoke --target=wasm32-unknown-unknown
+        run: cargo test --locked -p netwatch --test smoke --target=wasm32-unknown-unknown
 
   check_semver:
     runs-on: ubuntu-latest
@@ -265,6 +265,9 @@ jobs:
       with:
         tool: cargo-make
     - run: cargo make format-check
+    - name: Lockfile must not have moved
+      # cargo make takes no --locked; assert the lockfile instead.
+      run: git diff --exit-code Cargo.lock
 
   check_docs:
     timeout-minutes: 30
@@ -282,7 +285,7 @@ jobs:
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
     - name: Docs
-      run: cargo doc --workspace --all-features --no-deps --document-private-items
+      run: cargo doc --locked --workspace --all-features --no-deps --document-private-items
       env:
         RUSTDOCFLAGS: --cfg docsrs
 
@@ -304,13 +307,13 @@ jobs:
     # TODO: We have a bunch of platform-dependent code so should
     #    probably run this job on the full platform matrix
     - name: clippy check (all features)
-      run: cargo clippy --workspace --all-features --all-targets --bins --tests --benches
+      run: cargo clippy --locked --workspace --all-features --all-targets --bins --tests --benches
 
     - name: clippy check (no features)
-      run: cargo clippy --workspace --no-default-features --lib --bins --tests
+      run: cargo clippy --locked --workspace --no-default-features --lib --bins --tests
 
     - name: clippy check (default features)
-      run: cargo clippy --workspace --all-targets
+      run: cargo clippy --locked --workspace --all-targets
 
   external_types:
     timeout-minutes: 30
@@ -344,6 +347,9 @@ jobs:
           cargo-check-external-types@${{ env.CARGO_CHECK_EXTERNAL_TYPES_VERSION }}
     - name: Check external types
       run: cargo make check-external-types
+    - name: Lockfile must not have moved
+      # cargo make takes no --locked; assert the lockfile instead.
+      run: git diff --exit-code Cargo.lock
 
   msrv:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
@@ -363,7 +369,7 @@ jobs:
 
     - name: Check MSRV all features
       run: |
-        cargo +$MSRV check --workspace --all-targets
+        cargo +$MSRV check --locked --workspace --all-targets
 
   cargo_deny:
     timeout-minutes: 30
