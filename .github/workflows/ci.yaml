@@ -76,8 +76,9 @@ jobs:
       # cross tests are currently broken vor armv7 and aarch64
       # see https://github.com/cross-rs/cross/issues/1311.  So on
       # those platforms we only build but do not run tests.
-      run: cross build --all --target ${{ matrix.target }}
+      run: cross build --all --target $RUST_TARGET
       env:
+        RUST_TARGET: ${{ matrix.target }}
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG'}}
 
   android_build:
@@ -104,7 +105,9 @@ jobs:
         toolchain: stable
         target: ${{ matrix.target }}
     - name: Install rustup target
-      run: rustup target add ${{ matrix.target }}
+      env:
+        RUST_TARGET: ${{ matrix.target }}
+      run: rustup target add $RUST_TARGET
 
     - name: Setup Java
       uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -124,10 +127,11 @@ jobs:
 
     - name: Build
       env:
+        RUST_TARGET: ${{ matrix.target }}
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
       run: |
         cargo install --locked --version 3.5.4 cargo-ndk
-        cargo ndk --target ${{ matrix.target }} build --locked
+        cargo ndk --target $RUST_TARGET build --locked
 
   cross_test:
     name: Cross Test
@@ -164,8 +168,9 @@ jobs:
         tool: cross
 
     - name: test
-      run: cross test --all --target ${{ matrix.target }} -- --test-threads=12
+      run: cross test --all --target $RUST_TARGET -- --test-threads=12
       env:
+        RUST_TARGET: ${{ matrix.target }}
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG' }}
 
   esp32_check:
@@ -246,7 +251,7 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         shell: bash
         run: |
-          echo "HEAD_COMMIT_SHA=$(git rev-parse origin/${{ github.base_ref }})" >> ${GITHUB_ENV}
+          echo "HEAD_COMMIT_SHA=$(git rev-parse origin/$GITHUB_BASE_REF)" >> ${GITHUB_ENV}
       - name: Setup Environment (Push)
         if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
         shell: bash
