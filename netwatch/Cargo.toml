@@ -43,7 +43,7 @@ tokio = { version = "1", features = ["rt", "net"] }
 
 # netdev is available on all non-embedded, non-wasm platforms
 # temp older version for windows: https://github.com/shellrow/netdev/pull/186
-[target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown")), target_os = "windows"))'.dependencies]
+[target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"), target_os = "windows")))'.dependencies]
 netdev = "0.46.1"
 tokio = { version = "1", features = [
     "fs",
