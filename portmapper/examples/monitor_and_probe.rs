@@ -30,15 +30,13 @@ async fn main() -> Result<()> {
                 should_probe = false;
 
                 let Some(state) = state else {
+                    // Stream has ended due to underlying actor shutting down
                     break;
                 };
 
                 // Skip if no default route is currently active
-                let default_route_interface_name = match state.default_route_interface {
-                    Some(i) => i,
-                    None => {
-                        continue;
-                    }
+                let Some(default_route_interface_name) = state.default_route_interface else {
+                    continue;
                 };
 
                 if let Some(default_route_interface) = state.interfaces.get(&default_route_interface_name) {
