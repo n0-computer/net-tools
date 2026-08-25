@@ -17,3 +17,9 @@ fail-fast = false
 test-threads = 1
 default-filter = 'binary(patchbay)'
 slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.wine]
+# Run all tests even if some fail, so we get full visibility.
+fail-fast = false
+# Run tests sequentially - Wine networking can be flaky with concurrent tests.
+test-threads = 1
