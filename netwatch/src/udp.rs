@@ -81,7 +81,16 @@ impl UdpSocket {
     pub fn rebind(&self) -> io::Result<()> {
         {
             let mut guard = self.socket.write().unwrap();
-            guard.rebind()?;
+            if let Err(err) = guard.rebind() {
+                // The state stays `Closed` "until the next attempt", but the
+                // send/recv paths only attempt a rebind while `is_broken` is
+                // set. Without this mark a single failed rebind (e.g. during
+                // wake, before interfaces are up) strands the socket in
+                // `Closed` forever: every send fails with `BrokenPipe` and
+                // nothing ever retries the bind.
+                self.mark_broken();
+                return Err(err);
+            }
 
             // Clear errors
             self.is_broken
@@ -1071,6 +1080,88 @@ mod tests {
     use testresult::TestResult;
 
     use super::*;
+
+    /// Regression test for the stranded-`Closed` storm after a failed rebind.
+    ///
+    /// [`SocketState::rebind`] intentionally stays in `Closed` on a bind
+    /// failure ("will retry on next attempt"), but nothing armed that retry:
+    /// [`UdpSocket::rebind`] propagated the error without calling
+    /// [`UdpSocket::mark_broken`], so `maybe_rebind` (gated on `is_broken`)
+    /// never fired again. From then on every send hit `try_get_connected` on
+    /// the `Closed` state and failed with `BrokenPipe` — forever, at the
+    /// caller's full send rate — until the process restarted. In practice
+    /// this is the laptop sleep→wake case: the network-change handler calls
+    /// `rebind()` while interfaces are still coming up, the bind fails once,
+    /// and the socket never recovers even though the address becomes
+    /// bindable seconds later.
+    #[tokio::test]
+    async fn test_failed_rebind_marks_broken_so_sends_retry() -> TestResult {
+        let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let peer = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let peer_addr = peer.local_addr()?;
+
+        // Reproduce what a mid-wake rebind failure leaves behind: drop the
+        // OS socket, then point the recovery address at TEST-NET-1, which
+        // cannot be bound on this host.
+        let unbindable: SocketAddr = "192.0.2.1:9".parse()?;
+        {
+            let mut guard = socket.socket.write().unwrap();
+            let _ = guard.close();
+            if let SocketState::Closed { addr, .. } = &mut *guard {
+                *addr = unbindable;
+            }
+        }
+
+        // The network-change handler's rebind fails...
+        assert!(socket.rebind().is_err());
+        // ...and MUST leave the socket marked broken, so the send/recv
+        // paths keep retrying the bind instead of stranding the socket.
+        assert!(
+            socket.is_broken(),
+            "failed rebind must mark the socket broken for retry"
+        );
+
+        // The network recovers: the recovery address is bindable again.
+        {
+            let mut guard = socket.socket.write().unwrap();
+            if let SocketState::Closed { addr, .. } = &mut *guard {
+                *addr = SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), 0);
+            }
+        }
+
+        // The next send must transparently rebind and go through — no
+        // process restart required.
+        socket.send_to(&[42][..], peer_addr).await?;
+        assert!(!socket.is_broken());
+
+        let mut buf = [0u8; 4];
+        let (n, _) = peer.recv_from(&mut buf).await?;
+        assert_eq!(&buf[..n], &[42]);
+
+        Ok(())
+    }
+
+    /// The boundary of the fix above: a *deliberate* [`UdpSocket::close`]
+    /// must NOT mark the socket broken — a closed socket stays closed, and
+    /// a later send fails with `BrokenPipe` instead of resurrecting it.
+    #[tokio::test]
+    async fn test_deliberate_close_stays_closed() -> TestResult {
+        let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let peer = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let peer_addr = peer.local_addr()?;
+
+        socket.close().await;
+        assert!(!socket.is_broken());
+
+        let err = socket
+            .send_to(&[1][..], peer_addr)
+            .await
+            .expect_err("send on a deliberately closed socket must fail");
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert!(!socket.is_broken(), "close must not arm the rebind retry");
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_reconnect() -> TestResult {
