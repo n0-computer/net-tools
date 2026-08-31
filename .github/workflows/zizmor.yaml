@@ -49,6 +49,6 @@ jobs:
           grep ' pinact_linux_amd64.tar.gz$' "pinact_${PINACT_VERSION}_checksums.txt" | sha256sum -c -
           tar xzf pinact_linux_amd64.tar.gz pinact
           install -m755 pinact /usr/local/bin/pinact
-      - run: pinact run --check --verify-comment --verify-min-age --branch-to-tag '^main$'
+      - run: pinact run --check --verify-comment --verify-min-age
         env:
           GITHUB_TOKEN: ${{ github.token }}
