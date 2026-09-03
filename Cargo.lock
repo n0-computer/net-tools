@@ -1058,7 +1058,7 @@ dependencies = [
  "ndk-context",
  "netlink-packet-core",
  "netlink-packet-route 0.31.0",
- "netlink-sys",
+ "netlink-sys 0.8.8",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-wlan",
@@ -1085,7 +1085,7 @@ dependencies = [
  "ndk-context",
  "netlink-packet-core",
  "netlink-packet-route 0.31.0",
- "netlink-sys",
+ "netlink-sys 0.8.8",
  "objc2-core-foundation",
  "objc2-system-configuration",
  "once_cell",
@@ -1137,7 +1137,7 @@ dependencies = [
  "futures-util",
  "log",
  "netlink-packet-core",
- "netlink-sys",
+ "netlink-sys 0.8.8",
  "thiserror 2.0.20",
 ]
 
@@ -1152,6 +1152,17 @@ dependencies = [
  "libc",
  "log",
  "tokio",
+]
+
+[[package]]
+name = "netlink-sys"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c99d38e00b420df49e940fe0826e667c3dad82ac68eb4c2bbf754c1c14a83a10"
+dependencies = [
+ "bytes",
+ "libc",
+ "log",
 ]
 
 [[package]]
@@ -1175,7 +1186,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route 0.31.0",
  "netlink-proto",
- "netlink-sys",
+ "netlink-sys 0.9.0",
  "noq-udp",
  "objc2-core-foundation",
  "objc2-system-configuration",
@@ -1664,7 +1675,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route 0.30.0",
  "netlink-proto",
- "netlink-sys",
+ "netlink-sys 0.8.8",
  "nix 0.30.1",
  "thiserror 1.0.69",
  "tokio",
