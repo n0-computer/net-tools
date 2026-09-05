@@ -16,7 +16,7 @@ rust-version = "1.91"
 workspace = true
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.1"
 bytes = "1.7"
 derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_into", "deref"] }
 igd-next = { version = "0.17.0", features = ["aio_tokio"] }
