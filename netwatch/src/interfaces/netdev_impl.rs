@@ -4,8 +4,8 @@
 //! shared by all `netdev`-capable platforms (linux, android, bsd, macos,
 //! windows).
 //!
-//! This is the only module that depends on `netdev`. Everything it produces is
-//! expressed in terms of the types defined in [`crate::interfaces`].
+//! Everything this module produces is expressed in terms of the types defined
+//! in [`crate::interfaces`], keeping `netdev` types out of the public API.
 
 use std::net::IpAddr;
 
