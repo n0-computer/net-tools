@@ -17,6 +17,12 @@ function Assert-Default([int]$Expected) {
         ($routes[1].RouteMetric + $routes[1].InterfaceMetric)) {
         throw "Windows routing table does not uniquely prefer interface $Expected"
     }
+    # Also check Windows source-address selection, independently of netdev.
+    $selected = @(Find-NetRoute -RemoteIPAddress '10.254.254.254')
+    $selected | Format-List | Out-Host
+    if (@($selected | Where-Object { $_.InterfaceIndex -ne $Expected }).Count -ne 0) {
+        throw "Windows source-address selection does not use interface $Expected"
+    }
 }
 
 if ($Action -ne 'Run') {
@@ -84,6 +90,11 @@ try {
         Set-NetIPInterface -InterfaceIndex $index -AddressFamily IPv4 -Dhcp Disabled -AutomaticMetric Disabled -InterfaceMetric 1
         $subnet = if ($slot -eq 'A') { '198.18.0' } else { '198.19.0' }
         New-NetIPAddress -InterfaceIndex $index -IPAddress "$subnet.2" -PrefixLength 24 | Out-Null
+        # netdev resolves gateway MAC addresses with SendARP. Supply a permanent
+        # neighbor for these synthetic gateways to avoid ARP timeouts and Windows
+        # treating the test route as unreachable. No Internet service is simulated.
+        $mac = if ($slot -eq 'A') { '02-00-00-00-00-0A' } else { '02-00-00-00-00-0B' }
+        New-NetNeighbor -InterfaceIndex $index -IPAddress "$subnet.1" -LinkLayerAddress $mac -State Permanent | Out-Null
         $metric = if ($slot -eq 'A') { 10 } else { 100 }
         New-NetRoute -InterfaceIndex $index -DestinationPrefix '0.0.0.0/0' -NextHop "$subnet.1" `
             -RouteMetric $metric -PolicyStore ActiveStore | Out-Null
