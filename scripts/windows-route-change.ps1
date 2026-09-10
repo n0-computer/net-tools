@@ -38,7 +38,8 @@ if (-not ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Pri
     throw 'Administrator privileges are required'
 }
 
-$originalRoutes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0')
+$originalRoutes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' |
+    Select-Object InterfaceIndex, DestinationPrefix, NextHop, RouteMetric, InterfaceMetric)
 if ($originalRoutes.Count -eq 0) { throw 'Runner has no IPv4 default route' }
 $uplink = $originalRoutes | Sort-Object { $_.RouteMetric + $_.InterfaceMetric } | Select-Object -First 1
 $preservedRoutes = [System.Collections.Generic.List[object]]::new()
@@ -54,7 +55,10 @@ try {
             -NextHop $uplink.NextHop -RouteMetric 1 -PolicyStore ActiveStore))
     }
     # Keep the original default routes as fallbacks, saving their metrics above.
-    foreach ($route in $originalRoutes) { $route | Set-NetRoute -RouteMetric 5000 -Confirm:$false }
+    foreach ($route in $originalRoutes) {
+        Get-NetRoute -InterfaceIndex $route.InterfaceIndex -DestinationPrefix $route.DestinationPrefix -NextHop $route.NextHop |
+            Set-NetRoute -RouteMetric 5000 -Confirm:$false
+    }
 
     foreach ($slot in @('A', 'B')) {
         $before = @(Get-NetAdapter -IncludeHidden | Select-Object -ExpandProperty InterfaceGuid)
@@ -69,6 +73,11 @@ try {
         if (-not $adapter) { throw 'Virtual Ethernet adapter did not appear' }
         $devices.Add($adapter.PnPDeviceID)
         $adapter | Rename-NetAdapter -NewName "netwatch-test-$slot"
+    }
+    # DevCon updates every device with the same hardware ID, which can reset the
+    # first adapter when installing the second. Configure only after both exist.
+    foreach ($slot in @('A', 'B')) {
+        $adapter = Get-NetAdapter -Name "netwatch-test-$slot"
         $index = $adapter.InterfaceIndex
         Set-Item "Env:NETWATCH_ADAPTER_$slot" $index
         Set-Item "Env:NETWATCH_ADAPTER_${slot}_NAME" ([guid]$adapter.InterfaceGuid).ToString('B')
@@ -89,6 +98,8 @@ try {
     Get-NetAdapter | Format-Table Name, InterfaceIndex, Status | Out-Host
     $env:NETWATCH_ROUTE_TEST = '1'
     $process = Start-Process -FilePath $TestBinary -ArgumentList @('--ignored', '--exact', 'windows_default_route_change', '--nocapture') -NoNewWindow -PassThru
+    # Retain the handle so Windows PowerShell can read ExitCode after exit.
+    $null = $process.Handle
     if (-not $process.WaitForExit(120000)) { throw 'Route test exceeded its two-minute deadline' }
     if ($process.ExitCode -ne 0) { throw "Route test failed with exit code $($process.ExitCode)" }
 } finally {
