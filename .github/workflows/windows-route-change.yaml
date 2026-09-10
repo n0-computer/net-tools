@@ -1,0 +1,52 @@
+name: Windows route changes
+
+on:
+  pull_request:
+  push:
+    branches: [main, fix/windows-default-route-without-wmi]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-change:
+    # This test changes system routes. Never run on the shared self-hosted runners.
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      RUST_BACKTRACE: '1'
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+      - name: Build test before changing routes
+        shell: pwsh
+        run: |
+          $messages = cargo test --locked -p netwatch --all-features --test windows_route_change --no-run --message-format=json
+          if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed' }
+          $binary = $messages | ForEach-Object { $_ | ConvertFrom-Json } |
+            Where-Object { $_.reason -eq 'compiler-artifact' -and $_.executable } |
+            Select-Object -ExpandProperty executable
+          if (@($binary).Count -ne 1) { throw 'Expected one test executable' }
+          "NETWATCH_TEST_BINARY=$binary" >> $env:GITHUB_ENV
+      - name: Get Microsoft DevCon
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'wdk.zip'
+          Invoke-WebRequest 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/10.0.26100.6584/microsoft.windows.wdk.x64.10.0.26100.6584.nupkg' -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne 'c393d03dfb640b5c92f546b32f6770ef68cd3aaf691956e7d66d8e2c28a1b55e') {
+            throw 'WDK package checksum mismatch'
+          }
+          $directory = Join-Path $env:RUNNER_TEMP 'wdk'
+          Expand-Archive $zip $directory
+          $devcon = @(Get-ChildItem $directory -Recurse -Filter devcon.exe | Where-Object { $_.FullName -match '\\x64\\' })
+          if ($devcon.Count -ne 1) { throw 'Expected one x64 DevCon executable' }
+          "NETWATCH_DEVCON=$($devcon[0].FullName)" >> $env:GITHUB_ENV
+      - name: Switch default routes and verify native monitor notifications
+        shell: powershell
+        run: ./scripts/windows-route-change.ps1 -TestBinary $env:NETWATCH_TEST_BINARY
