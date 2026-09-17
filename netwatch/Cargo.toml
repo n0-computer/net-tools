@@ -77,7 +77,7 @@ chrono = "0.4.23"              # Transitive, wmi does not specify min version co
 serde = { version = "1", features = ["derive"] }
 wmi = "0.18"
 windows = { version = "0.62.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
-windows-result = "0.4"
+windows-result = "0.100"
 
 # wasm-in-browser dependencies
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
