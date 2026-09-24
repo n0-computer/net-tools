@@ -261,7 +261,10 @@ pub struct State {
 
     /// The interface name for the machine's default route.
     ///
-    /// It is not yet populated on all OSes.
+    /// It is not yet populated on all OSes. On Windows it is the interface
+    /// carrying Internet traffic, which differs from the lowest-metric default
+    /// route when a VPN uses split default routes such as `0.0.0.0/1` plus
+    /// `128.0.0.0/1`.
     ///
     /// When set, its value is the map key into `interfaces`.
     pub default_route_interface: Option<String>,
@@ -370,11 +373,14 @@ pub(crate) fn is_interesting_interface(name: &str) -> bool {
 }
 
 /// The details about a default route.
+///
+/// See [`State::default_route_interface`] for its meaning on Windows.
 #[derive(Debug, Clone)]
 pub struct DefaultRouteDetails {
     /// The interface name.
     ///
-    /// It's like "eth0" (Linux), "Ethernet 2" (Windows), "en0" (macOS).
+    /// It's like "eth0" (Linux), "{2CA87AA0-5A51-43F1-834F-BBF7527E4D35}"
+    /// (Windows, the adapter GUID), "en0" (macOS).
     pub interface_name: String,
 }
 
