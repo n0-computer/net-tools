@@ -3,7 +3,7 @@ name: Windows route changes
 on:
   pull_request:
   push:
-    branches: [main, fix/windows-default-route-without-wmi]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

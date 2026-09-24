@@ -7,7 +7,7 @@ use tracing::{trace, warn};
 use windows::Win32::{
     Foundation::HANDLE as Handle,
     NetworkManagement::IpHelper::{
-        MIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
+        MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
     },
 };
 
@@ -30,7 +30,7 @@ pub enum Error {
 
 impl RouteMonitor {
     pub(super) fn new(sender: mpsc::Sender<NetworkMessage>) -> Result<Self, Error> {
-        // Register two callbacks with the windows api
+        // Register three callbacks with the windows api
         let mut cb_handler = CallbackHandler::default();
 
         // 1. Unicast Address Changes
@@ -41,7 +41,16 @@ impl RouteMonitor {
             }
         }))?;
 
-        // 2. Route Changes
+        // 2. Interface Changes, such as interface metric changes, which move
+        // the default route without a route or address notification.
+        let s = sender.clone();
+        cb_handler.register_interface_change_callback(Box::new(move || {
+            if let Err(err) = s.try_send(NetworkMessage::Change) {
+                warn!("unable to send: interface change notification: {:?}", err);
+            }
+        }))?;
+
+        // 3. Route Changes
         cb_handler.register_route_change_callback(Box::new(move || {
             if let Err(err) = sender.try_send(NetworkMessage::Change) {
                 warn!("unable to send: route change notification: {:?}", err);
@@ -63,6 +72,10 @@ struct CallbackHandler {
     // `Handle` is not hashable, so store the underlying `isize`.
     #[debug("HashMap<isize, RouteCallback")]
     route_callbacks: HashMap<isize, Arc<RouteCallback>>,
+    /// Stores the callbacks and `Handle`s for interface.
+    // `Handle` is not hashable, so store the underlying `isize`.
+    #[debug("HashMap<isize, InterfaceCallback")]
+    interface_callbacks: HashMap<isize, Arc<InterfaceCallback>>,
 }
 
 impl Drop for CallbackHandler {
@@ -87,6 +100,16 @@ impl Drop for CallbackHandler {
         for handle in handles {
             self.unregister_route_change_callback(handle).ok(); // best effort
         }
+
+        let handles: Vec<_> = self
+            .interface_callbacks
+            .keys()
+            .map(|h| InterfaceCallbackHandle(Handle(*h as *mut c_void)))
+            .collect();
+
+        for handle in handles {
+            self.unregister_interface_change_callback(handle).ok(); // best effort
+        }
     }
 }
 
@@ -95,6 +118,9 @@ type UnicastCallback = Box<dyn Fn() + Send + Sync + 'static>;
 
 struct RouteCallbackHandle(Handle);
 type RouteCallback = Box<dyn Fn() + Send + Sync + 'static>;
+
+struct InterfaceCallbackHandle(Handle);
+type InterfaceCallback = Box<dyn Fn() + Send + Sync + 'static>;
 
 impl CallbackHandler {
     fn register_unicast_address_change_callback(
@@ -180,6 +206,48 @@ impl CallbackHandler {
 
         Ok(())
     }
+
+    fn register_interface_change_callback(
+        &mut self,
+        cb: InterfaceCallback,
+    ) -> Result<InterfaceCallbackHandle, Error> {
+        trace!("registering interface change callback");
+        let mut handle = Handle::default();
+        let cb = Arc::new(cb);
+        unsafe {
+            windows::Win32::NetworkManagement::IpHelper::NotifyIpInterfaceChange(
+                windows::Win32::Networking::WinSock::AF_UNSPEC,
+                Some(interface_change_callback),
+                Some(Arc::as_ptr(&cb) as *const c_void), // context
+                false,                                   // initial notification,
+                &mut handle,
+            )
+            .ok()?;
+        }
+
+        self.interface_callbacks.insert(handle.0 as isize, cb);
+
+        Ok(InterfaceCallbackHandle(handle))
+    }
+
+    fn unregister_interface_change_callback(
+        &mut self,
+        handle: InterfaceCallbackHandle,
+    ) -> Result<(), Error> {
+        trace!("unregistering interface callback");
+        let key = handle.0.0 as isize;
+        if self.interface_callbacks.contains_key(&key) {
+            // Cancel first to ensure no in-flight callbacks reference the Arc,
+            // then remove the Arc from the map.
+            unsafe {
+                windows::Win32::NetworkManagement::IpHelper::CancelMibChangeNotify2(handle.0)
+                    .ok()?;
+            }
+            self.interface_callbacks.remove(&key);
+        }
+
+        Ok(())
+    }
 }
 
 unsafe extern "system" fn unicast_change_callback(
@@ -206,6 +274,20 @@ unsafe extern "system" fn route_change_callback(
         return;
     }
     let callercontext = callercontext as *const RouteCallback;
+    let cb = unsafe { &*callercontext };
+    cb();
+}
+
+unsafe extern "system" fn interface_change_callback(
+    callercontext: *const c_void,
+    _row: *const MIB_IPINTERFACE_ROW,
+    _notificationtype: MIB_NOTIFICATION_TYPE,
+) {
+    if callercontext.is_null() {
+        // Nothing we can do
+        return;
+    }
+    let callercontext = callercontext as *const InterfaceCallback;
     let cb = unsafe { &*callercontext };
     cb();
 }

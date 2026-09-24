@@ -374,7 +374,8 @@ pub(crate) fn is_interesting_interface(name: &str) -> bool {
 pub struct DefaultRouteDetails {
     /// The interface name.
     ///
-    /// It's like "eth0" (Linux), "Ethernet 2" (Windows), "en0" (macOS).
+    /// It's like "eth0" (Linux), "{2CA87AA0-5A51-43F1-834F-BBF7527E4D35}"
+    /// (Windows, the adapter GUID), "en0" (macOS).
     pub interface_name: String,
 }
 

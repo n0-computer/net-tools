@@ -17,8 +17,8 @@ function Assert-Default([int]$Expected) {
         ($routes[1].RouteMetric + $routes[1].InterfaceMetric)) {
         throw "Windows routing table does not uniquely prefer interface $Expected"
     }
-    # Also check Windows source-address selection, independently of netdev.
-    $selected = @(Find-NetRoute -RemoteIPAddress '10.254.254.254')
+    # Also check the stack's route to netwatch's probe address, independently of netwatch.
+    $selected = @(Find-NetRoute -RemoteIPAddress '192.0.2.1')
     $selected | Format-List | Out-Host
     if (@($selected | Where-Object { $_.InterfaceIndex -ne $Expected }).Count -ne 0) {
         throw "Windows source-address selection does not use interface $Expected"
@@ -52,11 +52,15 @@ $preservedRoutes = [System.Collections.Generic.List[object]]::new()
 $devices = [System.Collections.Generic.List[string]]::new()
 $process = $null
 try {
-    # Preserve runner Internet traffic while allowing 10/8 to follow the real
-    # default route. netdev 0.45 probes 10.254.254.254 without sending packets.
-    # These are more-specific routes, not a special route to netdev's probe.
-    foreach ($prefix in @('0.0.0.0/5', '8.0.0.0/7', '11.0.0.0/8', '12.0.0.0/6',
-                          '16.0.0.0/4', '32.0.0.0/3', '64.0.0.0/2', '128.0.0.0/1')) {
+    # Preserve runner Internet traffic while allowing 192.0.2.0/24 to follow the
+    # real default route. netwatch asks the stack for its route to 192.0.2.1.
+    # These more-specific routes cover every other IPv4 address.
+    foreach ($prefix in @('0.0.0.0/1', '128.0.0.0/2', '192.0.0.0/23', '192.0.3.0/24',
+                          '192.0.4.0/22', '192.0.8.0/21', '192.0.16.0/20', '192.0.32.0/19',
+                          '192.0.64.0/18', '192.0.128.0/17', '192.1.0.0/16', '192.2.0.0/15',
+                          '192.4.0.0/14', '192.8.0.0/13', '192.16.0.0/12', '192.32.0.0/11',
+                          '192.64.0.0/10', '192.128.0.0/9', '193.0.0.0/8', '194.0.0.0/7',
+                          '196.0.0.0/6', '200.0.0.0/5', '208.0.0.0/4', '224.0.0.0/3')) {
         $preservedRoutes.Add((New-NetRoute -InterfaceIndex $uplink.InterfaceIndex -DestinationPrefix $prefix `
             -NextHop $uplink.NextHop -RouteMetric 1 -PolicyStore ActiveStore))
     }
