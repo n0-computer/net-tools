@@ -8,6 +8,37 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# netwatch asks the stack for its routes to these documentation addresses.
+$probes = @('192.0.2.1', '198.51.100.1', '203.0.113.1')
+
+function ConvertTo-Number([string]$Address) {
+    $b = [System.Net.IPAddress]::Parse($Address).GetAddressBytes()
+    [uint64]$b[0] * 16777216 + [uint64]$b[1] * 65536 + [uint64]$b[2] * 256 + [uint64]$b[3]
+}
+
+function ConvertTo-Address([double]$Number) {
+    $octets = foreach ($unit in 16777216, 65536, 256, 1) { [math]::Floor($Number / $unit) % 256 }
+    $octets -join '.'
+}
+
+# Returns prefixes covering every IPv4 address outside the probes' /24 networks,
+# by splitting 0.0.0.0/0 around them.
+function Get-PrefixesAroundProbes {
+    $excluded = foreach ($probe in $probes) { [math]::Floor((ConvertTo-Number $probe) / 256) * 256 }
+    $pending = [System.Collections.Generic.Stack[object]]::new()
+    $pending.Push(@(0, 0))
+    while ($pending.Count -gt 0) {
+        $start, $length = $pending.Pop()
+        $size = [math]::Pow(2, 32 - $length)
+        if (@($excluded | Where-Object { $_ -ge $start -and $_ -lt $start + $size }).Count -eq 0) {
+            "$(ConvertTo-Address $start)/$length"
+        } elseif ($length -lt 24) {
+            $pending.Push(@(($start + $size / 2), ($length + 1)))
+            $pending.Push(@($start, ($length + 1)))
+        }
+    }
+}
+
 function Assert-Default([int]$Expected) {
     $routes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' |
         Sort-Object { $_.RouteMetric + $_.InterfaceMetric })
@@ -17,8 +48,8 @@ function Assert-Default([int]$Expected) {
         ($routes[1].RouteMetric + $routes[1].InterfaceMetric)) {
         throw "Windows routing table does not uniquely prefer interface $Expected"
     }
-    # Also check the stack's route to netwatch's probe address, independently of netwatch.
-    $selected = @(Find-NetRoute -RemoteIPAddress '192.0.2.1')
+    # Also check the stack's routes to netwatch's probe addresses, independently of netwatch.
+    $selected = @(foreach ($probe in $probes) { Find-NetRoute -RemoteIPAddress $probe })
     $selected | Format-List | Out-Host
     if (@($selected | Where-Object { $_.InterfaceIndex -ne $Expected }).Count -ne 0) {
         throw "Windows source-address selection does not use interface $Expected"
@@ -52,15 +83,9 @@ $preservedRoutes = [System.Collections.Generic.List[object]]::new()
 $devices = [System.Collections.Generic.List[string]]::new()
 $process = $null
 try {
-    # Preserve runner Internet traffic while allowing 192.0.2.0/24 to follow the
-    # real default route. netwatch asks the stack for its route to 192.0.2.1.
-    # These more-specific routes cover every other IPv4 address.
-    foreach ($prefix in @('0.0.0.0/1', '128.0.0.0/2', '192.0.0.0/23', '192.0.3.0/24',
-                          '192.0.4.0/22', '192.0.8.0/21', '192.0.16.0/20', '192.0.32.0/19',
-                          '192.0.64.0/18', '192.0.128.0/17', '192.1.0.0/16', '192.2.0.0/15',
-                          '192.4.0.0/14', '192.8.0.0/13', '192.16.0.0/12', '192.32.0.0/11',
-                          '192.64.0.0/10', '192.128.0.0/9', '193.0.0.0/8', '194.0.0.0/7',
-                          '196.0.0.0/6', '200.0.0.0/5', '208.0.0.0/4', '224.0.0.0/3')) {
+    # Preserve runner Internet traffic while the probes follow the real default
+    # routes. These more-specific routes cover every other IPv4 address.
+    foreach ($prefix in Get-PrefixesAroundProbes) {
         $preservedRoutes.Add((New-NetRoute -InterfaceIndex $uplink.InterfaceIndex -DestinationPrefix $prefix `
             -NextHop $uplink.NextHop -RouteMetric 1 -PolicyStore ActiveStore))
     }
