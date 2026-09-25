@@ -8,11 +8,12 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     pin::Pin,
-    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
+    sync::{Arc, Mutex, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
     task::{Context, Poll},
 };
 
 use atomic_waker::AtomicWaker;
+use n0_future::time::{self, Duration, Instant, Sleep};
 use noq_udp::Transmit;
 use tokio::io::Interest;
 use tracing::{debug, trace, warn};
@@ -32,6 +33,16 @@ pub struct UdpSocket {
 /// UDP socket read/write buffer size (7MB). The value of 7MB is chosen as it
 /// is the max supported by a default configuration of macOS. Some platforms will silently clamp the value.
 const SOCKET_BUFFER_SIZE: usize = 7 << 20;
+
+/// Delay before the first retry of a failed rebind.
+const REBIND_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(10);
+
+/// Maximum delay between retries of a failed rebind.
+///
+/// The socket retries a failed rebind until the bind succeeds or the socket is closed.
+/// After each failure, the delay doubles, up to this maximum. When the delay reaches
+/// this maximum, it stays at this value.
+const REBIND_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 
 /// A socket that is about to be bound, handed to the hook set with
 /// [`BindOptions::configure_socket`].
@@ -170,22 +181,28 @@ impl UdpSocket {
     }
 
     /// Rebind the underlying socket.
+    ///
+    /// This binds a new socket to the same address. If the bind fails, the socket stays
+    /// unbound, and retries the bind later. After each failure, the delay before the next
+    /// retry doubles, up to a maximum.
+    ///
+    /// While the socket is not bound, receives and sends behave differently:
+    ///
+    /// - A receive waits until the socket is bound again. While it waits, it runs each
+    ///   retry when the retry is due.
+    /// - A send fails with [`io::ErrorKind::NotConnected`]. If a retry is due, the send
+    ///   runs it first, and continues if the bind succeeds.
+    ///
+    /// Sends fail and do not wait, because the socket cannot wake each send that waits.
+    /// For UDP, a send that fails has the same effect as a datagram that the network
+    /// drops.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the socket is closed, or if the bind fails. After a failed bind,
+    /// the socket starts the retries.
     pub fn rebind(&self) -> io::Result<()> {
-        {
-            let mut guard = self.socket.write().unwrap();
-            guard.rebind()?;
-
-            // Clear errors
-            self.is_broken
-                .store(false, std::sync::atomic::Ordering::Release);
-
-            drop(guard);
-        }
-
-        // wakeup
-        self.wake_all();
-
-        Ok(())
+        self.rebind_inner(true)
     }
 
     /// Receives a single datagram message on the socket from the remote address
@@ -254,7 +271,7 @@ impl UdpSocket {
     pub fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         trace!(%addr, "connecting");
         let guard = self.socket.read().unwrap();
-        let (socket_tokio, _state) = guard.try_get_connected()?;
+        let (socket_tokio, _state) = guard.try_get()?;
 
         let sock_ref = socket2::SockRef::from(&socket_tokio);
         sock_ref.connect(&socket2::SockAddr::from(addr))?;
@@ -265,7 +282,7 @@ impl UdpSocket {
     /// Returns the local address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         let guard = self.socket.read().unwrap();
-        let (socket, _state) = guard.try_get_connected()?;
+        let (socket, _state) = guard.try_get()?;
 
         socket.local_addr()
     }
@@ -273,6 +290,8 @@ impl UdpSocket {
     /// Closes the socket, and waits for the underlying `libc::close` call to be finished.
     pub async fn close(&self) {
         let socket = self.socket.write().unwrap().close();
+        self.is_broken
+            .store(false, std::sync::atomic::Ordering::Release);
         self.wake_all();
         if let Some((sock, _)) = socket {
             let std_sock = sock.into_std();
@@ -367,20 +386,59 @@ impl UdpSocket {
             return Ok(());
         }
 
-        let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
-
-        // Re-check after acquiring the write lock — another caller may have
-        // already completed the rebind while we were waiting.
-        if !self.is_broken() {
+        // Check under a read lock whether a retry is due. `try_read` does not wait for the
+        // lock. If the retry is not due, do not take the write lock.
+        if let Ok(guard) = self.socket.try_read()
+            && !guard.is_rebind_due()
+        {
             return Ok(());
         }
 
-        guard.rebind()?;
-        self.is_broken
-            .store(false, std::sync::atomic::Ordering::Release);
-        drop(guard);
+        // Take the write lock, and rebind if a rebind is still necessary.
+        self.rebind_inner(false)
+    }
+
+    /// Rebinds the socket under the write lock.
+    ///
+    /// A forced rebind always binds. Otherwise this binds only if the socket is broken and
+    /// [`SocketState::is_rebind_due`] is true.
+    fn rebind_inner(&self, force: bool) -> io::Result<()> {
+        let (was_unbound, is_closed, res) = {
+            let mut guard = self.socket.write().expect("poisoned");
+
+            let was_unbound = guard.is_unbound();
+            let is_closed = guard.is_closed();
+            let res = if is_closed {
+                // Do not rebind a closed socket.
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "socket closed"))
+            } else if !force && (!self.is_broken() || !guard.is_rebind_due()) {
+                // Do nothing if the rebind is not forced, and the socket is not broken or
+                // the retry is not due.
+                Ok(())
+            } else {
+                let res = guard.rebind();
+                self.is_broken
+                    .store(guard.is_unbound(), std::sync::atomic::Ordering::Release);
+                res
+            };
+            (was_unbound, is_closed, res)
+        };
+
+        // Wake all tasks in every case, and only after the lock is free. If a poll could
+        // not get the lock, it waits for this wake. After a failed bind, a receive that
+        // waits must poll the new retry timer.
         self.wake_all();
-        Ok(())
+
+        match res {
+            Ok(()) => Ok(()),
+            Err(err) if !was_unbound && !is_closed => {
+                warn!("rebind failed, retrying with backoff: {err:#}");
+                Err(err)
+            }
+            // A failed retry is not an error for the send or receive that caused it.
+            Err(_) if !force && was_unbound => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     /// Poll for writable
@@ -391,7 +449,8 @@ impl UdpSocket {
             }
 
             let guard = std::task::ready!(self.poll_read_socket(&self.send_waker, cx));
-            let (socket, _state) = guard.try_get_connected()?;
+            // Sends fail while the socket is not bound. See `SocketState::try_get` for why.
+            let (socket, _state) = guard.try_get()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
@@ -423,7 +482,7 @@ impl UdpSocket {
                     return Err(io::Error::new(io::ErrorKind::WouldBlock, "locked"));
                 }
             };
-            let (socket, state) = guard.try_get_connected()?;
+            let (socket, state) = guard.try_get()?;
 
             let res = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
@@ -447,7 +506,8 @@ impl UdpSocket {
             }
 
             let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
-            let (socket, state) = guard.try_get_connected()?;
+            // Sends fail while the socket is not bound. See `SocketState::try_get` for why.
+            let (socket, state) = guard.try_get()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
@@ -492,7 +552,8 @@ impl UdpSocket {
             }
 
             let guard = n0_future::ready!(self.poll_read_socket(&self.recv_waker, cx));
-            let (socket, state) = guard.try_get_connected()?;
+
+            let (socket, state) = n0_future::ready!(guard.poll_for_recv(&self.recv_waker, cx)?);
 
             match socket.poll_recv_ready(cx) {
                 Poll::Pending => {
@@ -629,7 +690,9 @@ impl Future for RecvFut<'_, '_> {
             }
 
             let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
-            let (inner_socket, _state) = guard.try_get_connected()?;
+
+            let (inner_socket, _state) =
+                n0_future::ready!(guard.poll_for_recv(&socket.recv_waker, cx)?);
 
             match inner_socket.poll_recv_ready(cx) {
                 Poll::Pending => {
@@ -679,7 +742,9 @@ impl Future for RecvFromFut<'_, '_> {
             }
 
             let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
-            let (inner_socket, _state) = guard.try_get_connected()?;
+
+            let (inner_socket, _state) =
+                n0_future::ready!(guard.poll_for_recv(&socket.recv_waker, cx)?);
 
             match inner_socket.poll_recv_ready(cx) {
                 Poll::Pending => {
@@ -728,7 +793,8 @@ impl Future for SendFut<'_, '_> {
 
             let guard =
                 n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
-            let (socket, _state) = guard.try_get_connected()?;
+            // Sends fail while the socket is not bound. See `SocketState::try_get` for why.
+            let (socket, _state) = guard.try_get()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
@@ -778,7 +844,8 @@ impl Future for SendToFut<'_, '_> {
 
             let guard =
                 n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
-            let (socket, _state) = guard.try_get_connected()?;
+            // Sends fail while the socket is not bound. See `SocketState::try_get` for why.
+            let (socket, _state) = guard.try_get()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
@@ -812,6 +879,7 @@ impl Future for SendToFut<'_, '_> {
 
 #[derive(derive_more::Debug)]
 enum SocketState {
+    /// The socket is bound.
     Connected {
         socket: tokio::net::UdpSocket,
         state: noq_udp::UdpSocketState,
@@ -821,7 +889,8 @@ enum SocketState {
         #[debug(skip)]
         configure: Option<Configurator>,
     },
-    Closed {
+    /// A rebind failed. The next retry occurs when `retry.at` passes.
+    Rebinding {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
         /// The hook to rerun when rebinding, if any.
@@ -830,11 +899,56 @@ enum SocketState {
         last_max_gso_segments: NonZeroUsize,
         last_gro_segments: NonZeroUsize,
         last_may_fragment: bool,
+        retry: Retry,
+    },
+    /// The socket is closed. It does not rebind again.
+    Closed {
+        last_max_gso_segments: NonZeroUsize,
+        last_gro_segments: NonZeroUsize,
+        last_may_fragment: bool,
     },
 }
 
+/// When to retry a failed rebind.
+#[derive(Debug)]
+struct Retry {
+    at: Instant,
+    delay: Duration,
+    /// Wakes the receive that waits, when the retry is due.
+    ///
+    /// Only receives poll this timer, see [`SocketState::poll_for_recv`]. The first poll
+    /// creates the timer. Thus the code never creates a `Sleep` outside a tokio runtime.
+    /// The mutex is necessary because receives only hold a read lock on the socket state.
+    timer: Mutex<Option<Pin<Box<Sleep>>>>,
+}
+
+impl Retry {
+    fn after(delay: Duration) -> Self {
+        Self {
+            at: Instant::now() + delay,
+            delay,
+            timer: Mutex::new(None),
+        }
+    }
+}
+
 impl SocketState {
-    fn try_get_connected(&self) -> io::Result<(&tokio::net::UdpSocket, &noq_udp::UdpSocketState)> {
+    /// Returns the socket and its state, if the socket is bound.
+    ///
+    /// Fails if the socket is closed, or if a failed rebind waits for its retry. Use this
+    /// for sends, and for all other calls that do not wait. Receives use
+    /// [`Self::poll_for_recv`] instead.
+    ///
+    /// Sends do not wait for a rebind, because the socket cannot wake them reliably:
+    ///
+    /// - `send_waker` holds one waker. A socket has many senders, for example one for
+    ///   each task, so only the last send that waits gets the wake.
+    /// - The retry timer also holds one waker, and it belongs to the receive. A send that
+    ///   polls the timer replaces the waker of the receive.
+    ///
+    /// Sends that wait need a wake for each send, for example with `tokio::sync::Notify`.
+    /// They also need their own retry timers, so that a retry runs when only sends wait.
+    fn try_get(&self) -> io::Result<(&tokio::net::UdpSocket, &noq_udp::UdpSocketState)> {
         match self {
             Self::Connected {
                 socket,
@@ -842,11 +956,65 @@ impl SocketState {
                 addr: _,
                 configure: _,
             } => Ok((socket, state)),
+            Self::Rebinding { .. } => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "socket failed to rebind, waiting to retry",
+            )),
             Self::Closed { .. } => {
                 warn!("socket closed");
                 Err(io::Error::new(io::ErrorKind::BrokenPipe, "socket closed"))
             }
         }
+    }
+
+    /// Returns the socket and its state, or `Pending` while a failed rebind waits.
+    ///
+    /// Only receives call this. The retry timer holds only one waker, so a second caller
+    /// would replace the waker of the receive. Sends use [`Self::try_get`], and fail while
+    /// the socket is not bound.
+    ///
+    /// Registers `cx` with the retry timer, and registers `waker` for the wake after a bind
+    /// attempt. Both registrations occur under the read lock. Thus no bind attempt can
+    /// occur between them.
+    fn poll_for_recv(
+        &self,
+        waker: &AtomicWaker,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<(&tokio::net::UdpSocket, &noq_udp::UdpSocketState)>> {
+        let retry = match self {
+            SocketState::Connected { socket, state, .. } => {
+                return Poll::Ready(Ok((socket, state)));
+            }
+            SocketState::Closed { .. } => {
+                let err = Err(io::Error::new(io::ErrorKind::BrokenPipe, "socket closed"));
+                return Poll::Ready(err);
+            }
+            SocketState::Rebinding { retry, .. } => retry,
+        };
+        let mut timer = retry.timer.lock().expect("poisoned");
+        let timer = timer.get_or_insert_with(|| Box::pin(time::sleep_until(retry.at)));
+        if timer.as_mut().poll(cx).is_ready() {
+            // The retry is due. Poll again, so that `maybe_rebind` runs the retry.
+            cx.waker().wake_by_ref();
+        }
+        waker.register(cx.waker());
+        Poll::Pending
+    }
+
+    /// Returns whether the socket can rebind now.
+    ///
+    /// A bound socket can always rebind. An unbound socket can rebind when the retry is
+    /// due. A closed socket never rebinds.
+    fn is_rebind_due(&self) -> bool {
+        match self {
+            Self::Connected { .. } => true,
+            Self::Rebinding { retry, .. } => retry.at <= Instant::now(),
+            Self::Closed { .. } => false,
+        }
+    }
+
+    fn is_unbound(&self) -> bool {
+        matches!(self, Self::Rebinding { .. })
     }
 
     fn bind(addr: SocketAddr, configure: Option<Configurator>) -> io::Result<Self> {
@@ -914,26 +1082,40 @@ impl SocketState {
     }
 
     fn rebind(&mut self) -> io::Result<()> {
-        let (addr, configure) = match self {
+        let (addr, configure, delay) = match self {
             Self::Connected {
                 addr, configure, ..
+            } => (*addr, configure.clone(), REBIND_RETRY_INITIAL_DELAY),
+            Self::Rebinding {
+                addr,
+                configure,
+                retry,
+                ..
+            } => (
+                *addr,
+                configure.clone(),
+                (retry.delay * 2).min(REBIND_RETRY_MAX_DELAY),
+            ),
+            Self::Closed { .. } => {
+                return Err(io::Error::new(io::ErrorKind::BrokenPipe, "socket closed"));
             }
-            | Self::Closed {
-                addr, configure, ..
-            } => (*addr, configure.clone()),
         };
         debug!("rebinding {}", addr);
 
-        // Transition to Closed first to drop the old socket.
+        // Change to the Rebinding state first, to drop the old socket.
         // This is needed so the port is released before we try to bind again.
+        // Schedule the retry now, in case this bind fails.
         if let Self::Connected { state, .. } = self {
-            *self = SocketState::Closed {
+            *self = SocketState::Rebinding {
                 addr,
                 configure: configure.clone(),
                 last_max_gso_segments: state.max_gso_segments(),
                 last_gro_segments: state.gro_segments(),
                 last_may_fragment: state.may_fragment(),
+                retry: Retry::after(delay),
             };
+        } else if let Self::Rebinding { retry, .. } = self {
+            *retry = Retry::after(delay);
         }
 
         match Self::bind(addr, configure) {
@@ -942,7 +1124,8 @@ impl SocketState {
                 Ok(())
             }
             Err(err) => {
-                // Stay in Closed state but allow future rebind attempts
+                // Stay in the Rebinding state. A send or receive retries the bind after
+                // `delay`.
                 debug!("rebind failed, will retry on next attempt: {}", err);
                 Err(err)
             }
@@ -955,15 +1138,8 @@ impl SocketState {
 
     fn close(&mut self) -> Option<(tokio::net::UdpSocket, noq_udp::UdpSocketState)> {
         match self {
-            Self::Connected {
-                state,
-                addr,
-                configure,
-                ..
-            } => {
+            Self::Connected { state, .. } => {
                 let s = SocketState::Closed {
-                    addr: *addr,
-                    configure: configure.clone(),
                     last_max_gso_segments: state.max_gso_segments(),
                     last_gro_segments: state.gro_segments(),
                     last_may_fragment: state.may_fragment(),
@@ -973,6 +1149,19 @@ impl SocketState {
                 };
                 Some((socket, state))
             }
+            Self::Rebinding {
+                last_max_gso_segments,
+                last_gro_segments,
+                last_may_fragment,
+                ..
+            } => {
+                *self = SocketState::Closed {
+                    last_max_gso_segments: *last_max_gso_segments,
+                    last_gro_segments: *last_gro_segments,
+                    last_may_fragment: *last_may_fragment,
+                };
+                None
+            }
             Self::Closed { .. } => None,
         }
     }
@@ -980,7 +1169,10 @@ impl SocketState {
     fn may_fragment(&self) -> bool {
         match self {
             Self::Connected { state, .. } => state.may_fragment(),
-            Self::Closed {
+            Self::Rebinding {
+                last_may_fragment, ..
+            }
+            | Self::Closed {
                 last_may_fragment, ..
             } => *last_may_fragment,
         }
@@ -989,7 +1181,11 @@ impl SocketState {
     fn max_gso_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.max_gso_segments(),
-            Self::Closed {
+            Self::Rebinding {
+                last_max_gso_segments,
+                ..
+            }
+            | Self::Closed {
                 last_max_gso_segments,
                 ..
             } => *last_max_gso_segments,
@@ -999,7 +1195,10 @@ impl SocketState {
     fn gro_segments(&self) -> NonZeroUsize {
         match self {
             Self::Connected { state, .. } => state.gro_segments(),
-            Self::Closed {
+            Self::Rebinding {
+                last_gro_segments, ..
+            }
+            | Self::Closed {
                 last_gro_segments, ..
             } => *last_gro_segments,
         }
@@ -1067,9 +1266,6 @@ impl UdpSender {
                 return Poll::Ready(Err(err));
             }
 
-            let guard =
-                n0_future::ready!(this.socket.poll_read_socket(&this.socket.send_waker, cx));
-
             if this.fut.is_none() {
                 let socket = this.socket.clone();
                 this.fut.set(Some(Box::pin(async move {
@@ -1089,7 +1285,11 @@ impl UdpSender {
             // If .writable() fails, propagate the error
             result?;
 
-            let (socket, state) = guard.try_get_connected()?;
+            // Take the read lock only now. `poll_writable` may rebind the socket, which takes
+            // the write lock. If this thread holds the read lock, that causes a deadlock.
+            let guard =
+                n0_future::ready!(this.socket.poll_read_socket(&this.socket.send_waker, cx));
+            let (socket, state) = guard.try_get()?;
             let result = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
             match result {
@@ -1110,7 +1310,7 @@ impl UdpSender {
 
         match self.socket.socket.try_read() {
             Ok(guard) => {
-                let (socket, state) = guard.try_get_connected()?;
+                let (socket, state) = guard.try_get()?;
                 socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit))
             }
             Err(TryLockError::Poisoned(e)) => panic!("socket lock poisoned: {e}"),
@@ -1139,7 +1339,8 @@ impl Future for SendFutNoq<'_, '_> {
 
             let guard =
                 n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
-            let (socket, state) = guard.try_get_connected()?;
+            // Sends fail while the socket is not bound. See `SocketState::try_get` for why.
+            let (socket, state) = guard.try_get()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
