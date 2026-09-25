@@ -8,8 +8,9 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     pin::Pin,
-    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
-    task::{Context, Poll},
+    sync::{Arc, Mutex, RwLock, RwLockReadGuard, TryLockError, atomic::AtomicBool},
+    task::{Context, Poll, Wake, Waker},
+    time::Duration,
 };
 
 use atomic_waker::AtomicWaker;
@@ -23,10 +24,35 @@ use super::IpFamily;
 #[derive(Debug)]
 pub struct UdpSocket {
     socket: RwLock<SocketState>,
-    recv_waker: AtomicWaker,
-    send_waker: AtomicWaker,
+    wakers: Arc<SocketWakers>,
+    rebind_retry: Mutex<Option<RebindRetry>>,
     /// Set to true, when an error occurred, that means we need to rebind the socket.
     is_broken: AtomicBool,
+}
+
+// A retry timer wakes both directions; polling one must not replace the
+// other direction's wakeup. The timer is owned by the socket, with no task.
+#[derive(Debug, Default)]
+struct SocketWakers {
+    recv: AtomicWaker,
+    send: AtomicWaker,
+}
+
+impl Wake for SocketWakers {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.recv.wake();
+        self.send.wake();
+    }
+}
+
+#[derive(Debug)]
+struct RebindRetry {
+    delay: Duration,
+    sleep: Pin<Box<tokio::time::Sleep>>,
 }
 
 /// UDP socket read/write buffer size (7MB). The value of 7MB is chosen as it
@@ -152,8 +178,8 @@ impl UdpSocket {
 
         Ok(UdpSocket {
             socket: RwLock::new(socket),
-            recv_waker: AtomicWaker::default(),
-            send_waker: AtomicWaker::default(),
+            wakers: Arc::default(),
+            rebind_retry: Mutex::default(),
             is_broken: AtomicBool::new(false),
         })
     }
@@ -170,22 +196,20 @@ impl UdpSocket {
     }
 
     /// Rebind the underlying socket.
+    ///
+    /// A failed bind is retried by subsequent I/O with backoff. Async I/O
+    /// remains pending during recovery; nonblocking sends return `WouldBlock`.
+    /// Calling [`Self::close`] cancels automatic recovery.
     pub fn rebind(&self) -> io::Result<()> {
-        {
-            let mut guard = self.socket.write().unwrap();
-            guard.rebind()?;
-
-            // Clear errors
-            self.is_broken
-                .store(false, std::sync::atomic::Ordering::Release);
-
-            drop(guard);
-        }
-
-        // wakeup
+        let result = {
+            let mut retry = self.rebind_retry.lock().unwrap();
+            // An explicit network change may make the address usable now.
+            *retry = None;
+            self.rebind_with_retry(&mut retry)
+        };
+        // Wake idle receivers even when the bind failed, to arm the timer.
         self.wake_all();
-
-        Ok(())
+        result
     }
 
     /// Receives a single datagram message on the socket from the remote address
@@ -272,7 +296,14 @@ impl UdpSocket {
 
     /// Closes the socket, and waits for the underlying `libc::close` call to be finished.
     pub async fn close(&self) {
-        let socket = self.socket.write().unwrap().close();
+        let socket = {
+            let mut retry = self.rebind_retry.lock().unwrap();
+            let socket = self.socket.write().unwrap().close();
+            self.is_broken
+                .store(false, std::sync::atomic::Ordering::Release);
+            *retry = None;
+            socket
+        };
         self.wake_all();
         if let Some((sock, _)) = socket {
             let std_sock = sock.into_std();
@@ -330,72 +361,97 @@ impl UdpSocket {
         waker: &AtomicWaker,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<RwLockReadGuard<'_, SocketState>> {
+        let recovering = self.maybe_rebind().is_err();
+        // Automatic rebind wakes (and consumes) the stored wakers, so register
+        // this poll after it before inspecting either the timer or socket.
+        waker.register(cx.waker());
+        if recovering {
+            let mut retry = self.rebind_retry.lock().unwrap();
+            if let Some(retry) = retry.as_mut() {
+                let wake_both = Waker::from(self.wakers.clone());
+                let mut timer_cx = Context::from_waker(&wake_both);
+                if retry.sleep.as_mut().poll(&mut timer_cx).is_pending() {
+                    return Poll::Pending;
+                }
+            }
+            // The deadline elapsed, or an explicit rebind/close raced us.
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         let guard = match self.socket.try_read() {
             Ok(guard) => guard,
             Err(TryLockError::Poisoned(e)) => panic!("socket lock poisoned: {e}"),
-            Err(TryLockError::WouldBlock) => {
-                waker.register(cx.waker());
-
-                match self.socket.try_read() {
-                    Ok(guard) => {
-                        // we're actually fine, no need to cause a spurious wakeup
-                        waker.take();
-                        guard
-                    }
-                    Err(TryLockError::Poisoned(e)) => panic!("socket lock poisoned: {e}"),
-                    Err(TryLockError::WouldBlock) => {
-                        // Ok fine, we registered our waker, the lock is really closed,
-                        // we can return pending.
-                        return Poll::Pending;
-                    }
-                }
-            }
+            Err(TryLockError::WouldBlock) => return Poll::Pending,
         };
+        if guard.is_closed() && self.is_broken() {
+            // A rebind failed after maybe_rebind but before the read lock.
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         Poll::Ready(guard)
     }
 
     fn wake_all(&self) {
-        self.recv_waker.wake();
-        self.send_waker.wake();
+        self.wakers.wake_by_ref();
     }
 
-    /// Checks if the socket needs a rebind, and if so does it.
-    ///
-    /// Returns an error if the rebind is needed, but failed.
+    // The retry lock serializes explicit/automatic rebind and close. The
+    // existing atomic flag keeps healthy I/O off this lock.
+    fn rebind_with_retry(&self, retry: &mut Option<RebindRetry>) -> io::Result<()> {
+        let mut socket = self.socket.write().unwrap();
+        let result = socket.rebind();
+        self.is_broken
+            .store(result.is_err(), std::sync::atomic::Ordering::Release);
+        drop(socket);
+        match &result {
+            Ok(()) => {
+                *retry = None;
+                debug!("UDP socket rebound");
+            }
+            Err(err) => {
+                warn!("failed to rebind UDP socket: {err:?}");
+                let delay = retry.as_ref().map_or(Duration::from_millis(100), |retry| {
+                    (retry.delay * 2).min(Duration::from_secs(5))
+                });
+                *retry = Some(RebindRetry {
+                    delay,
+                    sleep: Box::pin(tokio::time::sleep(delay)),
+                });
+            }
+        }
+        result
+    }
+
+    /// Retry a broken socket when its backoff expires. Synchronous callers
+    /// observe WouldBlock during recovery, not a fatal socket error.
     fn maybe_rebind(&self) -> io::Result<()> {
         if !self.is_broken() {
             return Ok(());
         }
-
-        let mut guard = self.socket.write().unwrap_or_else(|e| e.into_inner());
-
-        // Re-check after acquiring the write lock — another caller may have
-        // already completed the rebind while we were waiting.
+        let mut retry = self.rebind_retry.lock().unwrap();
         if !self.is_broken() {
             return Ok(());
         }
-
-        guard.rebind()?;
-        self.is_broken
-            .store(false, std::sync::atomic::Ordering::Release);
-        drop(guard);
+        if retry
+            .as_ref()
+            .is_some_and(|retry| retry.sleep.deadline() > tokio::time::Instant::now())
+        {
+            return Err(io::ErrorKind::WouldBlock.into());
+        }
+        let result = self.rebind_with_retry(&mut retry);
+        drop(retry);
         self.wake_all();
-        Ok(())
+        result.map_err(|_| io::ErrorKind::WouldBlock.into())
     }
 
     /// Poll for writable
     pub fn poll_writable(&self, cx: &mut std::task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            if let Err(err) = self.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard = std::task::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let guard = std::task::ready!(self.poll_read_socket(&self.wakers.send, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
-                    self.send_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => return Poll::Ready(Ok(())),
@@ -442,16 +498,11 @@ impl UdpSocket {
     /// poll send a noq based `Transmit`.
     pub fn poll_send_noq(&self, cx: &mut Context, transmit: &Transmit<'_>) -> Poll<io::Result<()>> {
         loop {
-            if let Err(err) = self.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard = n0_future::ready!(self.poll_read_socket(&self.send_waker, cx));
+            let guard = n0_future::ready!(self.poll_read_socket(&self.wakers.send, cx));
             let (socket, state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
-                    self.send_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -487,16 +538,11 @@ impl UdpSocket {
         meta: &mut [noq_udp::RecvMeta],
     ) -> Poll<io::Result<usize>> {
         loop {
-            if let Err(err) = self.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard = n0_future::ready!(self.poll_read_socket(&self.recv_waker, cx));
+            let guard = n0_future::ready!(self.poll_read_socket(&self.wakers.recv, cx));
             let (socket, state) = guard.try_get_connected()?;
 
             match socket.poll_recv_ready(cx) {
                 Poll::Pending => {
-                    self.recv_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -624,16 +670,11 @@ impl Future for RecvFut<'_, '_> {
         let Self { socket, buffer } = &mut *self;
 
         loop {
-            if let Err(err) = socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
+            let guard = n0_future::ready!(socket.poll_read_socket(&socket.wakers.recv, cx));
             let (inner_socket, _state) = guard.try_get_connected()?;
 
             match inner_socket.poll_recv_ready(cx) {
                 Poll::Pending => {
-                    self.socket.recv_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -674,16 +715,11 @@ impl Future for RecvFromFut<'_, '_> {
         let Self { socket, buffer } = &mut *self;
 
         loop {
-            if let Err(err) = socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard = n0_future::ready!(socket.poll_read_socket(&socket.recv_waker, cx));
+            let guard = n0_future::ready!(socket.poll_read_socket(&socket.wakers.recv, cx));
             let (inner_socket, _state) = guard.try_get_connected()?;
 
             match inner_socket.poll_recv_ready(cx) {
                 Poll::Pending => {
-                    self.socket.recv_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -722,17 +758,12 @@ impl Future for SendFut<'_, '_> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
-            if let Err(err) = self.socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
             let guard =
-                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.wakers.send, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
-                    self.socket.send_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -772,17 +803,12 @@ impl Future for SendToFut<'_, '_> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
-            if let Err(err) = self.socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
             let guard =
-                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.wakers.send, cx));
             let (socket, _state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
-                    self.socket.send_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -1063,13 +1089,6 @@ impl UdpSender {
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
         loop {
-            if let Err(err) = this.socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
-            let guard =
-                n0_future::ready!(this.socket.poll_read_socket(&this.socket.send_waker, cx));
-
             if this.fut.is_none() {
                 let socket = this.socket.clone();
                 this.fut.set(Some(Box::pin(async move {
@@ -1089,6 +1108,8 @@ impl UdpSender {
             // If .writable() fails, propagate the error
             result?;
 
+            let guard =
+                n0_future::ready!(this.socket.poll_read_socket(&this.socket.wakers.send, cx));
             let (socket, state) = guard.try_get_connected()?;
             let result = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
@@ -1133,17 +1154,12 @@ impl Future for SendFutNoq<'_, '_> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
-            if let Err(err) = self.socket.maybe_rebind() {
-                return Poll::Ready(Err(err));
-            }
-
             let guard =
-                n0_future::ready!(self.socket.poll_read_socket(&self.socket.send_waker, cx));
+                n0_future::ready!(self.socket.poll_read_socket(&self.socket.wakers.send, cx));
             let (socket, state) = guard.try_get_connected()?;
 
             match socket.poll_send_ready(cx) {
                 Poll::Pending => {
-                    self.socket.send_waker.register(cx.waker());
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
@@ -1183,6 +1199,206 @@ mod tests {
     use testresult::TestResult;
 
     use super::*;
+
+    #[derive(Default)]
+    struct WakeCount(AtomicUsize);
+
+    impl Wake for WakeCount {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    fn rebind_fault() -> (Arc<UdpSocket>, Arc<AtomicBool>, Arc<AtomicUsize>) {
+        let fail = Arc::new(AtomicBool::new(false));
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let options = BindOptions::new().configure_socket({
+            let fail = fail.clone();
+            let attempts = attempts.clone();
+            move |_, _| {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                if fail.load(Ordering::SeqCst) {
+                    Err(io::ErrorKind::AddrInUse.into())
+                } else {
+                    Ok(())
+                }
+            }
+        });
+        let socket = Arc::new(
+            UdpSocket::bind_with("127.0.0.1:0".parse::<SocketAddr>().unwrap(), options).unwrap(),
+        );
+        (socket, fail, attempts)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_rebind_backs_off_and_wakes_both_directions() {
+        let (socket, fail, attempts) = rebind_fault();
+        let address = socket.local_addr().unwrap();
+        let receiver = Arc::new(WakeCount::default());
+        let sender = Arc::new(WakeCount::default());
+        let recv_waker = Waker::from(receiver.clone());
+        let send_waker = Waker::from(sender.clone());
+        let mut recv_cx = Context::from_waker(&recv_waker);
+        let mut send_cx = Context::from_waker(&send_waker);
+        let mut storage = [0u8; 64];
+        let mut bufs = [io::IoSliceMut::new(&mut storage)];
+        let mut metas = [noq_udp::RecvMeta::default()];
+        assert!(
+            socket
+                .poll_recv_noq(&mut recv_cx, &mut bufs, &mut metas)
+                .is_pending()
+        );
+        let _ = socket.poll_writable(&mut send_cx);
+        fail.store(true, Ordering::SeqCst);
+        assert_eq!(
+            socket.rebind().unwrap_err().kind(),
+            io::ErrorKind::AddrInUse
+        );
+        assert!(receiver.0.load(Ordering::SeqCst) > 0);
+        assert!(sender.0.load(Ordering::SeqCst) > 0);
+        assert!(socket.is_broken());
+        let transmit = Transmit {
+            destination: address,
+            ecn: None,
+            contents: b"ping",
+            segment_size: None,
+            src_ip: None,
+        };
+        let udp_sender = socket.clone().create_sender();
+        for delay in [100, 200, 400, 800, 1600, 3200, 5000, 5000] {
+            let before = attempts.load(Ordering::SeqCst);
+            for _ in 0..32 {
+                assert!(
+                    socket
+                        .poll_recv_noq(&mut recv_cx, &mut bufs, &mut metas)
+                        .is_pending()
+                );
+                assert!(socket.poll_writable(&mut send_cx).is_pending());
+                assert_eq!(
+                    socket.try_send_noq(&transmit).unwrap_err().kind(),
+                    io::ErrorKind::WouldBlock
+                );
+                assert_eq!(
+                    udp_sender.try_send(&transmit).unwrap_err().kind(),
+                    io::ErrorKind::WouldBlock
+                );
+            }
+            assert_eq!(attempts.load(Ordering::SeqCst), before);
+            receiver.0.store(0, Ordering::SeqCst);
+            sender.0.store(0, Ordering::SeqCst);
+            tokio::time::advance(Duration::from_millis(delay - 1)).await;
+            tokio::task::yield_now().await;
+            assert_eq!(receiver.0.load(Ordering::SeqCst), 0);
+            assert_eq!(sender.0.load(Ordering::SeqCst), 0);
+            tokio::time::advance(Duration::from_millis(2)).await;
+            tokio::task::yield_now().await;
+            assert!(receiver.0.load(Ordering::SeqCst) > 0);
+            assert!(sender.0.load(Ordering::SeqCst) > 0);
+            assert!(
+                socket
+                    .poll_recv_noq(&mut recv_cx, &mut bufs, &mut metas)
+                    .is_pending()
+            );
+            assert_eq!(attempts.load(Ordering::SeqCst), before + 1);
+        }
+        fail.store(false, Ordering::SeqCst);
+        tokio::time::advance(Duration::from_secs(5)).await;
+        assert!(
+            socket
+                .poll_recv_noq(&mut recv_cx, &mut bufs, &mut metas)
+                .is_pending()
+        );
+        assert!(!socket.is_broken());
+        assert_eq!(socket.local_addr().unwrap(), address);
+        receiver.0.store(0, Ordering::SeqCst);
+        socket.rebind().unwrap();
+        assert!(receiver.0.load(Ordering::SeqCst) > 0);
+    }
+
+    #[tokio::test]
+    async fn failed_rebind_recovers_pending_receive_without_another_notification() {
+        let (socket, fail, _) = rebind_fault();
+        let address = socket.local_addr().unwrap();
+        fail.store(true, Ordering::SeqCst);
+        assert!(socket.rebind().is_err());
+        let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let send = tokio::spawn({
+            let socket = socket.clone();
+            let destination = peer.local_addr().unwrap();
+            async move {
+                let transmit = Transmit {
+                    destination,
+                    ecn: None,
+                    contents: b"reply",
+                    segment_size: None,
+                    src_ip: None,
+                };
+                let mut sender = Box::pin(socket.create_sender());
+                std::future::poll_fn(|cx| sender.as_mut().poll_send(&transmit, cx))
+                    .await
+                    .unwrap();
+            }
+        });
+        let receive = tokio::spawn({
+            let socket = socket.clone();
+            async move {
+                let mut buffer = [0; 64];
+                let (n, _) = socket.recv_from(&mut buffer).await.unwrap();
+                assert_eq!(&buffer[..n], b"recovered");
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        fail.store(false, Ordering::SeqCst);
+        for _ in 0..50 {
+            peer.send_to(b"recovered", address).await.unwrap();
+            if receive.is_finished() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        tokio::time::timeout(Duration::from_secs(1), receive)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), send)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut reply = [0; 64];
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.recv(&mut reply))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&reply[..n], b"reply");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_cancels_failed_rebind_recovery() {
+        let (socket, fail, attempts) = rebind_fault();
+        let address = socket.local_addr().unwrap();
+        fail.store(true, Ordering::SeqCst);
+        assert!(socket.rebind().is_err());
+        let mut buffer = [0; 64];
+        let mut receive = Box::pin(socket.recv_from(&mut buffer));
+        let waker = Waker::from(Arc::new(WakeCount::default()));
+        let mut cx = Context::from_waker(&waker);
+        assert!(receive.as_mut().poll(&mut cx).is_pending());
+        socket.close().await;
+        fail.store(false, Ordering::SeqCst);
+        let before = attempts.load(Ordering::SeqCst);
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(receive.await.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(
+            socket.send_to(b"closed", address).await.unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+        assert_eq!(attempts.load(Ordering::SeqCst), before);
+        assert!(socket.is_closed());
+        assert!(!socket.is_broken());
+    }
 
     #[tokio::test]
     async fn test_reconnect() -> TestResult {
