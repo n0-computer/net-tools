@@ -1,49 +1,28 @@
-use std::collections::HashMap;
-
-use n0_error::{e, stack_error};
-use serde::Deserialize;
+use n0_error::stack_error;
 use tracing::warn;
-use wmi::{FilterValue, WMIConnection};
 
 use super::DefaultRouteDetails;
 pub(super) use super::netdev_impl::{get_state, home_router};
 
-/// API Docs: <https://learn.microsoft.com/en-us/previous-versions/windows/desktop/wmiiprouteprov/win32-ip4routetable>
-#[derive(Deserialize, Debug)]
-#[allow(non_camel_case_types, non_snake_case)]
-struct Win32_IP4RouteTable {
-    Name: String,
-}
-
 #[stack_error(derive, add_meta, std_sources, from_sources)]
 #[non_exhaustive]
 pub enum Error {
-    #[allow(dead_code)] // not sure why we have this here?
     #[error("IO")]
     Io { source: std::io::Error },
-    #[error("not route found")]
-    NoRoute {},
-    #[error("WMI")]
-    Wmi { source: wmi::WMIError },
 }
 
 fn get_default_route() -> Result<DefaultRouteDetails, Error> {
-    let wmi_con = WMIConnection::new()?;
-
-    let query: HashMap<_, _> = [("Destination".into(), FilterValue::Str("0.0.0.0"))].into();
-    let route: Win32_IP4RouteTable = wmi_con
-        .filtered_query(&query)?
-        .drain(..)
-        .next()
-        .ok_or_else(|| e!(Error::NoRoute))?;
+    // Use the same interface names as get_state, without requiring WMI/COM
+    // access in sandboxed processes.
+    let route = netdev::get_default_interface().map_err(std::io::Error::other)?;
 
     Ok(DefaultRouteDetails {
-        interface_name: route.Name,
+        interface_name: route.name,
     })
 }
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
-    // WMI uses COM which can deadlock on a tokio worker thread.
+    // Keep synchronous interface enumeration off the async worker thread.
     match tokio::task::spawn_blocking(get_default_route).await {
         Ok(Ok(route)) => Some(route),
         Ok(Err(err)) => {
@@ -53,6 +32,25 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
         Err(err) => {
             warn!("default route task panicked: {:#?}", err);
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn default_route_names_an_enumerated_interface() {
+        let state = get_state().await;
+        // A disconnected host may have no default route.
+        if let Some(name) = &state.default_route_interface {
+            assert!(
+                state.interfaces.contains_key(name),
+                "default route interface {:?} is missing from {:?}",
+                name,
+                state.interfaces.keys().collect::<Vec<_>>()
+            );
         }
     }
 }
