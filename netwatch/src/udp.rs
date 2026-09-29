@@ -1381,6 +1381,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
+    use n0_future::task::{self, AbortOnDropHandle};
     use testresult::TestResult;
 
     use super::*;
@@ -1510,6 +1511,364 @@ mod tests {
         assert!(!socket_a.is_broken());
 
         handle.await?;
+        Ok(())
+    }
+
+    /// A bind hook that fails on request, and counts the bind attempts.
+    #[derive(Debug, Default)]
+    struct FlakyBind {
+        fail: AtomicBool,
+        attempts: AtomicUsize,
+    }
+
+    impl FlakyBind {
+        /// Binds a socket on localhost. Each bind and rebind of the socket calls this hook.
+        fn bind(self: &Arc<Self>) -> io::Result<UdpSocket> {
+            let this = self.clone();
+            let opts = BindOptions::new().configure_socket(move |_socket, _family| {
+                this.attempts.fetch_add(1, Ordering::SeqCst);
+                if this.fail.load(Ordering::SeqCst) {
+                    Err(io::Error::other("bind failure for testing"))
+                } else {
+                    Ok(())
+                }
+            });
+            UdpSocket::bind_with(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), opts)
+        }
+
+        fn set_failing(&self, fail: bool) {
+            self.fail.store(fail, Ordering::SeqCst);
+        }
+
+        fn attempts(&self) -> usize {
+            self.attempts.load(Ordering::SeqCst)
+        }
+    }
+
+    /// Sends `msg` from `from` to `to` every 20ms, until the caller drops the handle.
+    ///
+    /// A datagram that arrives while the target socket is not bound is lost. Thus one send
+    /// is not enough when the test does not know when the target socket binds again.
+    fn send_repeatedly(
+        from: Arc<UdpSocket>,
+        msg: &'static [u8],
+        to: SocketAddr,
+    ) -> AbortOnDropHandle<()> {
+        AbortOnDropHandle::new(task::spawn(async move {
+            loop {
+                from.send_to(msg, to).await.ok();
+                time::sleep(Duration::from_millis(20)).await;
+            }
+        }))
+    }
+
+    /// A rebind fails, and the socket recovers when binds work again.
+    ///
+    /// While the socket is not bound, sends fail and receives wait. When binds work again,
+    /// a retry binds the socket to the same address. Then the receive that waits gets its
+    /// datagram, and sends work again.
+    #[tokio::test]
+    async fn test_failed_rebind_recovers() -> TestResult {
+        let flaky = Arc::new(FlakyBind::default());
+        let socket = flaky.bind()?;
+        let addr = socket.local_addr()?;
+        let peer = Arc::new(UdpSocket::bind_local(IpFamily::V4, 0)?);
+        let peer_addr = peer.local_addr()?;
+
+        flaky.set_failing(true);
+        assert!(socket.rebind().is_err());
+        assert!(socket.is_broken());
+
+        // Sends fail, and receives wait. The receive retries the bind while it waits.
+        let err = socket.send_to(b"pong", peer_addr).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotConnected);
+        let mut buffer = [0u8; 16];
+        let mut recv = socket.recv_from(&mut buffer);
+        assert!(
+            time::timeout(Duration::from_millis(400), &mut recv)
+                .await
+                .is_err()
+        );
+        assert!(flaky.attempts() > 2, "the receive did not retry the bind");
+
+        // Binds work again. A retry binds the socket, and the receive gets the datagram.
+        flaky.set_failing(false);
+        let _ping = send_repeatedly(peer.clone(), b"ping", addr);
+        let (count, from) = time::timeout(Duration::from_secs(10), recv).await??;
+        assert_eq!((&buffer[..count], from), (&b"ping"[..], peer_addr));
+        assert!(!socket.is_broken());
+        assert_eq!(socket.local_addr()?, addr);
+
+        socket.send_to(b"pong", peer_addr).await?;
+        let mut peer_buffer = [0u8; 16];
+        let (count, from) =
+            time::timeout(Duration::from_secs(5), peer.recv_from(&mut peer_buffer)).await??;
+        assert_eq!((&peer_buffer[..count], from), (&b"pong"[..], addr));
+        Ok(())
+    }
+
+    /// The delay between retries starts at `REBIND_RETRY_INITIAL_DELAY`, and doubles up to
+    /// `REBIND_RETRY_MAX_DELAY`.
+    ///
+    /// Each retry occurs exactly when its delay passes. When no task polls the socket, no
+    /// retries occur.
+    #[tokio::test(start_paused = true)]
+    async fn test_rebind_retries_back_off() -> TestResult {
+        let flaky = Arc::new(FlakyBind::default());
+        let socket = Arc::new(flaky.bind()?);
+        flaky.set_failing(true);
+        assert!(socket.rebind().is_err());
+        assert_eq!(flaky.attempts(), 2);
+
+        // A receive that waits polls the retry timer.
+        let recv = AbortOnDropHandle::new(task::spawn({
+            let socket = socket.clone();
+            async move {
+                let mut buffer = [0u8; 16];
+                socket.recv_from(&mut buffer).await.ok();
+            }
+        }));
+        tokio::task::yield_now().await;
+
+        // The schedule ends after two retries with the maximum delay.
+        let mut delays = vec![REBIND_RETRY_INITIAL_DELAY];
+        while !delays.ends_with(&[REBIND_RETRY_MAX_DELAY; 2]) {
+            let last = *delays.last().expect("not empty");
+            delays.push((last * 2).min(REBIND_RETRY_MAX_DELAY));
+        }
+
+        let one_ms = Duration::from_millis(1);
+        for (i, delay) in delays.iter().enumerate() {
+            tokio::time::advance(*delay - one_ms).await;
+            tokio::task::yield_now().await;
+            assert_eq!(flaky.attempts(), 2 + i, "retried before {delay:?}");
+            tokio::time::advance(one_ms).await;
+            tokio::task::yield_now().await;
+            assert_eq!(flaky.attempts(), 3 + i, "did not retry after {delay:?}");
+        }
+
+        drop(recv);
+        tokio::time::advance(Duration::from_secs(60)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(flaky.attempts(), 2 + delays.len());
+        Ok(())
+    }
+
+    /// An I/O error starts a rebind, and the bind fails.
+    ///
+    /// The send that starts the rebind returns the bind error. Until the retry is due,
+    /// sends fail and do not try to bind. After the delay, a send binds the socket again.
+    #[tokio::test]
+    async fn test_failed_rebind_after_error_recovers_by_sender() -> TestResult {
+        let flaky = Arc::new(FlakyBind::default());
+        let socket = flaky.bind()?;
+        let addr = socket.local_addr()?;
+        let peer = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        let peer_addr = peer.local_addr()?;
+
+        flaky.set_failing(true);
+        socket.mark_broken();
+        assert!(socket.send_to(b"hello", peer_addr).await.is_err());
+        assert_eq!(flaky.attempts(), 2);
+
+        let err = socket.send_to(b"hello", peer_addr).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotConnected);
+        assert_eq!(flaky.attempts(), 2);
+
+        flaky.set_failing(false);
+        time::sleep(Duration::from_millis(150)).await;
+        socket.send_to(b"hello", peer_addr).await?;
+        assert!(!socket.is_broken());
+        let mut buffer = [0u8; 16];
+        let (count, from) =
+            time::timeout(Duration::from_secs(5), peer.recv_from(&mut buffer)).await??;
+        assert_eq!((&buffer[..count], from), (&b"hello"[..], addr));
+        Ok(())
+    }
+
+    /// Regression test for a lost wakeup of a receive that waits.
+    ///
+    /// Other threads send on the socket while binds fail. These sends take the socket lock
+    /// often. A receive that finds the lock taken must still wake when a retry is due. The
+    /// senders stop before the test ends, so only the timer of the receive can retry the
+    /// bind. The race is rare, so the test runs 20 times.
+    #[tokio::test]
+    async fn test_unbound_receiver_wakes_under_send_load() -> TestResult {
+        for _ in 0..20 {
+            let flaky = Arc::new(FlakyBind::default());
+            let socket = Arc::new(flaky.bind()?);
+            let addr = socket.local_addr()?;
+            let peer = Arc::new(UdpSocket::bind_local(IpFamily::V4, 0)?);
+            let transmit_to = peer.local_addr()?;
+            flaky.set_failing(true);
+            socket.rebind().ok();
+
+            let stop = Arc::new(AtomicBool::new(false));
+            let senders: Vec<_> = (0..3)
+                .map(|_| {
+                    let socket = socket.clone();
+                    let stop = stop.clone();
+                    let runtime = tokio::runtime::Handle::current();
+                    std::thread::spawn(move || {
+                        // A send can bind the socket, which needs the runtime.
+                        let _guard = runtime.enter();
+                        let transmit = noq_udp::Transmit {
+                            destination: transmit_to,
+                            ecn: None,
+                            contents: b"x",
+                            segment_size: None,
+                            src_ip: None,
+                        };
+                        while !stop.load(Ordering::SeqCst) {
+                            socket.try_send_noq(&transmit).ok();
+                        }
+                    })
+                })
+                .collect();
+
+            let recv = task::spawn({
+                let socket = socket.clone();
+                async move {
+                    let mut buffer = [0u8; 16];
+                    socket.recv_from(&mut buffer).await.map(|(n, _)| n)
+                }
+            });
+            time::sleep(Duration::from_millis(150)).await;
+            flaky.set_failing(false);
+            time::sleep(Duration::from_millis(50)).await;
+            stop.store(true, Ordering::SeqCst);
+            for sender in senders {
+                sender.join().expect("sender thread panicked");
+            }
+
+            let _ping = send_repeatedly(peer, b"hi", addr);
+            let count = time::timeout(Duration::from_secs(10), recv).await???;
+            assert_eq!(count, 2);
+        }
+        Ok(())
+    }
+
+    /// Regression test: a send must not strand a receive that waits.
+    ///
+    /// The retry timer holds only one waker. If a send polls the timer, it replaces the
+    /// waker of the receive. If the task of the send then stops, no task retries the bind,
+    /// and the receive waits forever.
+    #[tokio::test]
+    async fn test_send_does_not_strand_waiting_receive() -> TestResult {
+        let flaky = Arc::new(FlakyBind::default());
+        let socket = Arc::new(flaky.bind()?);
+        let addr = socket.local_addr()?;
+        let peer = Arc::new(UdpSocket::bind_local(IpFamily::V4, 0)?);
+        flaky.set_failing(true);
+        assert!(socket.rebind().is_err());
+
+        let recv = task::spawn({
+            let socket = socket.clone();
+            async move {
+                let mut buffer = [0u8; 16];
+                socket.recv_from(&mut buffer).await.map(|(n, _)| n)
+            }
+        });
+        time::sleep(Duration::from_millis(50)).await;
+
+        // Poll each kind of send one time, from a task that does not poll again.
+        let peer_addr = peer.local_addr()?;
+        let transmit = noq_udp::Transmit {
+            destination: peer_addr,
+            ecn: None,
+            contents: b"x",
+            segment_size: None,
+            src_ip: None,
+        };
+        let mut cx = Context::from_waker(std::task::Waker::noop());
+        let mut sender = std::pin::pin!(socket.clone().create_sender());
+        let sends = [
+            socket
+                .poll_send_noq(&mut cx, &transmit)
+                .map(|res| res.map(|_| ())),
+            std::pin::pin!(socket.send(b"x"))
+                .poll(&mut cx)
+                .map(|res| res.map(|_| ())),
+            std::pin::pin!(socket.send_to(b"x", peer_addr))
+                .poll(&mut cx)
+                .map(|res| res.map(|_| ())),
+            std::pin::pin!(sender.send(&transmit)).poll(&mut cx),
+            sender.as_mut().poll_send(&transmit, &mut cx),
+        ];
+        for (i, send) in sends.into_iter().enumerate() {
+            assert!(matches!(send, Poll::Ready(Err(_))), "send {i} did not fail");
+        }
+
+        flaky.set_failing(false);
+        let _ping = send_repeatedly(peer, b"hi", addr);
+        let count = time::timeout(Duration::from_secs(10), recv).await???;
+        assert_eq!(count, 2);
+        Ok(())
+    }
+
+    /// Regression test for a deadlock between a rebind and [`UdpSender::poll_send`].
+    ///
+    /// The sender held the read lock while it waited for the socket to become writable.
+    /// That wait rebinds a broken socket, which takes the write lock on the same thread. A
+    /// deadlock stops the runtime thread, so a second thread checks for it.
+    #[test]
+    fn test_rebind_during_send_does_not_deadlock() {
+        let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            runtime.block_on(send_while_rebinding());
+            done_tx.send(()).ok();
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(20))
+            .expect("sending deadlocked against a rebind");
+    }
+
+    /// Sends on a socket, while a second thread marks the socket as broken and rebinds it.
+    async fn send_while_rebinding() {
+        let socket = Arc::new(UdpSocket::bind_local(IpFamily::V4, 0).expect("bind"));
+        let peer = UdpSocket::bind_local(IpFamily::V4, 0).expect("bind");
+        let transmit = noq_udp::Transmit {
+            destination: peer.local_addr().expect("local addr"),
+            ecn: None,
+            contents: b"hello",
+            segment_size: None,
+            src_ip: None,
+        };
+        let rebinder = std::thread::spawn({
+            let socket = socket.clone();
+            let runtime = tokio::runtime::Handle::current();
+            move || {
+                let _guard = runtime.enter();
+                for _ in 0..2_000 {
+                    socket.mark_broken();
+                    socket.rebind().ok();
+                }
+            }
+        });
+        let mut sender = std::pin::pin!(socket.clone().create_sender());
+        while !rebinder.is_finished() {
+            n0_future::future::poll_fn(|cx| sender.as_mut().poll_send(&transmit, cx))
+                .await
+                .ok();
+        }
+    }
+
+    /// A closed socket stays closed. A rebind fails, and receives fail.
+    #[tokio::test]
+    async fn test_close_is_final() -> TestResult {
+        let socket = UdpSocket::bind_local(IpFamily::V4, 0)?;
+        socket.close().await;
+        assert!(socket.is_closed());
+        assert!(!socket.is_broken());
+        assert!(socket.rebind().is_err());
+        assert!(socket.is_closed());
+        let mut buffer = [0u8; 16];
+        let recv = time::timeout(Duration::from_secs(1), socket.recv_from(&mut buffer));
+        assert!(recv.await?.is_err());
         Ok(())
     }
 
