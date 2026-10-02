@@ -33,6 +33,26 @@ pub struct UdpSocket {
 /// is the max supported by a default configuration of macOS. Some platforms will silently clamp the value.
 const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 
+#[cfg(target_vendor = "apple")]
+fn enable_apple_fast_path(state: &noq_udp::UdpSocketState) {
+    // sendmsg_x and recvmsg_x are private Apple entry points. Resolve both before
+    // telling noq-udp to use them so older systems retain the portable path.
+    // SAFETY: RTLD_DEFAULT is a valid lookup handle and both names are
+    // nul-terminated string literals.
+    let available = unsafe {
+        !libc::dlsym(libc::RTLD_DEFAULT, c"sendmsg_x".as_ptr()).is_null()
+            && !libc::dlsym(libc::RTLD_DEFAULT, c"recvmsg_x".as_ptr()).is_null()
+    };
+    if available {
+        // SAFETY: both symbols needed by noq-udp's Apple batch path were resolved
+        // in this process immediately above.
+        unsafe { state.set_apple_fast_path() };
+        debug!("enabled Apple UDP batch I/O");
+    } else {
+        debug!("Apple UDP batch I/O is unavailable");
+    }
+}
+
 /// A socket that is about to be bound, handed to the hook set with
 /// [`BindOptions::configure_socket`].
 ///
@@ -894,6 +914,8 @@ impl SocketState {
         let socket = tokio::net::UdpSocket::from_std(socket)?;
         let socket_ref = noq_udp::UdpSockRef::from(&socket);
         let socket_state = noq_udp::UdpSocketState::new(socket_ref)?;
+        #[cfg(target_vendor = "apple")]
+        enable_apple_fast_path(&socket_state);
 
         let local_addr = socket.local_addr()?;
         if addr.port() != 0 && local_addr.port() != addr.port() {

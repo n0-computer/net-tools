@@ -36,7 +36,7 @@ tracing = "0.1"
 
 # non-browser dependencies
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-noq-udp = "1.0.0"
+noq-udp = { version = "1.0.0", features = ["fast-apple-datapath"] }
 libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = ["rt", "net"] }
