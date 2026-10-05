@@ -33,6 +33,10 @@ pub struct UdpSocket {
 /// is the max supported by a default configuration of macOS. Some platforms will silently clamp the value.
 const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 
+#[allow(
+    rustdoc::broken_intra_doc_links,
+    reason = "AsFd and AsSocket are only conditionally imported based on the target"
+)]
 /// A socket that is about to be bound, handed to the hook set with
 /// [`BindOptions::configure_socket`].
 ///
