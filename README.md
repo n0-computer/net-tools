@@ -21,4 +21,6 @@ at your option.
 
 ## Contribution
 
+This project follows the [iroh contributing guidelines](https://github.com/n0-computer/iroh/blob/main/CONTRIBUTING.md). Please read them, along with our [AI Policy](https://github.com/n0-computer/net-tools/blob/main/AI_POLICY.md), before opening an issue or pull request.
+
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
