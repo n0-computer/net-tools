@@ -1214,8 +1214,10 @@ impl Future for SendFutNoq<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_vendor = "apple")]
+    use std::net::Ipv6Addr;
     use std::{
-        net::{Ipv4Addr, Ipv6Addr},
+        net::Ipv4Addr,
         sync::atomic::{AtomicUsize, Ordering},
     };
 
