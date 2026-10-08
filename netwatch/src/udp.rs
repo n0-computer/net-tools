@@ -19,6 +19,62 @@ use tracing::{debug, trace, warn};
 
 use super::IpFamily;
 
+/// A datagram socket implemented outside the OS, such as a UDP socket in a
+/// userspace network stack inside a VPN tunnel.
+///
+/// Wrap one with [`UdpSocket::from_custom`], or return it from the hook set
+/// with [`set_bind_hook`] to replace the sockets other crates bind. It carries
+/// one datagram per call: no GSO, no GRO, no ECN, and rebinding is a no-op.
+pub trait CustomUdpSocket: std::fmt::Debug + Send + Sync + 'static {
+    /// Attempts to send `buf` as one datagram to `target`.
+    ///
+    /// On `Poll::Pending`, the waker in `cx` must be woken once sending may succeed.
+    fn poll_send_to(
+        &self,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+        target: SocketAddr,
+    ) -> Poll<io::Result<()>>;
+
+    /// Attempts to receive one datagram into `buf`, returning its length and sender.
+    ///
+    /// On `Poll::Pending`, the waker in `cx` must be woken once a datagram arrives.
+    fn poll_recv_from(
+        &self,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<(usize, SocketAddr)>>;
+
+    /// The local address of the socket.
+    fn local_addr(&self) -> io::Result<SocketAddr>;
+}
+
+/// A process-wide hook consulted by every bind, see [`set_bind_hook`].
+type BindHook = dyn Fn(SocketAddr) -> Option<io::Result<Arc<dyn CustomUdpSocket>>> + Send + Sync;
+
+static BIND_HOOK: RwLock<Option<Arc<BindHook>>> = RwLock::new(None);
+
+/// Replaces OS sockets with custom ones, process-wide.
+///
+/// Every [`UdpSocket`] bind first calls `hook` with the requested address. If
+/// it returns `Some`, the bind returns that socket (or error) instead of
+/// binding an OS socket. Returning `None` binds an OS socket as usual.
+///
+/// This is a blunt instrument for running unmodified users of this crate, such
+/// as iroh's IP transport, on a custom network stack. It affects every bind in
+/// the process, so set it before anything binds, and make the hook decide by
+/// address.
+pub fn set_bind_hook(
+    hook: impl Fn(SocketAddr) -> Option<io::Result<Arc<dyn CustomUdpSocket>>> + Send + Sync + 'static,
+) {
+    *BIND_HOOK.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(hook));
+}
+
+/// Removes the hook set with [`set_bind_hook`].
+pub fn clear_bind_hook() {
+    *BIND_HOOK.write().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// Wrapper around a tokio UDP socket.
 #[derive(Debug)]
 pub struct UdpSocket {
@@ -182,15 +238,39 @@ impl UdpSocket {
     }
 
     /// Bind to any provided [`SocketAddr`], using the given [`BindOptions`].
+    ///
+    /// If a hook is set with [`set_bind_hook`] and returns a socket for this
+    /// address, that socket is used instead and the options are ignored.
     pub fn bind_with(addr: impl Into<SocketAddr>, opts: BindOptions) -> io::Result<Self> {
-        let socket = SocketState::bind(addr.into(), opts.configure)?;
+        let addr = addr.into();
+        let hook = BIND_HOOK.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(custom) = hook.and_then(|hook| hook(addr)) {
+            return Ok(Self::from_custom(custom?));
+        }
+        let socket = SocketState::bind(addr, opts.configure)?;
+        Ok(Self::from_state(socket))
+    }
 
-        Ok(UdpSocket {
+    /// Wraps a [`CustomUdpSocket`].
+    pub fn from_custom(socket: Arc<dyn CustomUdpSocket>) -> Self {
+        Self::from_state(SocketState::Custom(socket))
+    }
+
+    fn from_state(socket: SocketState) -> Self {
+        UdpSocket {
             socket: RwLock::new(socket),
             recv_waker: AtomicWaker::default(),
             send_waker: AtomicWaker::default(),
             is_broken: AtomicBool::new(false),
-        })
+        }
+    }
+
+    /// The custom socket, if this wraps one.
+    fn custom(&self) -> Option<Arc<dyn CustomUdpSocket>> {
+        match &*self.socket.read().unwrap_or_else(|e| e.into_inner()) {
+            SocketState::Custom(socket) => Some(socket.clone()),
+            _ => None,
+        }
     }
 
     /// Is the socket broken and needs a rebind?
@@ -299,6 +379,9 @@ impl UdpSocket {
 
     /// Returns the local address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        if let Some(custom) = self.custom() {
+            return custom.local_addr();
+        }
         let guard = self.socket.read().unwrap();
         let (socket, _state) = guard.try_get_connected()?;
 
@@ -420,6 +503,10 @@ impl UdpSocket {
 
     /// Poll for writable
     pub fn poll_writable(&self, cx: &mut std::task::Context<'_>) -> Poll<io::Result<()>> {
+        if self.custom().is_some() {
+            // A custom socket has no readiness; its send applies backpressure.
+            return Poll::Ready(Ok(()));
+        }
         loop {
             if let Err(err) = self.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -446,6 +533,9 @@ impl UdpSocket {
 
     /// Send a noq based `Transmit`.
     pub fn try_send_noq(&self, transmit: &Transmit<'_>) -> io::Result<()> {
+        if let Some(custom) = self.custom() {
+            return try_send_custom(&*custom, transmit);
+        }
         loop {
             self.maybe_rebind()?;
 
@@ -476,6 +566,9 @@ impl UdpSocket {
 
     /// poll send a noq based `Transmit`.
     pub fn poll_send_noq(&self, cx: &mut Context, transmit: &Transmit<'_>) -> Poll<io::Result<()>> {
+        if let Some(custom) = self.custom() {
+            return poll_send_custom(&*custom, cx, transmit);
+        }
         loop {
             if let Err(err) = self.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -521,6 +614,17 @@ impl UdpSocket {
         bufs: &mut [io::IoSliceMut<'_>],
         meta: &mut [noq_udp::RecvMeta],
     ) -> Poll<io::Result<usize>> {
+        if let Some(custom) = self.custom() {
+            let (Some(buf), Some(meta)) = (bufs.first_mut(), meta.first_mut()) else {
+                return Poll::Ready(Ok(0));
+            };
+            let (len, addr) = std::task::ready!(custom.poll_recv_from(cx, buf))?;
+            *meta = noq_udp::RecvMeta::default();
+            meta.addr = addr;
+            meta.len = len;
+            meta.stride = len;
+            return Poll::Ready(Ok(1));
+        }
         loop {
             if let Err(err) = self.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -707,6 +811,9 @@ impl Future for RecvFromFut<'_, '_> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let Self { socket, buffer } = &mut *self;
+        if let Some(custom) = socket.custom() {
+            return custom.poll_recv_from(cx, buffer);
+        }
 
         loop {
             if let Err(err) = socket.maybe_rebind() {
@@ -806,6 +913,11 @@ impl Future for SendToFut<'_, '_> {
     type Output = io::Result<usize>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        if let Some(custom) = self.socket.custom() {
+            return custom
+                .poll_send_to(cx, self.buffer, self.to)
+                .map_ok(|()| self.buffer.len());
+        }
         loop {
             if let Err(err) = self.socket.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -856,6 +968,8 @@ enum SocketState {
         #[debug(skip)]
         configure: Option<Configurator>,
     },
+    /// A custom socket. Never closed or rebound.
+    Custom(#[debug("{_0:?}")] Arc<dyn CustomUdpSocket>),
     Closed {
         /// The addr to rebind to when recovering.
         addr: SocketAddr,
@@ -881,6 +995,10 @@ impl SocketState {
                 warn!("socket closed");
                 Err(io::Error::new(io::ErrorKind::BrokenPipe, "socket closed"))
             }
+            Self::Custom(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "not supported on a custom socket",
+            )),
         }
     }
 
@@ -954,6 +1072,8 @@ impl SocketState {
 
     fn rebind(&mut self) -> io::Result<()> {
         let (addr, configure) = match self {
+            // Whatever drives a custom socket handles reconnects itself.
+            Self::Custom(_) => return Ok(()),
             Self::Connected {
                 addr, configure, ..
             }
@@ -1012,12 +1132,13 @@ impl SocketState {
                 };
                 Some((socket, state))
             }
-            Self::Closed { .. } => None,
+            Self::Closed { .. } | Self::Custom(_) => None,
         }
     }
 
     fn may_fragment(&self) -> bool {
         match self {
+            Self::Custom(_) => false,
             Self::Connected { state, .. } => state.may_fragment(),
             Self::Closed {
                 last_may_fragment, ..
@@ -1027,6 +1148,7 @@ impl SocketState {
 
     fn max_gso_segments(&self) -> NonZeroUsize {
         match self {
+            Self::Custom(_) => NonZeroUsize::MIN,
             Self::Connected { state, .. } => state.max_gso_segments(),
             Self::Closed {
                 last_max_gso_segments,
@@ -1037,6 +1159,7 @@ impl SocketState {
 
     fn gro_segments(&self) -> NonZeroUsize {
         match self {
+            Self::Custom(_) => NonZeroUsize::MIN,
             Self::Connected { state, .. } => state.gro_segments(),
             Self::Closed {
                 last_gro_segments, ..
@@ -1101,6 +1224,9 @@ impl UdpSender {
         cx: &mut Context,
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
+        if let Some(custom) = this.socket.custom() {
+            return poll_send_custom(&*custom, cx, transmit);
+        }
         loop {
             if let Err(err) = this.socket.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -1145,6 +1271,9 @@ impl UdpSender {
 
     /// Best effort sending
     pub fn try_send(&self, transmit: &noq_udp::Transmit) -> io::Result<()> {
+        if let Some(custom) = self.socket.custom() {
+            return try_send_custom(&*custom, transmit);
+        }
         self.socket.maybe_rebind()?;
 
         match self.socket.socket.try_read() {
@@ -1171,6 +1300,9 @@ impl Future for SendFutNoq<'_, '_> {
     type Output = io::Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        if let Some(custom) = self.socket.custom() {
+            return poll_send_custom(&*custom, cx, self.transmit);
+        }
         loop {
             if let Err(err) = self.socket.maybe_rebind() {
                 return Poll::Ready(Err(err));
@@ -1212,6 +1344,36 @@ impl Future for SendFutNoq<'_, '_> {
     }
 }
 
+/// Sends a noq transmit on a custom socket, one datagram at a time.
+///
+/// The socket reports one GSO segment, so noq should not batch; split anyway
+/// in case `segment_size` is set.
+fn poll_send_custom(
+    socket: &dyn CustomUdpSocket,
+    cx: &mut Context<'_>,
+    transmit: &Transmit<'_>,
+) -> Poll<io::Result<()>> {
+    let segment = transmit
+        .segment_size
+        .unwrap_or(transmit.contents.len())
+        .max(1);
+    for datagram in transmit.contents.chunks(segment) {
+        std::task::ready!(socket.poll_send_to(cx, datagram, transmit.destination))?;
+    }
+    Poll::Ready(Ok(()))
+}
+
+fn try_send_custom(socket: &dyn CustomUdpSocket, transmit: &Transmit<'_>) -> io::Result<()> {
+    let mut cx = Context::from_waker(std::task::Waker::noop());
+    match poll_send_custom(socket, &mut cx, transmit) {
+        Poll::Ready(result) => result,
+        Poll::Pending => Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "custom socket busy",
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(target_vendor = "apple")]
@@ -1224,6 +1386,106 @@ mod tests {
     use testresult::TestResult;
 
     use super::*;
+
+    /// An in-memory datagram socket: sends loop back to itself.
+    #[derive(Debug)]
+    struct Loopback {
+        addr: SocketAddr,
+        queue: std::sync::Mutex<std::collections::VecDeque<(Vec<u8>, SocketAddr)>>,
+        waker: AtomicWaker,
+    }
+
+    impl Loopback {
+        fn new(addr: SocketAddr) -> Arc<Self> {
+            Arc::new(Self {
+                addr,
+                queue: Default::default(),
+                waker: AtomicWaker::new(),
+            })
+        }
+    }
+
+    impl CustomUdpSocket for Loopback {
+        fn poll_send_to(
+            &self,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+            _target: SocketAddr,
+        ) -> Poll<io::Result<()>> {
+            self.queue
+                .lock()
+                .unwrap()
+                .push_back((buf.to_vec(), self.addr));
+            self.waker.wake();
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_recv_from(
+            &self,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<io::Result<(usize, SocketAddr)>> {
+            self.waker.register(cx.waker());
+            match self.queue.lock().unwrap().pop_front() {
+                Some((data, from)) => {
+                    buf[..data.len()].copy_from_slice(&data);
+                    Poll::Ready(Ok((data.len(), from)))
+                }
+                None => Poll::Pending,
+            }
+        }
+
+        fn local_addr(&self) -> io::Result<SocketAddr> {
+            Ok(self.addr)
+        }
+    }
+
+    #[tokio::test]
+    async fn custom_socket_noq_roundtrip() -> TestResult {
+        let addr: SocketAddr = "10.1.0.2:4000".parse()?;
+        let socket = Arc::new(UdpSocket::from_custom(Loopback::new(addr)));
+        assert_eq!(socket.local_addr()?, addr);
+        assert_eq!(socket.max_gso_segments().get(), 1);
+        assert_eq!(socket.gro_segments().get(), 1);
+        socket.rebind()?;
+
+        let sender = socket.clone().create_sender();
+        let transmit = Transmit {
+            destination: "192.0.2.1:9".parse()?,
+            ecn: None,
+            contents: b"hello",
+            segment_size: None,
+            src_ip: None,
+        };
+        sender.send(&transmit).await?;
+
+        let mut buf = [0u8; 64];
+        let mut meta = [noq_udp::RecvMeta::default()];
+        let count = n0_future::future::poll_fn(|cx| {
+            socket.poll_recv_noq(cx, &mut [io::IoSliceMut::new(&mut buf)], &mut meta)
+        })
+        .await?;
+        assert_eq!(count, 1);
+        assert_eq!(meta[0].addr, addr);
+        assert_eq!(&buf[..meta[0].len], b"hello");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bind_hook_replaces_matching_binds() -> TestResult {
+        // Only claim a TEST-NET address, so tests binding in parallel are unaffected.
+        let claimed: SocketAddr = "192.0.2.77:0".parse()?;
+        let custom: SocketAddr = "10.1.0.3:5000".parse()?;
+        set_bind_hook(move |addr| {
+            (addr == claimed).then(|| Ok(Loopback::new(custom) as Arc<dyn CustomUdpSocket>))
+        });
+        let hooked = UdpSocket::bind_full(claimed);
+        let plain = UdpSocket::bind_full((Ipv4Addr::LOCALHOST, 0));
+        clear_bind_hook();
+        assert_eq!(hooked?.local_addr()?, custom);
+        assert!(plain?.local_addr()?.ip().is_loopback());
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_reconnect() -> TestResult {
