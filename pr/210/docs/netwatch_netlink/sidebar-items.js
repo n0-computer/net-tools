@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Error","Message","RouteFamily"],"fn":["group_flag"],"struct":["AddressMessage","AsyncConnection","Connection","EventSocket","LinkMessage","RouteMessage"]};
