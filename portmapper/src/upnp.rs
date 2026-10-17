@@ -72,18 +72,7 @@ impl Mapping {
         let gateway = if let Some(known_gateway) = gateway {
             known_gateway
         } else {
-            // Wrap in manual timeout, because igd_next doesn't respect the set timeout
-            tokio::time::timeout(
-                SEARCH_TIMEOUT,
-                aigd::tokio::search_gateway(igd_next::SearchOptions {
-                    timeout: Some(SEARCH_TIMEOUT),
-                    ..Default::default()
-                }),
-            )
-            .await
-            .map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })??
+            search_gateway_on_blocking_thread().await?
         };
 
         let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
@@ -162,27 +151,47 @@ impl Mapping {
 pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
     metrics.upnp_probes.inc();
 
-    // Wrap in manual timeout, because igd_next doesn't respect the set timeout
-    let res = tokio::time::timeout(
-        SEARCH_TIMEOUT,
-        aigd::tokio::search_gateway(igd_next::SearchOptions {
-            timeout: Some(SEARCH_TIMEOUT),
-            ..Default::default()
-        }),
-    )
-    .await;
-
-    match res {
-        Ok(Ok(gateway)) => Some(gateway),
-        Err(e) => {
+    match search_gateway_on_blocking_thread().await {
+        Ok(gateway) => Some(gateway),
+        Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::TimedOut => {
             metrics.upnp_probes_failed.inc();
-            debug!("upnp probe timed out: {e}");
+            debug!("upnp probe timed out: {source}");
             None
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             metrics.upnp_probes_failed.inc();
             debug!("upnp probe failed: {e}");
             None
         }
     }
+}
+
+async fn search_gateway_on_blocking_thread() -> Result<Gateway, Error> {
+    tokio::task::spawn_blocking(|| {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| e!(Error::Io, error))?;
+
+        runtime.block_on(async {
+            // Wrap in manual timeout, because igd_next doesn't respect the set timeout.
+            tokio::time::timeout(
+                SEARCH_TIMEOUT,
+                aigd::tokio::search_gateway(igd_next::SearchOptions {
+                    timeout: Some(SEARCH_TIMEOUT),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .map_err(|_| {
+                e!(
+                    Error::Io,
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout")
+                )
+            })?
+            .map_err(|error| e!(Error::Search, error))
+        })
+    })
+    .await
+    .map_err(|error| e!(Error::Io, std::io::Error::other(error)))?
 }
