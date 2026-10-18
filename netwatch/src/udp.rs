@@ -216,7 +216,7 @@ impl UdpSocket {
             socket: RwLock::new(socket),
             recv_waker,
             send_waker,
-            recovery: Mutex::new(Recovery::default()),
+            recovery: Mutex::new(Recovery::new()),
             recovery_waker,
             is_broken: AtomicBool::new(false),
         })

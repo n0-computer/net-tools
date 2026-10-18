@@ -135,7 +135,7 @@ async fn recovery_timer_wakes_both_reader_and_writer() {
     let read_waker = Waker::from(Arc::clone(&reader));
     let write_waker = Waker::from(Arc::clone(&writer));
     let mut bytes = [0; 1];
-    let mut recv = Box::pin(socket.recv_from(&mut bytes));
+    let mut recv = std::pin::pin!(socket.recv_from(&mut bytes));
     assert!(
         recv.as_mut()
             .poll(&mut Context::from_waker(&read_waker))
@@ -151,4 +151,14 @@ async fn recovery_timer_wakes_both_reader_and_writer() {
     assert!(reader.0.load(std::sync::atomic::Ordering::SeqCst) > 0);
     assert!(writer.0.load(std::sync::atomic::Ordering::SeqCst) > 0);
     poll_fn(|cx| socket.poll_writable(cx)).await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_rebind_can_be_requested_outside_the_runtime() {
+    let socket = Arc::new(UdpSocket::bind_local_v4(0).unwrap());
+    break_binding(&socket);
+    let caller = Arc::clone(&socket);
+    let result = std::thread::spawn(move || caller.rebind()).join().unwrap();
+    assert!(result.is_err());
+    socket.close().await;
 }

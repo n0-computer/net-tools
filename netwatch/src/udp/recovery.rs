@@ -13,11 +13,12 @@ const MAX_FAILED_BINDS: u32 = 6;
 const INITIAL_DELAY: Duration = Duration::from_millis(100);
 const RECOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Recovery {
     phase: Phase,
     failures: u32,
     deadline: Option<Instant>,
+    runtime: tokio::runtime::Handle,
 }
 
 #[derive(Debug, Default)]
@@ -30,6 +31,15 @@ enum Phase {
 }
 
 impl Recovery {
+    pub(super) fn new() -> Self {
+        Self {
+            phase: Phase::Idle,
+            failures: 0,
+            deadline: None,
+            runtime: tokio::runtime::Handle::current(),
+        }
+    }
+
     pub(super) fn begin_explicit(&mut self) -> io::Result<()> {
         self.expire();
         match self.phase {
@@ -108,6 +118,7 @@ impl Recovery {
 
     fn schedule(&mut self, delay: Duration) {
         let deadline = self.deadline.expect("recovery has a deadline");
+        let _runtime = self.runtime.enter();
         self.phase = Phase::Waiting(Box::pin(sleep_until(
             (Instant::now() + delay).min(deadline),
         )));
