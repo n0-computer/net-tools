@@ -162,3 +162,20 @@ async fn failed_rebind_can_be_requested_outside_the_runtime() {
     assert!(result.is_err());
     socket.close().await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn terminal_polls_do_not_schedule_more_work() {
+    let socket = UdpSocket::bind_local_v4(0).unwrap();
+    break_binding(&socket);
+    assert!(socket.rebind().is_err());
+    tokio::time::advance(Duration::from_secs(6)).await;
+    let counter = Arc::new(WakeCount::default());
+    let waker = Waker::from(Arc::clone(&counter));
+    let mut cx = Context::from_waker(&waker);
+    assert!(socket.poll_writable(&mut cx).is_ready());
+    counter.0.store(0, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..100 {
+        assert!(socket.poll_writable(&mut cx).is_ready());
+    }
+    assert_eq!(counter.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
