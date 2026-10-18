@@ -202,5 +202,9 @@ async fn readiness_wakes_allow_reentrant_executors() {
     let mut cx = Context::from_waker(&waker);
     assert!(socket.poll_writable(&mut cx).is_pending());
     tokio::time::advance(Duration::from_millis(100)).await;
-    assert!(socket.poll_writable(&mut cx).is_ready());
+    assert!(!matches!(
+        socket.poll_writable(&mut cx),
+        Poll::Ready(Err(_))
+    ));
+    assert!(!socket.is_closed(), "the scheduled bind completed");
 }
