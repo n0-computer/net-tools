@@ -7,6 +7,18 @@ use super::*;
 #[derive(Default)]
 struct WakeCount(std::sync::atomic::AtomicUsize);
 
+struct WakeOutsideLocks(std::sync::Weak<UdpSocket>);
+
+impl std::task::Wake for WakeOutsideLocks {
+    fn wake(self: Arc<Self>) {
+        let socket = self.0.upgrade().unwrap();
+        assert!(
+            socket.recovery.try_lock().is_ok(),
+            "wake callbacks must run outside recovery locks"
+        );
+    }
+}
+
 impl std::task::Wake for WakeCount {
     fn wake(self: Arc<Self>) {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -178,4 +190,17 @@ async fn terminal_polls_do_not_schedule_more_work() {
         assert!(socket.poll_writable(&mut cx).is_ready());
     }
     assert_eq!(counter.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn readiness_wakes_allow_reentrant_executors() {
+    let socket = Arc::new(UdpSocket::bind_local_v4(0).unwrap());
+    break_binding(&socket);
+    assert!(socket.rebind().is_err());
+    restore_address(&socket);
+    let waker = Waker::from(Arc::new(WakeOutsideLocks(Arc::downgrade(&socket))));
+    let mut cx = Context::from_waker(&waker);
+    assert!(socket.poll_writable(&mut cx).is_pending());
+    tokio::time::advance(Duration::from_millis(100)).await;
+    assert!(socket.poll_writable(&mut cx).is_ready());
 }

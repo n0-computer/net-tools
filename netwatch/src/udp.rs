@@ -466,10 +466,11 @@ impl UdpSocket {
             let attempt = match std::task::ready!(recovery.poll(&mut timer_cx)) {
                 Ok(attempt) => attempt,
                 Err(error) => {
-                    if self
+                    let notify = self
                         .is_broken
-                        .swap(false, std::sync::atomic::Ordering::AcqRel)
-                    {
+                        .swap(false, std::sync::atomic::Ordering::AcqRel);
+                    drop(recovery);
+                    if notify {
                         self.wake_all();
                     }
                     return Poll::Ready(Err(error));
@@ -484,16 +485,11 @@ impl UdpSocket {
                     recovery.succeeded();
                     self.is_broken
                         .store(false, std::sync::atomic::Ordering::Release);
+                    drop(recovery);
                     self.wake_all();
+                    return Poll::Ready(Ok(()));
                 }
-                Err(error) => {
-                    recovery.failed(&error);
-                    if recovery.is_terminal() {
-                        self.is_broken
-                            .store(false, std::sync::atomic::Ordering::Release);
-                        self.wake_all();
-                    }
-                }
+                Err(error) => recovery.failed(&error),
             }
         }
     }
