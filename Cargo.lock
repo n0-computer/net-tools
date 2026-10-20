@@ -1072,7 +1072,7 @@ dependencies = [
 [[package]]
 name = "netdev"
 version = "0.46.3"
-source = "git+https://github.com/extrowerk/netdev.git?branch=illumos#d8d605b6b8e2a7bc7feeddca5d19015729062bc2"
+source = "git+https://github.com/extrowerk/netdev.git?branch=illumos#7e0ac1372b3f1bc95ca5da4415e2463025012a2b"
 dependencies = [
  "block2",
  "dispatch2",
