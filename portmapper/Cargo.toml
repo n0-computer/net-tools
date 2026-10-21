@@ -1,6 +1,6 @@
 [package]
 name = "portmapper"
-version = "0.19.3"
+version = "0.20.0"
 edition = "2024"
 readme = "README.md"
 description = "Portmapping utilities"
@@ -16,13 +16,13 @@ rust-version = "1.91"
 workspace = true
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.1"
 bytes = "1.7"
 derive_more = { version = "2.0.1", features = ["debug", "display", "from", "try_into", "deref"] }
 igd-next = { version = "0.17.0", features = ["aio_tokio"] }
 iroh-metrics = { version = "1.0.1", default-features = false }
 libc = "0.2.139"
-netwatch = { version = "0.19.3", path = "../netwatch" }
+netwatch = { version = "0.20.0", path = "../netwatch" }
 n0-error = "1.0.0"
 n0-future = "0.3.2"
 num_enum = "0.7"
