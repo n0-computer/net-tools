@@ -478,6 +478,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(illumos, ignore = "home_router is not implemented on illumos")]
     async fn test_likely_home_router() {
         let home_router = HomeRouter::new().expect("missing home router");
         println!("home router: {home_router:#?}");
