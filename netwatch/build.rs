@@ -13,5 +13,9 @@ fn main() {
         netdev: { not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))) },
         // BSD-derived platforms that share the `AF_ROUTE` routing-socket code.
         bsd: { any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "macos", target_os = "ios") },
+        // illumos and its derivatives (OmniOS, SmartOS, ...). Not part of `bsd`: it has no
+        // `sysctl()` (the BSD/Darwin routing-table-dump mechanism `bsd.rs` uses), so it
+        // needs its own, more limited backend -- see `interfaces/illumos.rs`.
+        illumos: { target_os = "illumos" },
     }
 }
