@@ -9,6 +9,8 @@ use tracing::{debug, trace};
 use super::android as os;
 #[cfg(bsd)]
 use super::bsd as os;
+#[cfg(illumos)]
+use super::illumos as os;
 #[cfg(target_os = "linux")]
 use super::linux as os;
 #[cfg(posix_minimal)]

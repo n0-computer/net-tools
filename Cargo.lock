@@ -1052,8 +1052,7 @@ checksum = "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b"
 [[package]]
 name = "netdev"
 version = "0.46.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c52c2584961c68f5a6e3356797344061f818c93b8acc9cd6d7e284795e563e"
+source = "git+https://github.com/extrowerk/netdev.git?branch=illumos#7e0ac1372b3f1bc95ca5da4415e2463025012a2b"
 dependencies = [
  "block2",
  "dispatch2",
