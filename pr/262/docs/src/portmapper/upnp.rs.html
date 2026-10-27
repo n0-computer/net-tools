@@ -161,7 +161,7 @@
 <a href=#161 id=161 data-nosnippet>161</a>        <span class="prelude-val">Ok</span>(gateway) =&gt; <span class="prelude-val">Some</span>(gateway),
 <a href=#162 id=162 data-nosnippet>162</a>        <span class="prelude-val">Err</span>(e) =&gt; {
 <a href=#163 id=163 data-nosnippet>163</a>            metrics.upnp_probes_failed.inc();
-<a href=#164 id=164 data-nosnippet>164</a>            <span class="macro">debug!</span>(<span class="string">"upnp probe timed out: {e}"</span>);
+<a href=#164 id=164 data-nosnippet>164</a>            <span class="macro">debug!</span>(<span class="string">"upnp probe failed: {e}"</span>);
 <a href=#165 id=165 data-nosnippet>165</a>            <span class="prelude-val">None
 <a href=#166 id=166 data-nosnippet>166</a>        </span>}
 <a href=#167 id=167 data-nosnippet>167</a>    }
