@@ -161,7 +161,7 @@ pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
         Ok(gateway) => Some(gateway),
         Err(e) => {
             metrics.upnp_probes_failed.inc();
-            debug!("upnp probe timed out: {e}");
+            debug!("upnp probe failed: {e}");
             None
         }
     }
