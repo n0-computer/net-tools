@@ -41,7 +41,7 @@ hyper-util = "0.1.11"
 tower-layer = "0.3.3"
 
 [dev-dependencies]
-ntest = "0.9"
+ntest = "0.10"
 rand_chacha = "0.10"
 tokio = { version = "1", features = ["io-util", "sync", "rt", "net", "fs", "macros", "time", "test-util", "rt-multi-thread"] }
 n0-watcher = "1.0.0"
