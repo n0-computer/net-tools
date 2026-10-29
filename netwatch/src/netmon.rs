@@ -10,6 +10,8 @@ mod actor;
 mod android;
 #[cfg(bsd)]
 mod bsd;
+#[cfg(illumos)]
+mod illumos;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(posix_minimal)]
