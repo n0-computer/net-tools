@@ -297,6 +297,22 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_cannot_provide_external_response() {
+        // error responses are reported before any opcode data is parsed
+        let mut encoded = vec![0u8; Response::MIN_SIZE];
+        encoded[0] = Version::Pcp.into();
+        encoded[1] = Response::RESPONSE_INDICATOR | u8::from(Opcode::Map);
+        encoded[3] = ErrorCode::CannotProvideExternal.into();
+        assert!(matches!(
+            Response::decode(&encoded),
+            Err(Error::ErrorCode {
+                source: ErrorCode::CannotProvideExternal,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn test_encode_decode_map_response() {
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 

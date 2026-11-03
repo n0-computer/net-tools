@@ -125,6 +125,8 @@ pub struct Config {
     pub enable_nat_pmp: bool,
     /// Whether to use UDP or TCP.
     pub protocol: Protocol,
+    /// External port to request when creating a mapping, if the gateway allows it.
+    pub suggested_external_port: Option<NonZeroU16>,
 }
 
 impl Default for Config {
@@ -135,6 +137,7 @@ impl Default for Config {
             enable_pcp: true,
             enable_nat_pmp: true,
             protocol: Protocol::Udp,
+            suggested_external_port: None,
         }
     }
 }
@@ -291,6 +294,7 @@ impl Probe {
             enable_pcp,
             enable_nat_pmp,
             protocol: _,
+            suggested_external_port: _,
         } = config;
         let mut upnp_probing_task = util::MaybeFuture {
             inner: (enable_upnp && !upnp).then(|| {
@@ -633,6 +637,11 @@ impl Service {
         if let Some(local_port) = self.local_port {
             self.metrics.mapping_attempts.inc();
 
+            // keep the external address of a held mapping if possible, otherwise suggest
+            // the configured external port if any
+            let external_addr =
+                suggested_external_addr(self.config.suggested_external_port, external_addr);
+
             let (local_ip, gateway) = match ip_and_gateway() {
                 Ok(ip_and_gw) => ip_and_gw,
                 Err(e) => return debug!("can't get mapping: {e}"),
@@ -768,6 +777,16 @@ impl Service {
     }
 }
 
+/// The held mapping's address if any, otherwise the suggested port with no address
+/// preference: `Ipv4Addr::UNSPECIFIED` stands in for the port-only suggestion of
+/// [`Config::suggested_external_port`].
+fn suggested_external_addr(
+    suggested_port: Option<NonZeroU16>,
+    current: Option<(Ipv4Addr, NonZeroU16)>,
+) -> Option<(Ipv4Addr, NonZeroU16)> {
+    current.or_else(|| suggested_port.map(|port| (Ipv4Addr::UNSPECIFIED, port)))
+}
+
 /// Gets the local ip and gateway address for port mapping.
 fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
     let Some(HomeRouter { gateway, my_ip }) = HomeRouter::new() else {
@@ -791,4 +810,40 @@ fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
     };
 
     Ok((local_ip, gateway))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SUGGESTED_PORT: NonZeroU16 = NonZeroU16::new(1234).unwrap();
+    const CURRENT_PORT: NonZeroU16 = NonZeroU16::new(5678).unwrap();
+
+    #[test]
+    fn suggested_port_used_when_no_current_mapping() {
+        assert_eq!(
+            suggested_external_addr(Some(SUGGESTED_PORT), None),
+            Some((Ipv4Addr::UNSPECIFIED, SUGGESTED_PORT))
+        );
+    }
+
+    #[test]
+    fn current_mapping_address_wins_over_suggested_port() {
+        let current = (Ipv4Addr::LOCALHOST, CURRENT_PORT);
+        assert_eq!(
+            suggested_external_addr(Some(SUGGESTED_PORT), Some(current)),
+            Some(current)
+        );
+    }
+
+    #[test]
+    fn current_mapping_address_used_when_no_port_configured() {
+        let current = (Ipv4Addr::LOCALHOST, CURRENT_PORT);
+        assert_eq!(suggested_external_addr(None, Some(current)), Some(current));
+    }
+
+    #[test]
+    fn nothing_suggested_when_no_port_configured() {
+        assert_eq!(suggested_external_addr(None, None), None);
+    }
 }
