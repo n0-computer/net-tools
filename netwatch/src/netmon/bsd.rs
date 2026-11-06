@@ -1,7 +1,5 @@
 use std::ops::ControlFlow;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-use libc::{RTAX_DST, RTAX_IFP};
 use n0_error::stack_error;
 use n0_future::{
     task::AbortOnDropHandle,
@@ -11,8 +9,7 @@ use tokio::sync::mpsc;
 use tracing::{trace, warn};
 
 use super::actor::NetworkMessage;
-#[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))]
-use crate::interfaces::bsd::{RTAX_DST, RTAX_IFP};
+use crate::interfaces::bsd::{RTAX_DST, RTAX_IFP, RTM_MISS};
 use crate::{
     interfaces::{
         bsd::{WireMessage, parse_rib},
@@ -174,7 +171,7 @@ pub(super) fn is_interesting_message(msg: &WireMessage) -> bool {
         WireMessage::Route(msg) => {
             // RTM_MISS is not a route change and can be emitted often on
             // dual-stack hosts with no IPv6 connectivity.
-            if msg.r#type as libc::c_int == libc::RTM_MISS {
+            if msg.r#type as libc::c_int == RTM_MISS {
                 return false;
             }
 
