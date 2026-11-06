@@ -9,10 +9,9 @@ use tokio::sync::mpsc;
 use tracing::{trace, warn};
 
 use super::actor::NetworkMessage;
-use crate::interfaces::bsd::{RTAX_DST, RTAX_IFP, RTM_MISS};
 use crate::{
     interfaces::{
-        bsd::{WireMessage, parse_rib},
+        bsd::{RTAX_DST, RTAX_IFP, RTM_MISS, WireMessage, parse_rib},
         is_interesting_interface,
     },
     ip::is_link_local,
