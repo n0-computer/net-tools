@@ -530,7 +530,7 @@ impl Service {
                     trace!("tick: mapping event {event:?}");
                     match event {
                         current_mapping::Event::Renew { external_ip, external_port } | current_mapping::Event::Expired { external_ip, external_port } => {
-                            self.get_mapping(Some((external_ip, external_port)));
+                            self.get_mapping(Some((external_ip, external_port))).await;
                         },
                     }
 
@@ -582,7 +582,7 @@ impl Service {
         match msg {
             Message::ProcureMapping => self.update_local_port(self.local_port).await,
             Message::UpdateLocalPort { local_port } => self.update_local_port(local_port).await,
-            Message::Probe { result_tx } => self.probe_request(result_tx),
+            Message::Probe { result_tx } => self.probe_request(result_tx).await,
         }
     }
 
@@ -622,18 +622,18 @@ impl Service {
             }
 
             // start a new mapping task to account for the new port if necessary
-            self.get_mapping(external_addr);
+            self.get_mapping(external_addr).await;
         } else if self.current_mapping.external().is_none() {
             // if the local port has not changed, but there is no active mapping try to get one
-            self.get_mapping(None)
+            self.get_mapping(None).await
         }
     }
 
-    fn get_mapping(&mut self, external_addr: Option<(Ipv4Addr, NonZeroU16)>) {
+    async fn get_mapping(&mut self, external_addr: Option<(Ipv4Addr, NonZeroU16)>) {
         if let Some(local_port) = self.local_port {
             self.metrics.mapping_attempts.inc();
 
-            let (local_ip, gateway) = match ip_and_gateway() {
+            let (local_ip, gateway) = match ip_and_gateway().await {
                 Ok(ip_and_gw) => ip_and_gw,
                 Err(e) => return debug!("can't get mapping: {e}"),
             };
@@ -730,7 +730,7 @@ impl Service {
     /// If there is a task getting a probe, the receiver will be added with any other waiting for a
     /// result. If no probe is underway, a result can be returned immediately if it's still
     /// considered valid. Otherwise, a new probe task will be started.
-    fn probe_request(&mut self, result_tx: oneshot::Sender<Result<ProbeOutput, ProbeError>>) {
+    async fn probe_request(&mut self, result_tx: oneshot::Sender<Result<ProbeOutput, ProbeError>>) {
         match self.probing_task.as_mut() {
             Some((_task_handle, receivers)) => receivers.push(result_tx),
             None => {
@@ -741,7 +741,7 @@ impl Service {
                 } else {
                     self.metrics.probes_started.inc();
 
-                    let (local_ip, gateway) = match ip_and_gateway() {
+                    let (local_ip, gateway) = match ip_and_gateway().await {
                         Ok(ip_and_gw) => ip_and_gw,
                         Err(e) => {
                             // there is no guarantee this will be displayed, so log it anyway
@@ -769,8 +769,16 @@ impl Service {
 }
 
 /// Gets the local ip and gateway address for port mapping.
-fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
-    let Some(HomeRouter { gateway, my_ip }) = HomeRouter::new() else {
+async fn ip_and_gateway() -> Result<(Ipv4Addr, Ipv4Addr), ProbeError> {
+    let Some(HomeRouter { gateway, my_ip }) = tokio::task::spawn_blocking(HomeRouter::new)
+        .await
+        .map_err(|error| {
+            e!(ProbeError::Join {
+                is_panic: error.is_panic(),
+                is_cancelled: error.is_cancelled(),
+            })
+        })?
+    else {
         return Err(e!(ProbeError::NoGateway));
     };
 
