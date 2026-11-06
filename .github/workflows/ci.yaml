@@ -137,6 +137,34 @@ jobs:
         cargo install --locked --version 3.5.4 cargo-ndk
         cargo ndk --target $RUST_TARGET build --locked
 
+  ios_build:
+    name: iOS Build Only
+    if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
+    timeout-minutes: 30
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-ios
+          - aarch64-apple-ios-sim
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+      with:
+        toolchain: stable
+        targets: ${{ matrix.target }}
+
+    - name: Build
+      env:
+        RUST_TARGET: ${{ matrix.target }}
+      run: cargo build --locked --workspace --all-features --target $RUST_TARGET
+
   cross_test:
     name: Cross Test
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
