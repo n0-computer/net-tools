@@ -33,6 +33,37 @@ pub struct UdpSocket {
 /// is the max supported by a default configuration of macOS. Some platforms will silently clamp the value.
 const SOCKET_BUFFER_SIZE: usize = 7 << 20;
 
+/// Opts the socket in to receiving on restricted interfaces.
+///
+/// Apple delivers traffic arriving on restricted interfaces, AWDL (`awdl0`)
+/// among them, only to sockets that set `SO_RECV_ANYIF`. Without it a peer
+/// dialing our `fe80::…%awdl0` address never reaches us, even though the link
+/// itself works.
+#[cfg(target_vendor = "apple")]
+fn set_recv_anyif(socket: &socket2::Socket) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    /// From `<sys/socket.h>`; not exported by `libc`.
+    const SO_RECV_ANYIF: libc::c_int = 0x1104;
+    let one: libc::c_int = 1;
+    // SAFETY: the fd is open for the lifetime of `socket`, and `optval` points
+    // to a `c_int` of the length passed.
+    let rc = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            SO_RECV_ANYIF,
+            (&one as *const libc::c_int).cast(),
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 #[allow(
     rustdoc::broken_intra_doc_links,
     reason = "AsFd and AsSocket are only conditionally imported based on the target"
@@ -877,6 +908,10 @@ impl SocketState {
             // Avoid dualstack
             socket.set_only_v6(true)?;
         }
+        #[cfg(target_vendor = "apple")]
+        if let Err(err) = set_recv_anyif(&socket) {
+            debug!("failed to set SO_RECV_ANYIF: {:?}", err);
+        }
 
         // Let the caller configure the socket before it is bound. An error here
         // fails the bind: a socket that silently missed its configuration would
@@ -1179,6 +1214,8 @@ impl Future for SendFutNoq<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_vendor = "apple")]
+    use std::net::Ipv6Addr;
     use std::{
         net::Ipv4Addr,
         sync::atomic::{AtomicUsize, Ordering},
@@ -1279,6 +1316,37 @@ mod tests {
             UdpSocket::bind_with(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), opts).is_err(),
             "a failing hook must fail the bind"
         );
+
+        Ok(())
+    }
+
+    #[cfg(target_vendor = "apple")]
+    #[tokio::test]
+    async fn test_bind_sets_recv_anyif() -> TestResult {
+        use std::os::fd::AsRawFd;
+
+        // The hook runs after netwatch's own options, so it sees what bind set.
+        let opts = BindOptions::new().configure_socket(|socket, _family| {
+            let mut value: libc::c_int = 0;
+            let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+            // SAFETY: `value` and `len` are valid for writes of the sizes given.
+            let rc = unsafe {
+                libc::getsockopt(
+                    socket.as_fd().as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    0x1104,
+                    (&mut value as *mut libc::c_int).cast(),
+                    &mut len,
+                )
+            };
+            if rc != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            assert_eq!(value, 1, "SO_RECV_ANYIF not set");
+            Ok(())
+        });
+        UdpSocket::bind_with(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)), opts.clone())?;
+        UdpSocket::bind_with(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), opts)?;
 
         Ok(())
     }
