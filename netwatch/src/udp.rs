@@ -208,7 +208,24 @@ impl UdpSocket {
     pub fn rebind(&self) -> io::Result<()> {
         {
             let mut guard = self.socket.write().unwrap();
-            guard.rebind()?;
+            if let Err(err) = guard.rebind() {
+                // A failed rebind leaves the socket in `Closed`, which was
+                // meant to be retried "on the next attempt" — but nothing
+                // armed that retry: `maybe_rebind()`, the only recovery path
+                // on the send/recv side, is gated on `is_broken`, which a
+                // failed rebind never set. One failed rebind (a fork holding
+                // a duplicate fd across a network change, an address not yet
+                // bindable after sleep→wake) therefore stranded the socket
+                // in `Closed` until process restart, failing every send with
+                // `BrokenPipe` at the caller's full rate.
+                //
+                // Mark the socket broken so the next send/recv retries the
+                // bind via `maybe_rebind()` and the socket heals as soon as
+                // the address is bindable again. A deliberate `close()`
+                // never sets `is_broken` and still stays closed.
+                self.mark_broken();
+                return Err(err);
+            }
 
             // Clear errors
             self.is_broken
@@ -1224,6 +1241,69 @@ mod tests {
     use testresult::TestResult;
 
     use super::*;
+
+    /// A failed `rebind` must mark the socket broken so `maybe_rebind` retries
+    /// the bind on the next send/recv; before the fix the error was propagated
+    /// without arming any retry, stranding the socket in `Closed` forever.
+    #[tokio::test]
+    async fn failed_rebind_marks_socket_broken_and_heals() {
+        // Bind on a real loopback address so the state starts Connected.
+        let sock = UdpSocket::bind_local_v4(0).expect("bind loopback");
+        let addr = sock.local_addr().expect("local addr while connected");
+        assert!(!sock.is_broken());
+
+        // Force the rebind to fail: a `Closed` state carrying an address that
+        // can never be bound locally (TEST-NET-3 is not configured anywhere).
+        let unbindable = SocketAddr::from((Ipv4Addr::new(203, 0, 113, 1), 31337));
+        {
+            let mut guard = sock.socket.write().unwrap();
+            *guard = SocketState::Closed {
+                addr: unbindable,
+                configure: None,
+                last_max_gso_segments: NonZeroUsize::MIN,
+                last_gro_segments: NonZeroUsize::MIN,
+                last_may_fragment: false,
+            };
+        }
+        let err = sock.rebind().expect_err("rebind must fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrNotAvailable);
+        // The fix: the failure armed the recovery path.
+        assert!(
+            sock.is_broken(),
+            "failed rebind must mark the socket broken"
+        );
+
+        // Heal: point the pending rebind back at the bindable loopback port and
+        // drive the send/recv-side recovery path.
+        {
+            let mut guard = sock.socket.write().unwrap();
+            *guard = SocketState::Closed {
+                addr,
+                configure: None,
+                last_max_gso_segments: NonZeroUsize::MIN,
+                last_gro_segments: NonZeroUsize::MIN,
+                last_may_fragment: false,
+            };
+        }
+        sock.maybe_rebind().expect("rebind succeeds once bindable");
+        assert!(!sock.is_broken(), "socket heals when the rebind succeeds");
+
+        // The healed socket carries I/O again.
+        sock.send_to(b"x", addr)
+            .await
+            .expect("send works after healing");
+    }
+
+    /// A deliberate `close` must not arm the rebind-retry path.
+    #[tokio::test]
+    async fn deliberate_close_stays_closed() {
+        let sock = UdpSocket::bind_local_v4(0).expect("bind loopback");
+        sock.close().await;
+        assert!(!sock.is_broken(), "close must not mark the socket broken");
+        // The recovery path stays a no-op after a deliberate close.
+        sock.maybe_rebind().expect("no rebind armed after close");
+        assert!(sock.local_addr().is_err(), "socket stays closed");
+    }
 
     #[tokio::test]
     async fn test_reconnect() -> TestResult {
