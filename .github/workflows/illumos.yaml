@@ -24,12 +24,6 @@ env:
   RUSTFLAGS: -Dwarnings
   IROH_FORCE_STAGING_RELAYS: "1"
   RUST_TARGET: x86_64-unknown-illumos
-  # Builds the archive (taiki-e/install-action below) and runs it in the VM
-  # (prebuilt illumos binary). Keep both on the same version.
-  NEXTEST_VERSION: "0.9.80"
-  # Plain image: the VM only runs prebuilt binaries. Switch to
-  # r151058-build if anything in `prepare` turns out to need a compiler.
-  OMNIOS_RELEASE: r151058
 
 # Default to read-only; jobs that need more grant it explicitly.
 permissions:
@@ -64,7 +58,7 @@ jobs:
 
     - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
       with:
-        tool: nextest@0.9.80
+        tool: nextest
 
     - name: build test archive
       run: >
@@ -104,15 +98,14 @@ jobs:
       env:
         RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG' }}
       with:
-        release: ${{ env.OMNIOS_RELEASE }}
-        envs: 'RUST_BACKTRACE RUST_LOG IROH_FORCE_STAGING_RELAYS NEXTEST_VERSION'
+        envs: 'RUST_BACKTRACE RUST_LOG IROH_FORCE_STAGING_RELAYS'
         copyback: false
         prepare: |
           set -e
           mkdir -p /usr/local/bin
           # illumos tar can't decompress from stdin, hence gunzip
           # (https://www.illumos.org/issues/15228).
-          curl -LsSf "https://get.nexte.st/$NEXTEST_VERSION/illumos" | gunzip | tar xf - -C /usr/local/bin
+          curl -LsSf "https://get.nexte.st/latest/illumos" | gunzip | tar xf - -C /usr/local/bin
         run: |
           set -e
           uname -a
