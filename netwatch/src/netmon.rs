@@ -10,12 +10,10 @@ mod actor;
 mod android;
 #[cfg(bsd)]
 mod bsd;
-#[cfg(illumos)]
-mod illumos;
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(posix_minimal)]
-mod posix_minimal;
+#[cfg(any(posix_minimal, illumos))]
+mod noop;
 #[cfg(wasm_browser)]
 mod wasm_browser;
 #[cfg(target_os = "windows")]
