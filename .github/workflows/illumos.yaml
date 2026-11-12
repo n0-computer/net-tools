@@ -106,7 +106,6 @@ jobs:
       with:
         release: ${{ env.OMNIOS_RELEASE }}
         envs: 'RUST_BACKTRACE RUST_LOG IROH_FORCE_STAGING_RELAYS NEXTEST_VERSION'
-        # Nothing to copy back out of the VM.
         copyback: false
         prepare: |
           set -e
