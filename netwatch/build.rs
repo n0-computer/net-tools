@@ -1,6 +1,8 @@
 use cfg_aliases::cfg_aliases;
 
 fn main() {
+    // Set via RUSTFLAGS to back `UdpSocket` with `wasm-native-udp` on wasm_browser.
+    println!("cargo::rustc-check-cfg=cfg(wasm_native_udp)");
     // Setup cfg aliases
     cfg_aliases! {
         // Convenience aliases
