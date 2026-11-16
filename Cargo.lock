@@ -759,10 +759,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-link-udp-proto"
-version = "0.1.6"
-
-[[package]]
 name = "iroh-metrics"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1191,9 +1187,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
- "wasm-native-udp",
  "wasm-tracing",
  "web-sys",
+ "webview-sockets",
  "windows",
  "windows-result",
  "wmi",
@@ -2335,18 +2331,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f692aa943ccd88363733b77063f32cfed5bc6cbea8e6e8b251b302f881606fe"
 
 [[package]]
-name = "wasm-native-udp"
-version = "0.1.6"
-dependencies = [
- "iroh-link-udp-proto",
- "js-sys",
- "tracing",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "wasm-tracing"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2376,6 +2360,24 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "webview-sockets"
+version = "0.1.0"
+source = "git+ssh://git@github.com/Frando/webview-sockets.git?branch=main#3b8ee042a80a83bcd63a23ec38aa859c1ecc4c30"
+dependencies = [
+ "js-sys",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "webview-sockets-proto",
+]
+
+[[package]]
+name = "webview-sockets-proto"
+version = "0.1.0"
+source = "git+ssh://git@github.com/Frando/webview-sockets.git?branch=main#3b8ee042a80a83bcd63a23ec38aa859c1ecc4c30"
 
 [[package]]
 name = "winapi"

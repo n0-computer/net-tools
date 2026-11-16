@@ -1,8 +1,8 @@
-//! UDP socket for wasm in the browser, backed by [`wasm_native_udp`].
+//! UDP socket for wasm in the browser, backed by [`webview_sockets`].
 //!
-//! Only compiled with `--cfg wasm_native_udp`. The socket lives in the
-//! iroh-link host app; the page reaches it over a WebSocket. The app must call
-//! [`wasm_native_udp::init`] before binding.
+//! Only compiled with `--cfg webview_sockets`. The socket lives in the app
+//! that embeds the webview; the page reaches it over a WebSocket. The app must
+//! call [`webview_sockets::init`] before binding.
 //!
 //! The API mirrors the native `UdpSocket`, with these differences:
 //!
@@ -45,7 +45,7 @@ use super::IpFamily;
 /// host that is down would make us open a WebSocket on every poll.
 const REBIND_INTERVAL: Duration = Duration::from_secs(1);
 
-/// UDP socket backed by the iroh-link host.
+/// UDP socket backed by the app that embeds the webview.
 #[derive(Debug)]
 pub struct UdpSocket {
     socket: RwLock<SocketState>,
@@ -393,7 +393,7 @@ impl UdpSocket {
         &self,
         cx: &mut Context<'_>,
         direction: Direction,
-        mut op: impl FnMut(&wasm_native_udp::UdpSocket) -> io::Result<T>,
+        mut op: impl FnMut(&webview_sockets::UdpSocket) -> io::Result<T>,
     ) -> Poll<io::Result<T>> {
         let waker = match direction {
             Direction::Recv => &self.recv_waker,
@@ -547,7 +547,7 @@ impl UdpSocket {
 /// Sends a noq `Transmit` in one go, as a GSO batch if it has a segment size.
 ///
 /// ECN and the source IP are not supported and ignored.
-fn send_transmit(socket: &wasm_native_udp::UdpSocket, transmit: &Transmit<'_>) -> io::Result<()> {
+fn send_transmit(socket: &webview_sockets::UdpSocket, transmit: &Transmit<'_>) -> io::Result<()> {
     socket
         .send_to_segmented(
             transmit.contents,
@@ -634,7 +634,7 @@ impl Future for SendToFut<'_, '_> {
 #[derive(Debug)]
 enum SocketState {
     Connected {
-        socket: wasm_native_udp::UdpSocket,
+        socket: webview_sockets::UdpSocket,
     },
     Closed {
         /// The addr to rebind to when recovering.
@@ -645,7 +645,7 @@ enum SocketState {
 }
 
 impl SocketState {
-    fn try_get_connected(&self) -> io::Result<&wasm_native_udp::UdpSocket> {
+    fn try_get_connected(&self) -> io::Result<&webview_sockets::UdpSocket> {
         match self {
             Self::Connected { socket } => Ok(socket),
             Self::Closed { .. } => {
@@ -656,7 +656,7 @@ impl SocketState {
     }
 
     fn bind(addr: SocketAddr) -> io::Result<Self> {
-        let socket = wasm_native_udp::UdpSocket::bind(addr)?;
+        let socket = webview_sockets::UdpSocket::bind(addr)?;
         debug!(%addr, "udp socket binding through host");
         Ok(Self::Connected { socket })
     }
@@ -714,7 +714,7 @@ impl SocketState {
         matches!(self, Self::Closed { .. })
     }
 
-    fn close(&mut self) -> Option<wasm_native_udp::UdpSocket> {
+    fn close(&mut self) -> Option<webview_sockets::UdpSocket> {
         let Self::Connected { socket } = self else {
             return None;
         };

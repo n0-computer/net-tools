@@ -75,11 +75,11 @@ windows-result = "0.4"
 js-sys = "0.3.83"
 web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 
-# wasm-in-browser with UDP through the iroh-link host
-# (RUSTFLAGS="--cfg wasm_native_udp")
-[target.'cfg(all(target_family = "wasm", target_os = "unknown", wasm_native_udp))'.dependencies]
+# wasm-in-browser with UDP provided by the embedding app through webview-sockets
+# (RUSTFLAGS="--cfg webview_sockets")
+[target.'cfg(all(target_family = "wasm", target_os = "unknown", webview_sockets))'.dependencies]
 noq-udp = "1.0.0"
-wasm-native-udp = { path = "../../../../wasm-native-udp" }
+webview-sockets = { git = "ssh://git@github.com/Frando/webview-sockets.git", branch = "main" }
 
 [dev-dependencies]
 testresult = "0.4.1"
