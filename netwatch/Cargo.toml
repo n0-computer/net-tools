@@ -79,7 +79,7 @@ web-sys = { version = "0.3.83", features = ["EventListener", "EventTarget"] }
 # (RUSTFLAGS="--cfg webview_sockets")
 [target.'cfg(all(target_family = "wasm", target_os = "unknown", webview_sockets))'.dependencies]
 noq-udp = "1.0.0"
-webview-sockets = { git = "ssh://git@github.com/Frando/webview-sockets.git", branch = "main" }
+webview-sockets = { git = "https://github.com/Frando/webview-sockets", branch = "main" }
 
 [dev-dependencies]
 testresult = "0.4.1"
