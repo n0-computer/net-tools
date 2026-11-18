@@ -460,6 +460,8 @@ impl UdpSocket {
             };
             let (socket, state) = guard.try_get_connected()?;
 
+            // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+            #[allow(deprecated)]
             let res = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
             match res {
@@ -490,6 +492,8 @@ impl UdpSocket {
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
+                    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+                    #[allow(deprecated)]
                     let res =
                         socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
                     if let Err(err) = res {
@@ -1130,6 +1134,8 @@ impl UdpSender {
             result?;
 
             let (socket, state) = guard.try_get_connected()?;
+            // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+            #[allow(deprecated)]
             let result = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
             match result {
@@ -1145,6 +1151,8 @@ impl UdpSender {
     }
 
     /// Best effort sending
+    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+    #[allow(deprecated)]
     pub fn try_send(&self, transmit: &noq_udp::Transmit) -> io::Result<()> {
         self.socket.maybe_rebind()?;
 
@@ -1187,6 +1195,8 @@ impl Future for SendFutNoq<'_, '_> {
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
+                    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+                    #[allow(deprecated)]
                     let res = socket.try_io(Interest::WRITABLE, || {
                         state.send(socket.into(), self.transmit)
                     });
