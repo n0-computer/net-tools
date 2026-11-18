@@ -36,4 +36,4 @@ missing_debug_implementations = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(iroh_docsrs)", "cfg(skip_patchbay)"] }
 
 [workspace.lints.clippy]
-unused-async = "warn"
+unused_async = "warn"

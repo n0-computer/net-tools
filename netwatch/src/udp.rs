@@ -651,6 +651,7 @@ const WSAENETRESET: i32 = 10052;
 /// We treat `ConnectionReset` as transient on every platform, not only Windows:
 /// ECONNRESET is undefined in QUIC and can be injected by an attacker, so
 /// it must never tear down the receive path.
+#[allow(clippy::needless_bool)]
 fn is_transient_read_error(error: &io::Error) -> bool {
     if error.kind() == io::ErrorKind::ConnectionReset {
         return true;
