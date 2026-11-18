@@ -36,9 +36,8 @@ pub async fn default_route() -> Option<DefaultRouteDetails> {
         })
 }
 
-/// Not yet implemented on illumos: see the module docs for why. Always
-/// returns `None` -- callers should treat this as "unknown", not "no
-/// gateway configured".
+/// Not implemented on illumos: always returns `None`, so `portmapper`
+/// reports `NoGateway` and does not attempt port mapping.
 pub(super) fn home_router() -> Option<HomeRouter> {
     None
 }
