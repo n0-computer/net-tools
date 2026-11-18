@@ -134,11 +134,7 @@ pub(super) fn home_router() -> Option<super::HomeRouter> {
 /// Globally routable and private IPv4 addresses are always usable, and link-local
 /// 169.254.x.x addresses are in some environments.
 fn is_usable_v4(ip: &IpAddr) -> bool {
-    if !ip.is_ipv4() || ip.is_loopback() {
-        return false;
-    }
-
-    true
+    ip.is_ipv4() && !ip.is_loopback()
 }
 
 /// Reports whether `ip` is a usable IPv6 address which should have Internet connectivity.
