@@ -72,9 +72,7 @@ impl Mapping {
         let gateway = if let Some(known_gateway) = gateway {
             known_gateway
         } else {
-            let mut opts = igd_next::SearchOptions::default();
-            opts.timeout = Some(SEARCH_TIMEOUT);
-            aigd::tokio::search_gateway(opts).await?
+            search_gateway().await?
         };
 
         let std::net::IpAddr::V4(external_ip) = gateway.get_external_ip().await? else {
@@ -153,11 +151,7 @@ impl Mapping {
 pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
     metrics.upnp_probes.inc();
 
-    let mut opts = igd_next::SearchOptions::default();
-    opts.timeout = Some(SEARCH_TIMEOUT);
-    let res = aigd::tokio::search_gateway(opts).await;
-
-    match res {
+    match search_gateway().await {
         Ok(gateway) => Some(gateway),
         Err(e) => {
             metrics.upnp_probes_failed.inc();
@@ -165,4 +159,24 @@ pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
             None
         }
     }
+}
+
+/// Searches for a gateway on a blocking thread.
+///
+/// The search socket is created and closed inside the search future. Closing it can block
+/// for hundreds of milliseconds on macOS, so the whole search runs on its own runtime to
+/// keep that off the caller's runtime.
+async fn search_gateway() -> Result<Gateway, Error> {
+    tokio::task::spawn_blocking(|| {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async {
+            let mut opts = igd_next::SearchOptions::default();
+            opts.timeout = Some(SEARCH_TIMEOUT);
+            Ok(aigd::tokio::search_gateway(opts).await?)
+        })
+    })
+    .await
+    .map_err(std::io::Error::other)?
 }
