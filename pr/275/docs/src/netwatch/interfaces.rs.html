@@ -416,102 +416,99 @@
 <a href=#416 id=416 data-nosnippet>416</a></span><span class="kw">fn </span>prefixes_major_equal(a: <span class="kw">impl </span>Iterator&lt;Item = IpNet&gt;, b: <span class="kw">impl </span>Iterator&lt;Item = IpNet&gt;) -&gt; bool {
 <a href=#417 id=417 data-nosnippet>417</a>    <span class="kw">fn </span>is_interesting(p: <span class="kw-2">&amp;</span>IpNet) -&gt; bool {
 <a href=#418 id=418 data-nosnippet>418</a>        <span class="kw">let </span>a = p.addr();
-<a href=#419 id=419 data-nosnippet>419</a>        <span class="kw">if </span>is_link_local(a) || a.is_loopback() || a.is_multicast() {
-<a href=#420 id=420 data-nosnippet>420</a>            <span class="kw">return </span><span class="bool-val">false</span>;
-<a href=#421 id=421 data-nosnippet>421</a>        }
-<a href=#422 id=422 data-nosnippet>422</a>        <span class="bool-val">true
-<a href=#423 id=423 data-nosnippet>423</a>    </span>}
+<a href=#419 id=419 data-nosnippet>419</a>        !is_link_local(a) &amp;&amp; !a.is_loopback() &amp;&amp; !a.is_multicast()
+<a href=#420 id=420 data-nosnippet>420</a>    }
+<a href=#421 id=421 data-nosnippet>421</a>
+<a href=#422 id=422 data-nosnippet>422</a>    <span class="kw">let </span><span class="kw-2">mut </span>a = a.filter(is_interesting);
+<a href=#423 id=423 data-nosnippet>423</a>    <span class="kw">let </span><span class="kw-2">mut </span>b = b.filter(is_interesting);
 <a href=#424 id=424 data-nosnippet>424</a>
-<a href=#425 id=425 data-nosnippet>425</a>    <span class="kw">let </span><span class="kw-2">mut </span>a = a.filter(is_interesting);
-<a href=#426 id=426 data-nosnippet>426</a>    <span class="kw">let </span><span class="kw-2">mut </span>b = b.filter(is_interesting);
-<a href=#427 id=427 data-nosnippet>427</a>
-<a href=#428 id=428 data-nosnippet>428</a>    <span class="kw">loop </span>{
-<a href=#429 id=429 data-nosnippet>429</a>        <span class="kw">match </span>(a.next(), b.next()) {
-<a href=#430 id=430 data-nosnippet>430</a>            (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>) =&gt; <span class="kw">return </span><span class="bool-val">true</span>,
-<a href=#431 id=431 data-nosnippet>431</a>            (<span class="prelude-val">Some</span>(a), <span class="prelude-val">Some</span>(b)) <span class="kw">if </span>a == b =&gt; <span class="kw">continue</span>,
-<a href=#432 id=432 data-nosnippet>432</a>            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="bool-val">false</span>,
-<a href=#433 id=433 data-nosnippet>433</a>        }
-<a href=#434 id=434 data-nosnippet>434</a>    }
-<a href=#435 id=435 data-nosnippet>435</a>}
-<a href=#436 id=436 data-nosnippet>436</a>
-<a href=#437 id=437 data-nosnippet>437</a><span class="attr">#[cfg(test)]
-<a href=#438 id=438 data-nosnippet>438</a></span><span class="kw">mod </span>tests {
-<a href=#439 id=439 data-nosnippet>439</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#440 id=440 data-nosnippet>440</a>
-<a href=#441 id=441 data-nosnippet>441</a>    <span class="attr">#[test]
-<a href=#442 id=442 data-nosnippet>442</a>    </span><span class="kw">fn </span>test_is_major_change_identical() {
-<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">let </span>a = State::fake();
-<a href=#444 id=444 data-nosnippet>444</a>        <span class="kw">let </span>b = State::fake();
-<a href=#445 id=445 data-nosnippet>445</a>        <span class="macro">assert!</span>(!a.is_major_change(<span class="kw-2">&amp;</span>b));
-<a href=#446 id=446 data-nosnippet>446</a>    }
-<a href=#447 id=447 data-nosnippet>447</a>
-<a href=#448 id=448 data-nosnippet>448</a>    <span class="attr">#[test]
-<a href=#449 id=449 data-nosnippet>449</a>    </span><span class="kw">fn </span>test_is_major_change_new_interface_added() {
-<a href=#450 id=450 data-nosnippet>450</a>        <span class="kw">let </span>old = State::fake();
-<a href=#451 id=451 data-nosnippet>451</a>        <span class="kw">let </span><span class="kw-2">mut </span>new = State::fake();
-<a href=#452 id=452 data-nosnippet>452</a>        <span class="comment">// Add a new interesting interface to new state
-<a href=#453 id=453 data-nosnippet>453</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>iface = Interface::fake();
-<a href=#454 id=454 data-nosnippet>454</a>        iface.index = <span class="number">10</span>;
-<a href=#455 id=455 data-nosnippet>455</a>        iface.name = <span class="string">"eth1"</span>.to_string();
-<a href=#456 id=456 data-nosnippet>456</a>        new.interfaces.insert(<span class="string">"eth1"</span>.to_string(), iface);
-<a href=#457 id=457 data-nosnippet>457</a>        <span class="macro">assert!</span>(new.is_major_change(<span class="kw-2">&amp;</span>old));
-<a href=#458 id=458 data-nosnippet>458</a>    }
-<a href=#459 id=459 data-nosnippet>459</a>
-<a href=#460 id=460 data-nosnippet>460</a>    <span class="attr">#[test]
-<a href=#461 id=461 data-nosnippet>461</a>    </span><span class="kw">fn </span>test_is_major_change_interface_removed() {
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="kw">let </span>old = State::fake();
-<a href=#463 id=463 data-nosnippet>463</a>        <span class="kw">let </span><span class="kw-2">mut </span>new = State::fake();
-<a href=#464 id=464 data-nosnippet>464</a>        new.interfaces.clear();
-<a href=#465 id=465 data-nosnippet>465</a>        <span class="macro">assert!</span>(new.is_major_change(<span class="kw-2">&amp;</span>old));
-<a href=#466 id=466 data-nosnippet>466</a>    }
-<a href=#467 id=467 data-nosnippet>467</a>
-<a href=#468 id=468 data-nosnippet>468</a>    <span class="attr">#[tokio::test]
-<a href=#469 id=469 data-nosnippet>469</a>    </span><span class="kw">async fn </span>test_default_route() {
-<a href=#470 id=470 data-nosnippet>470</a>        <span class="kw">let </span>default_route = DefaultRouteDetails::new()
-<a href=#471 id=471 data-nosnippet>471</a>            .<span class="kw">await
-<a href=#472 id=472 data-nosnippet>472</a>            </span>.expect(<span class="string">"missing default route"</span>);
-<a href=#473 id=473 data-nosnippet>473</a>        <span class="macro">println!</span>(<span class="string">"default_route: {default_route:#?}"</span>);
-<a href=#474 id=474 data-nosnippet>474</a>    }
-<a href=#475 id=475 data-nosnippet>475</a>
-<a href=#476 id=476 data-nosnippet>476</a>    <span class="attr">#[tokio::test]
-<a href=#477 id=477 data-nosnippet>477</a>    </span><span class="kw">async fn </span>test_likely_home_router() {
-<a href=#478 id=478 data-nosnippet>478</a>        <span class="kw">let </span>home_router = HomeRouter::new().expect(<span class="string">"missing home router"</span>);
-<a href=#479 id=479 data-nosnippet>479</a>        <span class="macro">println!</span>(<span class="string">"home router: {home_router:#?}"</span>);
-<a href=#480 id=480 data-nosnippet>480</a>    }
-<a href=#481 id=481 data-nosnippet>481</a>
-<a href=#482 id=482 data-nosnippet>482</a>    <span class="attr">#[test]
-<a href=#483 id=483 data-nosnippet>483</a>    </span><span class="kw">fn </span>test_prefixes_major_equal() {
-<a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">use </span>std::net::Ipv4Addr;
-<a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a>        <span class="kw">let </span>a1 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">192</span>, <span class="number">168</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">24</span>).unwrap());
-<a href=#487 id=487 data-nosnippet>487</a>        <span class="kw">let </span>a2 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">10</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">8</span>).unwrap());
-<a href=#488 id=488 data-nosnippet>488</a>        <span class="kw">let </span>a3 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">172</span>, <span class="number">16</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">16</span>).unwrap());
-<a href=#489 id=489 data-nosnippet>489</a>
-<a href=#490 id=490 data-nosnippet>490</a>        <span class="comment">// equal lists
-<a href=#491 id=491 data-nosnippet>491</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(
-<a href=#492 id=492 data-nosnippet>492</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#493 id=493 data-nosnippet>493</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#494 id=494 data-nosnippet>494</a>        ));
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="kw">loop </span>{
+<a href=#426 id=426 data-nosnippet>426</a>        <span class="kw">match </span>(a.next(), b.next()) {
+<a href=#427 id=427 data-nosnippet>427</a>            (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>) =&gt; <span class="kw">return </span><span class="bool-val">true</span>,
+<a href=#428 id=428 data-nosnippet>428</a>            (<span class="prelude-val">Some</span>(a), <span class="prelude-val">Some</span>(b)) <span class="kw">if </span>a == b =&gt; <span class="kw">continue</span>,
+<a href=#429 id=429 data-nosnippet>429</a>            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="bool-val">false</span>,
+<a href=#430 id=430 data-nosnippet>430</a>        }
+<a href=#431 id=431 data-nosnippet>431</a>    }
+<a href=#432 id=432 data-nosnippet>432</a>}
+<a href=#433 id=433 data-nosnippet>433</a>
+<a href=#434 id=434 data-nosnippet>434</a><span class="attr">#[cfg(test)]
+<a href=#435 id=435 data-nosnippet>435</a></span><span class="kw">mod </span>tests {
+<a href=#436 id=436 data-nosnippet>436</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#437 id=437 data-nosnippet>437</a>
+<a href=#438 id=438 data-nosnippet>438</a>    <span class="attr">#[test]
+<a href=#439 id=439 data-nosnippet>439</a>    </span><span class="kw">fn </span>test_is_major_change_identical() {
+<a href=#440 id=440 data-nosnippet>440</a>        <span class="kw">let </span>a = State::fake();
+<a href=#441 id=441 data-nosnippet>441</a>        <span class="kw">let </span>b = State::fake();
+<a href=#442 id=442 data-nosnippet>442</a>        <span class="macro">assert!</span>(!a.is_major_change(<span class="kw-2">&amp;</span>b));
+<a href=#443 id=443 data-nosnippet>443</a>    }
+<a href=#444 id=444 data-nosnippet>444</a>
+<a href=#445 id=445 data-nosnippet>445</a>    <span class="attr">#[test]
+<a href=#446 id=446 data-nosnippet>446</a>    </span><span class="kw">fn </span>test_is_major_change_new_interface_added() {
+<a href=#447 id=447 data-nosnippet>447</a>        <span class="kw">let </span>old = State::fake();
+<a href=#448 id=448 data-nosnippet>448</a>        <span class="kw">let </span><span class="kw-2">mut </span>new = State::fake();
+<a href=#449 id=449 data-nosnippet>449</a>        <span class="comment">// Add a new interesting interface to new state
+<a href=#450 id=450 data-nosnippet>450</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>iface = Interface::fake();
+<a href=#451 id=451 data-nosnippet>451</a>        iface.index = <span class="number">10</span>;
+<a href=#452 id=452 data-nosnippet>452</a>        iface.name = <span class="string">"eth1"</span>.to_string();
+<a href=#453 id=453 data-nosnippet>453</a>        new.interfaces.insert(<span class="string">"eth1"</span>.to_string(), iface);
+<a href=#454 id=454 data-nosnippet>454</a>        <span class="macro">assert!</span>(new.is_major_change(<span class="kw-2">&amp;</span>old));
+<a href=#455 id=455 data-nosnippet>455</a>    }
+<a href=#456 id=456 data-nosnippet>456</a>
+<a href=#457 id=457 data-nosnippet>457</a>    <span class="attr">#[test]
+<a href=#458 id=458 data-nosnippet>458</a>    </span><span class="kw">fn </span>test_is_major_change_interface_removed() {
+<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span>old = State::fake();
+<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span><span class="kw-2">mut </span>new = State::fake();
+<a href=#461 id=461 data-nosnippet>461</a>        new.interfaces.clear();
+<a href=#462 id=462 data-nosnippet>462</a>        <span class="macro">assert!</span>(new.is_major_change(<span class="kw-2">&amp;</span>old));
+<a href=#463 id=463 data-nosnippet>463</a>    }
+<a href=#464 id=464 data-nosnippet>464</a>
+<a href=#465 id=465 data-nosnippet>465</a>    <span class="attr">#[tokio::test]
+<a href=#466 id=466 data-nosnippet>466</a>    </span><span class="kw">async fn </span>test_default_route() {
+<a href=#467 id=467 data-nosnippet>467</a>        <span class="kw">let </span>default_route = DefaultRouteDetails::new()
+<a href=#468 id=468 data-nosnippet>468</a>            .<span class="kw">await
+<a href=#469 id=469 data-nosnippet>469</a>            </span>.expect(<span class="string">"missing default route"</span>);
+<a href=#470 id=470 data-nosnippet>470</a>        <span class="macro">println!</span>(<span class="string">"default_route: {default_route:#?}"</span>);
+<a href=#471 id=471 data-nosnippet>471</a>    }
+<a href=#472 id=472 data-nosnippet>472</a>
+<a href=#473 id=473 data-nosnippet>473</a>    <span class="attr">#[tokio::test]
+<a href=#474 id=474 data-nosnippet>474</a>    </span><span class="kw">async fn </span>test_likely_home_router() {
+<a href=#475 id=475 data-nosnippet>475</a>        <span class="kw">let </span>home_router = HomeRouter::new().expect(<span class="string">"missing home router"</span>);
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="macro">println!</span>(<span class="string">"home router: {home_router:#?}"</span>);
+<a href=#477 id=477 data-nosnippet>477</a>    }
+<a href=#478 id=478 data-nosnippet>478</a>
+<a href=#479 id=479 data-nosnippet>479</a>    <span class="attr">#[test]
+<a href=#480 id=480 data-nosnippet>480</a>    </span><span class="kw">fn </span>test_prefixes_major_equal() {
+<a href=#481 id=481 data-nosnippet>481</a>        <span class="kw">use </span>std::net::Ipv4Addr;
+<a href=#482 id=482 data-nosnippet>482</a>
+<a href=#483 id=483 data-nosnippet>483</a>        <span class="kw">let </span>a1 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">192</span>, <span class="number">168</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">24</span>).unwrap());
+<a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">let </span>a2 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">10</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">8</span>).unwrap());
+<a href=#485 id=485 data-nosnippet>485</a>        <span class="kw">let </span>a3 = IpNet::V4(Ipv4Net::new(Ipv4Addr::new(<span class="number">172</span>, <span class="number">16</span>, <span class="number">0</span>, <span class="number">1</span>), <span class="number">16</span>).unwrap());
+<a href=#486 id=486 data-nosnippet>486</a>
+<a href=#487 id=487 data-nosnippet>487</a>        <span class="comment">// equal lists
+<a href=#488 id=488 data-nosnippet>488</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(
+<a href=#489 id=489 data-nosnippet>489</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#490 id=490 data-nosnippet>490</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#491 id=491 data-nosnippet>491</a>        ));
+<a href=#492 id=492 data-nosnippet>492</a>
+<a href=#493 id=493 data-nosnippet>493</a>        <span class="comment">// both empty
+<a href=#494 id=494 data-nosnippet>494</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(std::iter::empty(), std::iter::empty(),));
 <a href=#495 id=495 data-nosnippet>495</a>
-<a href=#496 id=496 data-nosnippet>496</a>        <span class="comment">// both empty
-<a href=#497 id=497 data-nosnippet>497</a>        </span><span class="macro">assert!</span>(prefixes_major_equal(std::iter::empty(), std::iter::empty(),));
-<a href=#498 id=498 data-nosnippet>498</a>
-<a href=#499 id=499 data-nosnippet>499</a>        <span class="comment">// different prefixes
-<a href=#500 id=500 data-nosnippet>500</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#501 id=501 data-nosnippet>501</a>            <span class="macro">vec!</span>[a1.clone()].into_iter(),
-<a href=#502 id=502 data-nosnippet>502</a>            <span class="macro">vec!</span>[a2.clone()].into_iter(),
-<a href=#503 id=503 data-nosnippet>503</a>        ));
-<a href=#504 id=504 data-nosnippet>504</a>
-<a href=#505 id=505 data-nosnippet>505</a>        <span class="comment">// a has extra prefix
-<a href=#506 id=506 data-nosnippet>506</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#507 id=507 data-nosnippet>507</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
-<a href=#508 id=508 data-nosnippet>508</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#509 id=509 data-nosnippet>509</a>        ));
-<a href=#510 id=510 data-nosnippet>510</a>
-<a href=#511 id=511 data-nosnippet>511</a>        <span class="comment">// b has extra prefix
-<a href=#512 id=512 data-nosnippet>512</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
-<a href=#513 id=513 data-nosnippet>513</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
-<a href=#514 id=514 data-nosnippet>514</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
-<a href=#515 id=515 data-nosnippet>515</a>        ));
-<a href=#516 id=516 data-nosnippet>516</a>    }
-<a href=#517 id=517 data-nosnippet>517</a>}</code></pre></div></section></main></body></html>
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="comment">// different prefixes
+<a href=#497 id=497 data-nosnippet>497</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#498 id=498 data-nosnippet>498</a>            <span class="macro">vec!</span>[a1.clone()].into_iter(),
+<a href=#499 id=499 data-nosnippet>499</a>            <span class="macro">vec!</span>[a2.clone()].into_iter(),
+<a href=#500 id=500 data-nosnippet>500</a>        ));
+<a href=#501 id=501 data-nosnippet>501</a>
+<a href=#502 id=502 data-nosnippet>502</a>        <span class="comment">// a has extra prefix
+<a href=#503 id=503 data-nosnippet>503</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#504 id=504 data-nosnippet>504</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
+<a href=#505 id=505 data-nosnippet>505</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#506 id=506 data-nosnippet>506</a>        ));
+<a href=#507 id=507 data-nosnippet>507</a>
+<a href=#508 id=508 data-nosnippet>508</a>        <span class="comment">// b has extra prefix
+<a href=#509 id=509 data-nosnippet>509</a>        </span><span class="macro">assert!</span>(!prefixes_major_equal(
+<a href=#510 id=510 data-nosnippet>510</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone()].into_iter(),
+<a href=#511 id=511 data-nosnippet>511</a>            <span class="macro">vec!</span>[a1.clone(), a2.clone(), a3.clone()].into_iter(),
+<a href=#512 id=512 data-nosnippet>512</a>        ));
+<a href=#513 id=513 data-nosnippet>513</a>    }
+<a href=#514 id=514 data-nosnippet>514</a>}</code></pre></div></section></main></body></html>
