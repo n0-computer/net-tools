@@ -48,6 +48,11 @@ tokio = { version = "1", features = [
     "io-std",
 ] }
 
+# Minimal crates fixes. These are used for dependency resolution but not for compilation.
+[target.'cfg(false)'.dependencies]
+objc2-core-foundation = "0.3.2"
+objc2-system-configuration = "0.3.2"
+
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 netlink-packet-route = "0.33.0"
 netlink-packet-core = "0.9.0"
