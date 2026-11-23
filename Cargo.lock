@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "netwatch"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1181,7 +1181,6 @@ dependencies = [
  "serde",
  "socket2",
  "testresult",
- "time",
  "tokio",
  "tokio-util",
  "tracing",
@@ -1220,9 +1219,9 @@ dependencies = [
 
 [[package]]
 name = "noq-udp"
-version = "1.3.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dc50afea61aff926e150a36c31f06094608848e114a3fe667d76ec233163b1c"
+checksum = "1ef64126fa6c095c0f5afb2d06d24c94e468208bff4008225980840c7add6fe3"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -1474,9 +1473,8 @@ dependencies = [
 
 [[package]]
 name = "portmapper"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
- "base64",
  "bytes",
  "derive_more",
  "hyper-util",
@@ -1494,10 +1492,8 @@ dependencies = [
  "serde",
  "smallvec",
  "socket2",
- "time",
  "tokio",
  "tokio-util",
- "tower-layer",
  "tracing",
  "url",
 ]
@@ -2085,12 +2081,6 @@ name = "toml_writer"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
-
-[[package]]
-name = "tower-layer"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
 name = "tower-service"

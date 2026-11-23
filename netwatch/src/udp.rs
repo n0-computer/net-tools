@@ -460,6 +460,8 @@ impl UdpSocket {
             };
             let (socket, state) = guard.try_get_connected()?;
 
+            // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+            #[allow(deprecated)]
             let res = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
             match res {
@@ -490,6 +492,8 @@ impl UdpSocket {
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
+                    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+                    #[allow(deprecated)]
                     let res =
                         socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
                     if let Err(err) = res {
@@ -634,6 +638,7 @@ const WSAENETRESET: i32 = 10052;
 /// We treat `ConnectionReset` as transient on every platform, not only Windows:
 /// ECONNRESET is undefined in QUIC and can be injected by an attacker, so
 /// it must never tear down the receive path.
+#[allow(clippy::needless_bool)]
 fn is_transient_read_error(error: &io::Error) -> bool {
     if error.kind() == io::ErrorKind::ConnectionReset {
         return true;
@@ -1129,6 +1134,8 @@ impl UdpSender {
             result?;
 
             let (socket, state) = guard.try_get_connected()?;
+            // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+            #[allow(deprecated)]
             let result = socket.try_io(Interest::WRITABLE, || state.send(socket.into(), transmit));
 
             match result {
@@ -1144,6 +1151,8 @@ impl UdpSender {
     }
 
     /// Best effort sending
+    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+    #[allow(deprecated)]
     pub fn try_send(&self, transmit: &noq_udp::Transmit) -> io::Result<()> {
         self.socket.maybe_rebind()?;
 
@@ -1186,6 +1195,8 @@ impl Future for SendFutNoq<'_, '_> {
                     return Poll::Pending;
                 }
                 Poll::Ready(Ok(())) => {
+                    // TODO: `send` is deprecated, but `try_send` surfaces all I/O errors, which noq treats as fatal.
+                    #[allow(deprecated)]
                     let res = socket.try_io(Interest::WRITABLE, || {
                         state.send(socket.into(), self.transmit)
                     });

@@ -166,3 +166,53 @@ pub async fn probe_available(metrics: &Arc<Metrics>) -> Option<Gateway> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn mapping_rejects_oversized_soap_response() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\n\r\n")
+                .await;
+            let _ = stream.write_all(&vec![b' '; 4 * 1024 * 1024]).await;
+            std::future::pending::<()>().await;
+        });
+        let gateway = Gateway {
+            addr,
+            root_url: "/rootDesc.xml".to_string(),
+            control_url: "/ctl".to_string(),
+            control_schema_url: "/scpd.xml".to_string(),
+            control_schema: HashMap::new(),
+            service_type: "urn:schemas-upnp-org:service:WANIPConnection:1".to_string(),
+            provider: aigd::tokio::Tokio,
+        };
+        let mapping = tokio::time::timeout(
+            Duration::from_secs(5),
+            Mapping::new(
+                Protocol::Udp,
+                Ipv4Addr::LOCALHOST,
+                NonZeroU16::new(9586).unwrap(),
+                Some(gateway),
+                None,
+            ),
+        )
+        .await;
+        server.abort();
+        assert!(matches!(mapping, Ok(Err(_))), "{mapping:?}");
+    }
+}

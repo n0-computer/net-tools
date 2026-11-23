@@ -420,10 +420,7 @@ impl HomeRouter {
 fn prefixes_major_equal(a: impl Iterator<Item = IpNet>, b: impl Iterator<Item = IpNet>) -> bool {
     fn is_interesting(p: &IpNet) -> bool {
         let a = p.addr();
-        if is_link_local(a) || a.is_loopback() || a.is_multicast() {
-            return false;
-        }
-        true
+        !is_link_local(a) && !a.is_loopback() && !a.is_multicast()
     }
 
     let mut a = a.filter(is_interesting);
