@@ -125,6 +125,21 @@ pub struct Config {
     pub enable_nat_pmp: bool,
     /// Whether to use UDP or TCP.
     pub protocol: Protocol,
+    /// Lease duration requested for UPnP port mappings.
+    ///
+    /// Rounded down to whole seconds, with a minimum of one second. If the gateway
+    /// rejects the requested lease, the default is tried instead. `None` requests
+    /// two hours. Does not affect PCP or NAT-PMP.
+    pub lease_duration: Option<Duration>,
+    /// Renew a UPnP mapping when this much of its lease remains.
+    ///
+    /// A margin that is as long as the lease results in renewing after one second.
+    /// `None` renews at half of the lease. Does not affect PCP or NAT-PMP.
+    pub renew_margin: Option<Duration>,
+    /// Description under which UPnP mappings are registered on the gateway.
+    ///
+    /// `None` uses `"iroh-portmap"`. Does not affect PCP or NAT-PMP.
+    pub mapping_description: Option<String>,
 }
 
 impl Default for Config {
@@ -135,6 +150,9 @@ impl Default for Config {
             enable_pcp: true,
             enable_nat_pmp: true,
             protocol: Protocol::Udp,
+            lease_duration: None,
+            renew_margin: None,
+            mapping_description: None,
         }
     }
 }
@@ -290,7 +308,7 @@ impl Probe {
             enable_upnp,
             enable_pcp,
             enable_nat_pmp,
-            protocol: _,
+            ..
         } = config;
         let mut upnp_probing_task = util::MaybeFuture {
             inner: (enable_upnp && !upnp).then(|| {
@@ -682,7 +700,7 @@ impl Service {
                     .as_ref()
                     .map(|(gateway, _last_seen)| gateway.clone());
                 let task = mapping::Mapping::new_upnp(
-                    protocol,
+                    self.config.clone(),
                     local_ip,
                     local_port,
                     gateway,
