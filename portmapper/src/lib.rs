@@ -133,7 +133,8 @@ pub struct Config {
     pub lease_duration: Option<Duration>,
     /// Renew a UPnP mapping when this much of its lease remains.
     ///
-    /// A margin that is as long as the lease results in renewing after one second.
+    /// A margin of zero, or one at least as long as the lease, renews almost
+    /// immediately (after a floor of one second), so keep it well below the lease.
     /// `None` renews at half of the lease. Does not affect PCP or NAT-PMP.
     pub renew_margin: Option<Duration>,
     /// Description under which UPnP mappings are registered on the gateway.

@@ -114,9 +114,11 @@ impl Mapping {
         };
         let external_port = match add(lease_secs).await {
             // the gateway may not accept a custom lease, so retry with the default
-            Err(err) if lease_secs != PORT_MAPPING_LEASE_DURATION_SECONDS => {
+            Err(Error::AddAnyPort { source, .. })
+                if lease_secs != PORT_MAPPING_LEASE_DURATION_SECONDS && is_lease_error(&source) =>
+            {
                 debug!(
-                    "upnp mapping with a lease of {lease_secs}s failed, using the default: {err}"
+                    "upnp mapping with a lease of {lease_secs}s failed, using the default: {source}"
                 );
                 lease_secs = PORT_MAPPING_LEASE_DURATION_SECONDS;
                 add(lease_secs).await?
@@ -163,6 +165,19 @@ impl Mapping {
     pub fn external(&self) -> (Ipv4Addr, NonZeroU16) {
         (self.external_ip, self.external_port)
     }
+}
+
+/// Whether the gateway may have refused the requested lease.
+///
+/// Besides the typed "only permanent leases" error, some gateways answer with an arbitrary SOAP
+/// fault (e.g. 402 or 501), which igd-next reports as an untyped `ErrorCode`. Errors that are not
+/// about the lease (unauthorized, no free ports, IO, ...) are not worth another attempt.
+fn is_lease_error(err: &AddAnyPortError) -> bool {
+    matches!(
+        err,
+        AddAnyPortError::OnlyPermanentLeasesSupported
+            | AddAnyPortError::RequestError(igd_next::RequestError::ErrorCode(..))
+    )
 }
 
 /// Maps `local_addr`, preferring `preferred_port` as external port and falling back to any port.
@@ -269,8 +284,11 @@ mod tests {
     /// `accepted_lease`, if set.
     async fn fake_gateway(
         accepted_lease: Option<u32>,
+        fault_code: u16,
     ) -> (Gateway, Arc<std::sync::Mutex<Vec<String>>>) {
-        const FAULT: &str = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault><detail><UPnPError><errorCode>402</errorCode><errorDescription>Invalid Args</errorDescription></UPnPError></detail></s:Fault></s:Body></s:Envelope>";
+        let fault = format!(
+            "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault><detail><UPnPError><errorCode>{fault_code}</errorCode><errorDescription>Fault</errorDescription></UPnPError></detail></s:Fault></s:Body></s:Envelope>"
+        );
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let addr = listener.local_addr().unwrap();
         let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -291,7 +309,7 @@ mod tests {
                     if lease_ok {
                         "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\"><s:Body><u:AddPortMappingResponse/></s:Body></s:Envelope>"
                     } else {
-                        FAULT
+                        &fault
                     }
                 };
                 let response = format!(
@@ -341,7 +359,7 @@ mod tests {
 
     #[tokio::test]
     async fn mapping_defaults() {
-        let (gateway, requests) = fake_gateway(None).await;
+        let (gateway, requests) = fake_gateway(None, 402).await;
         let mapping = map(Config::default(), gateway).await;
         let requests = requests.lock().unwrap();
         assert!(requests[0].contains("<NewLeaseDuration>7200</NewLeaseDuration>"));
@@ -352,7 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn mapping_custom_lease_and_description() {
-        let (gateway, requests) = fake_gateway(None).await;
+        let (gateway, requests) = fake_gateway(None, 402).await;
         let config = Config {
             lease_duration: Some(Duration::from_secs(600)),
             renew_margin: Some(Duration::from_secs(60)),
@@ -369,7 +387,8 @@ mod tests {
 
     #[tokio::test]
     async fn mapping_falls_back_to_default_lease() {
-        let (gateway, requests) = fake_gateway(Some(PORT_MAPPING_LEASE_DURATION_SECONDS)).await;
+        let (gateway, requests) =
+            fake_gateway(Some(PORT_MAPPING_LEASE_DURATION_SECONDS), 402).await;
         let config = Config {
             lease_duration: Some(Duration::from_secs(600)),
             ..Config::default()
@@ -380,5 +399,37 @@ mod tests {
         assert!(requests[0].contains("<NewLeaseDuration>600</NewLeaseDuration>"));
         assert!(requests[1].contains("<NewLeaseDuration>7200</NewLeaseDuration>"));
         assert_eq!(mapping.half_lifetime(), Duration::from_secs(3600));
+    }
+
+    #[tokio::test]
+    async fn mapping_does_not_retry_non_lease_errors() {
+        // 606: not authorized, unrelated to the lease
+        let (gateway, requests) = fake_gateway(Some(0), 606).await;
+        let config = Config {
+            lease_duration: Some(Duration::from_secs(600)),
+            ..Config::default()
+        };
+        let res = Mapping::new(
+            config,
+            Ipv4Addr::LOCALHOST,
+            NonZeroU16::new(9586).unwrap(),
+            Some(gateway),
+            None,
+        )
+        .await;
+        assert!(res.is_err(), "{res:?}");
+        assert_eq!(requests.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mapping_renew_margin_covering_lease_renews_after_floor() {
+        let (gateway, _) = fake_gateway(None, 402).await;
+        let config = Config {
+            lease_duration: Some(Duration::from_secs(600)),
+            renew_margin: Some(Duration::from_secs(600)),
+            ..Config::default()
+        };
+        let mapping = map(config, gateway).await;
+        assert_eq!(mapping.half_lifetime(), MIN_RENEW_AFTER);
     }
 }
