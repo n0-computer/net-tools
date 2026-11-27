@@ -5,12 +5,16 @@ use std::{net::Ipv4Addr, num::NonZeroU16, time::Duration};
 use n0_error::stack_error;
 
 use super::{nat_pmp, pcp, upnp};
-use crate::Protocol;
+use crate::{Config, Protocol};
 
 pub(super) trait PortMapped: std::fmt::Debug + Unpin {
     fn external(&self) -> (Ipv4Addr, NonZeroU16);
     /// Half the lifetime of a mapping. This is used to calculate when a mapping should be renewed.
     fn half_lifetime(&self) -> Duration;
+    /// Time between a renewal being due and the mapping expiring.
+    fn expiry_after_renew(&self) -> Duration {
+        self.half_lifetime()
+    }
 }
 
 /// A port mapping created with one of the supported protocols.
@@ -74,13 +78,13 @@ impl Mapping {
 
     /// Create a new UPnP mapping.
     pub(crate) async fn new_upnp(
-        protocol: Protocol,
+        config: Config,
         local_ip: Ipv4Addr,
         local_port: NonZeroU16,
         gateway: Option<upnp::Gateway>,
         external_port: Option<NonZeroU16>,
     ) -> Result<Self, Error> {
-        upnp::Mapping::new(protocol, local_ip, local_port, gateway, external_port)
+        upnp::Mapping::new(config, local_ip, local_port, gateway, external_port)
             .await
             .map(Self::Upnp)
             .map_err(Error::from)
@@ -109,6 +113,14 @@ impl PortMapped for Mapping {
     fn half_lifetime(&self) -> Duration {
         match self {
             Mapping::Upnp(m) => m.half_lifetime(),
+            Mapping::Pcp(m) => m.half_lifetime(),
+            Mapping::NatPmp(m) => m.half_lifetime(),
+        }
+    }
+
+    fn expiry_after_renew(&self) -> Duration {
+        match self {
+            Mapping::Upnp(m) => m.expiry_after_renew(),
             Mapping::Pcp(m) => m.half_lifetime(),
             Mapping::NatPmp(m) => m.half_lifetime(),
         }

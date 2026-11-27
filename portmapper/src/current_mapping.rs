@@ -20,6 +20,10 @@ pub(super) trait Mapping: std::fmt::Debug + Unpin {
     fn external(&self) -> (Ipv4Addr, NonZeroU16);
     /// Half the lifetime of a mapping. This is used to calculate when a mapping should be renewed.
     fn half_lifetime(&self) -> Duration;
+    /// Time between a renewal being due and the mapping expiring.
+    fn expiry_after_renew(&self) -> Duration {
+        self.half_lifetime()
+    }
 }
 
 impl Mapping for super::mapping::Mapping {
@@ -28,6 +32,9 @@ impl Mapping for super::mapping::Mapping {
     }
     fn half_lifetime(&self) -> Duration {
         super::mapping::PortMapped::half_lifetime(self)
+    }
+    fn expiry_after_renew(&self) -> Duration {
+        super::mapping::PortMapped::expiry_after_renew(self)
     }
 }
 
@@ -148,7 +155,7 @@ impl<M: Mapping> CurrentMapping<M> {
                 })
             } else {
                 // mapping is due for renewal
-                *deadline = Box::pin(time::sleep(mapping.half_lifetime()));
+                *deadline = Box::pin(time::sleep(mapping.expiry_after_renew()));
                 *expire_after = true;
                 trace!("due for renewal {mapping:?}");
                 Poll::Ready(Event::Renew {
