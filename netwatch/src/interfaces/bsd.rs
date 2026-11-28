@@ -35,6 +35,10 @@ mod macos;
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos"))]
 pub(crate) use self::macos::*;
 
+#[allow(
+    clippy::unused_async,
+    reason = "same signature as `default_route` on every other platform"
+)]
 pub async fn default_route() -> Option<DefaultRouteDetails> {
     let idx = default_route_interface_index()?;
     let interfaces = netdev::get_interfaces();
@@ -215,10 +219,7 @@ fn parse_routing_table(rib: &[u8]) -> Option<Vec<RouteMessage>> {
 const fn is_valid_rib_type(typ: RIBType) -> bool {
     const NET_RT_STAT: RIBType = 4;
     const NET_RT_TRASH: RIBType = 5;
-    if typ == NET_RT_STAT || typ == NET_RT_TRASH {
-        return false;
-    }
-    true
+    !matches!(typ, NET_RT_STAT | NET_RT_TRASH)
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
@@ -515,6 +516,7 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
 /// For the manipulation of routing information, the route message must
 /// contain appropriate fields that include:
 ///
+/// ```text
 ///  Version       = <must be specified>
 ///  Type          = <must be specified>
 ///  Flags         = <must be specified>
@@ -522,6 +524,7 @@ pub fn parse_rib(typ: RIBType, data: &[u8]) -> Result<Vec<WireMessage>, RouteErr
 ///  ID            = <must be specified>
 ///  Seq           = <must be specified>
 ///  Addrs         = <must be specified>
+/// ```
 #[derive(Debug)]
 pub struct RouteMessage {
     /// message version
