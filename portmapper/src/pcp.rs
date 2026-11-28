@@ -15,6 +15,57 @@ mod protocol;
 /// <https://datatracker.ietf.org/doc/html/rfc6886#section-3.3>
 const MAPPING_REQUESTED_LIFETIME_SECONDS: u32 = 60 * 60;
 
+/// Sends a MAP request to the connected server and waits for the response.
+async fn request_mapping(
+    socket: &UdpSocket,
+    nonce: [u8; 12],
+    protocol: protocol::MapProtocol,
+    local_ip: Ipv4Addr,
+    local_port: NonZeroU16,
+    preferred_external_address: Option<(Ipv4Addr, NonZeroU16)>,
+    lifetime_seconds: u32,
+) -> Result<protocol::Response, Error> {
+    let (preferred_external_ip, preferred_external_port) = match preferred_external_address {
+        Some((ip, port)) => (Some(ip), Some(port.into())),
+        None => (None, None),
+    };
+    let req = protocol::Request::mapping(
+        nonce,
+        protocol,
+        local_port.into(),
+        local_ip,
+        preferred_external_port,
+        preferred_external_ip,
+        lifetime_seconds,
+    );
+
+    socket.send(&req.encode()).await?;
+
+    // wait for the response and decode it
+    let mut buffer = vec![0; protocol::Response::MAX_SIZE];
+    let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
+        .await
+        .map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
+        })??;
+    Ok(protocol::Response::decode(&buffer[..read])?)
+}
+
+/// Whether the error is the gateway signalling it cannot provide the suggested external
+/// address or port.
+fn is_cannot_provide_external(err: &Error) -> bool {
+    matches!(
+        err,
+        Error::Protocol {
+            source: protocol::Error::ErrorCode {
+                source: protocol::ErrorCode::CannotProvideExternal,
+                ..
+            },
+            ..
+        }
+    )
+}
+
 /// A mapping successfully registered with a PCP server.
 #[derive(Debug)]
 pub struct Mapping {
@@ -88,35 +139,41 @@ impl Mapping {
         let mut nonce = [0u8; 12];
         rand::rng().fill_bytes(&mut nonce);
 
-        let (requested_address, requested_port) = match preferred_external_address {
-            Some((ip, port)) => (Some(ip), Some(port.into())),
-            None => (None, None),
-        };
-
         let protocol = match protocol {
             Protocol::Udp => protocol::MapProtocol::Udp,
             Protocol::Tcp => protocol::MapProtocol::Tcp,
         };
-        let req = protocol::Request::mapping(
+
+        let mut response = request_mapping(
+            &socket,
             nonce,
             protocol,
-            local_port.into(),
             local_ip,
-            requested_port,
-            requested_address,
+            local_port,
+            preferred_external_address,
             MAPPING_REQUESTED_LIFETIME_SECONDS,
-        );
+        )
+        .await;
 
-        socket.send(&req.encode()).await?;
-
-        // wait for the response and decode it
-        let mut buffer = vec![0; protocol::Response::MAX_SIZE];
-        let read = tokio::time::timeout(RECV_TIMEOUT, socket.recv(&mut buffer))
-            .await
-            .map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout".to_string())
-            })??;
-        let response = protocol::Response::decode(&buffer[..read])?;
+        // if the gateway cannot provide the suggested external address, retry once letting
+        // it assign any free one
+        if let Err(err) = &response
+            && preferred_external_address.is_some()
+            && is_cannot_provide_external(err)
+        {
+            debug!("gateway cannot provide the suggested external address, requesting any");
+            response = request_mapping(
+                &socket,
+                nonce,
+                protocol,
+                local_ip,
+                local_port,
+                None,
+                MAPPING_REQUESTED_LIFETIME_SECONDS,
+            )
+            .await;
+        }
+        let response = response?;
 
         // verify that the response is correct and matches the request
         let protocol::Response {
@@ -243,4 +300,19 @@ async fn probe_available_fallible(
     let response = protocol::Response::decode(&buffer[..read])?;
 
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detects_cannot_provide_external() {
+        let refused: Error =
+            protocol::Error::from(protocol::ErrorCode::CannotProvideExternal).into();
+        assert!(is_cannot_provide_external(&refused));
+
+        let other: Error = protocol::Error::from(protocol::ErrorCode::NoResources).into();
+        assert!(!is_cannot_provide_external(&other));
+    }
 }
